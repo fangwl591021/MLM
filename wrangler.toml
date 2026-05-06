@@ -1,0 +1,12 @@
+name = "line-oa-ai-suggestion"
+main = "worker/worker.js"
+compatibility_date = "2026-05-06"
+
+[vars]
+# Set real values in Cloudflare Dashboard secrets / variables.
+# GAS_URL = "https://script.google.com/macros/s/..."
+# GAS_SHARED_SECRET = ""
+# LINE_CHANNEL_SECRET = ""
+# LINE_CHANNEL_ACCESS_TOKEN = ""
+# DASHBOARD_API_TOKEN = ""
+# ALLOWED_ORIGIN = ""
