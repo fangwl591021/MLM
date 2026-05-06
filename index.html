@@ -8,7 +8,7 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Import Maps: 讓瀏覽器原生支援 ES Modules，徹底根除 CDN 變數衝突 -->
+    <!-- Import Maps -->
     <script type="importmap">
     {
         "imports": {
@@ -19,7 +19,7 @@
     }
     </script>
     
-    <!-- Babel: 僅用於在瀏覽器內編譯 JSX，且指定 data-type="module" 防止保留字報錯 -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -33,7 +33,7 @@
             overflow: hidden;
         }
 
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
@@ -41,13 +41,13 @@
         .line-bubble-user {
             background-color: #ffffff;
             border: 1px solid #e2e8f0;
-            border-radius: 2px 14px 14px 14px;
+            border-radius: 2px 16px 16px 16px;
         }
 
         .line-bubble-admin {
             background-color: #06c755; 
             color: white;
-            border-radius: 14px 2px 14px 14px;
+            border-radius: 16px 2px 16px 16px;
         }
 
         .suggestion-chip {
@@ -93,15 +93,14 @@
             AlertTriangle, Sparkles, Bot
         } from 'lucide-react';
 
-        // --- 核心組件：權限控制 ---
         const PermissionGate = ({ type, role, children }) => {
             const isAllowed = type === 'operate' ? role === 'admin' : true;
             return isAllowed ? children : (
                 <div className="relative group opacity-50 cursor-not-allowed">
                     <div className="pointer-events-none">{children}</div>
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <span className="bg-slate-900 text-white text-[10px] px-3 py-1.5 rounded-full font-bold shadow-2xl flex items-center gap-1">
-                            <Lock size={12}/> 唯讀帳號受限
+                        <span className="bg-slate-900 text-white text-xs px-3 py-1.5 rounded-full font-bold shadow-2xl flex items-center gap-1">
+                            <Lock size={14}/> 唯讀帳號受限
                         </span>
                     </div>
                 </div>
@@ -109,13 +108,13 @@
         };
 
         const App = () => {
-            const [view, setView] = useState('chat'); // 預設進入聊天接管
+            const [view, setView] = useState('chat');
             const [user] = useState({ name: '系統管理員', role: 'admin', dept: '決策層' });
             const [chatTarget, setChatTarget] = useState(null);
             const [inputText, setInputText] = useState('');
             const chatEndRef = useRef(null);
 
-            // --- 業務數據 (模擬接管後的 AI 分析資訊流) ---
+            // --- 業務數據 (目前為靜態展示，未來將替換為 Fetch API 向 GAS 抓取) ---
             const [nfcCheckins, setNfcCheckins] = useState([
                 { id: 1, name: '林大華', point: '總部大廳', time: '14:20' },
                 { id: 2, name: '陳小美', point: 'VIP 接待區', time: '14:18' }
@@ -146,7 +145,7 @@
             const activeMessage = useMemo(() => {
                 if (!chatTarget) return null;
                 const userMsgs = messages.filter(m => m.userId === chatTarget.id && m.sender === 'user');
-                return userMsgs[userMsgs.length - 1]; // 獲取用戶最後一則訊息進行建議回覆
+                return userMsgs[userMsgs.length - 1]; 
             }, [messages, chatTarget]);
 
             const [aiLogs] = useState([
@@ -166,7 +165,6 @@
                 { id: 'S03', name: '陳專員', dept: '業務部', canOperate: false, tgTarget: '一般記錄組' }
             ]);
 
-            // NFC 實時報到模擬 (偵測 URL 中的 action=checkin)
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('action') === 'checkin') {
@@ -182,7 +180,6 @@
                 }
             }, []);
 
-            // 捲動對話到最新
             useEffect(() => {
                 chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }, [messages, chatTarget]);
@@ -198,9 +195,10 @@
                 };
                 setMessages(prev => [...prev, newMsg]);
                 setInputText('');
+                // 註：在此處未來將會加入 fetch 呼叫 Cloudflare Worker 的 /api/send 接口，真正發送至 LINE
             };
 
-            // --- 子視圖：營運看板 ---
+            // --- 營運看板視圖 ---
             const renderOverview = () => (
                 <div className="space-y-6 animate-in duration-500 font-sans">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -211,23 +209,23 @@
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans">
-                        <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 overflow-hidden flex flex-col">
+                        <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-100 shadow-sm p-8 overflow-hidden flex flex-col">
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2">
-                                    <Zap size={18} className="text-orange-500 fill-orange-500" />
+                                <h3 className="font-bold text-base uppercase tracking-wider flex items-center gap-2">
+                                    <Zap size={22} className="text-orange-500 fill-orange-500" />
                                     AI 靜默監測報表 (來自 LINE OA)
                                 </h3>
-                                <span className="text-[10px] font-bold text-green-500 bg-green-50 px-2 py-0.5 rounded-full">LIVE</span>
+                                <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full">LIVE</span>
                             </div>
-                            <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                            <div className="space-y-5 max-h-[400px] overflow-y-auto custom-scrollbar pr-3">
                                 {aiLogs.map((log, i) => (
-                                    <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 transition-colors">
-                                        <div className="flex justify-between text-[10px] font-bold mb-1">
+                                    <div key={i} className="p-5 bg-slate-50 rounded-[20px] border border-slate-100 hover:border-blue-200 transition-colors">
+                                        <div className="flex justify-between text-xs font-bold mb-2">
                                             <span className={log.type === 'critical' ? 'text-red-500' : 'text-orange-500'}>{log.category}</span>
-                                            <span className="text-slate-400">推播：{log.target}</span>
+                                            <span className="text-slate-500">推播：{log.target}</span>
                                         </div>
-                                        <p className="text-sm leading-relaxed mb-2 text-slate-700">{log.msg}</p>
-                                        <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                                        <p className="text-[15px] leading-relaxed mb-3 text-slate-800">{log.msg}</p>
+                                        <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
                                             <span>UID: {log.user}</span>
                                             <span>{log.time}</span>
                                         </div>
@@ -236,19 +234,19 @@
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 font-sans flex flex-col">
-                            <h3 className="font-bold text-sm uppercase mb-6 flex items-center gap-2">
-                                <Smartphone size={18} className="text-blue-500" />
+                        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-8 font-sans flex flex-col">
+                            <h3 className="font-bold text-base uppercase mb-6 flex items-center gap-2">
+                                <Smartphone size={22} className="text-blue-500" />
                                 NFC 實時報到
                             </h3>
-                            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-3">
                                 {nfcCheckins.map((log, i) => (
-                                    <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
+                                    <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-[20px] border border-slate-100 hover:border-blue-200 transition-colors">
                                         <div className="font-sans">
-                                            <p className="text-xs font-bold text-slate-800">{log.name}</p>
-                                            <p className="text-[9px] text-slate-400 uppercase tracking-tighter mt-1">{log.point}</p>
+                                            <p className="text-sm font-bold text-slate-800">{log.name}</p>
+                                            <p className="text-xs text-slate-500 uppercase tracking-tighter mt-1">{log.point}</p>
                                         </div>
-                                        <span className="text-[10px] font-mono text-slate-400">{log.time}</span>
+                                        <span className="text-xs font-mono text-slate-400">{log.time}</span>
                                     </div>
                                 ))}
                             </div>
@@ -257,15 +255,14 @@
                 </div>
             );
 
-            // --- 子視圖：LINE 接管聊天室 ---
+            // --- LINE 接管聊天室視圖 ---
             const renderChatTakeover = () => (
                 <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm flex h-[78vh] overflow-hidden animate-in duration-300">
-                    {/* 左側清單 */}
-                    <div className="w-80 border-r border-slate-50 flex flex-col bg-white shrink-0">
+                    <div className="w-[340px] border-r border-slate-50 flex flex-col bg-white shrink-0">
                         <div className="p-5 border-b border-slate-50">
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                                <input type="text" placeholder="搜尋 LINE 用戶..." className="w-full bg-slate-50 border-none rounded-xl py-2.5 pl-9 pr-4 text-xs focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-700" />
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input type="text" placeholder="搜尋 LINE 用戶..." className="w-full bg-slate-50 border-none rounded-xl py-3 pl-11 pr-4 text-sm focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-700" />
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -273,96 +270,89 @@
                                 <div 
                                     key={chat.id} 
                                     onClick={() => setChatTarget(chat)}
-                                    className={`p-4 flex gap-3 cursor-pointer transition-all border-b border-slate-50/50 ${chatTarget?.id === chat.id ? 'bg-blue-50/50 border-l-4 border-l-blue-600' : 'hover:bg-slate-50'}`}
+                                    className={`p-5 flex gap-4 cursor-pointer transition-all border-b border-slate-50/50 ${chatTarget?.id === chat.id ? 'bg-blue-50/50 border-l-[6px] border-l-blue-600' : 'hover:bg-slate-50 border-l-[6px] border-transparent'}`}
                                 >
                                     <div className="relative">
-                                        <div className="w-11 h-11 bg-slate-100 rounded-2xl flex-shrink-0 flex items-center justify-center font-bold text-slate-500 uppercase">{chat.name[0]}</div>
-                                        {chat.status === 'online' && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>}
+                                        <div className="w-12 h-12 bg-slate-100 rounded-[18px] flex-shrink-0 flex items-center justify-center font-bold text-slate-600 text-lg uppercase">{chat.name[0]}</div>
+                                        {chat.status === 'online' && <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>}
                                     </div>
                                     <div className="flex-1 overflow-hidden">
-                                        <div className="flex justify-between items-baseline mb-0.5">
-                                            <span className="text-xs font-bold truncate text-slate-800">{chat.name}</span>
-                                            <span className="text-[9px] text-slate-400 font-mono">{chat.time}</span>
+                                        <div className="flex justify-between items-baseline mb-1">
+                                            <span className="text-[15px] font-bold truncate text-slate-800">{chat.name}</span>
+                                            <span className="text-xs text-slate-400 font-mono">{chat.time}</span>
                                         </div>
-                                        <p className="text-[10px] text-slate-400 truncate tracking-tight">{chat.lastMsg}</p>
+                                        <p className="text-[13px] text-slate-500 truncate tracking-tight">{chat.lastMsg}</p>
                                     </div>
-                                    {chat.unread > 0 && <div className="min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full mt-2 shadow-sm">{chat.unread}</div>}
+                                    {chat.unread > 0 && <div className="min-w-[20px] h-[20px] bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full mt-2 shadow-sm px-1">{chat.unread}</div>}
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* 右側對話窗 */}
-                    <div className="flex-1 flex flex-col bg-[#F4F7F9]">
+                    <div className="flex-1 flex flex-col bg-[#8bacce]">
                         {chatTarget ? (
                             <>
-                                <div className="p-4 bg-white border-b border-slate-50 flex justify-between items-center z-10 shadow-sm">
+                                <div className="px-6 py-4 bg-white/95 backdrop-blur-sm border-b border-white/20 flex justify-between items-center z-10 shadow-sm">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 text-[10px] font-bold uppercase tracking-widest">{chatTarget.name[0]}</div>
-                                        <div>
-                                            <span className="text-sm font-bold text-slate-800">{chatTarget.name}</span>
-                                            <p className="text-[9px] text-green-500 font-black uppercase tracking-widest">已接管此對話傳送</p>
-                                        </div>
+                                        <span className="text-[17px] font-bold text-slate-800">{chatTarget.name}</span>
+                                        <span className="bg-[#06c755] text-white text-xs font-bold px-2.5 py-1 rounded-full tracking-widest uppercase">已接管</span>
                                     </div>
-                                    <div className="flex items-center gap-4 text-slate-400">
-                                        <button className="p-2 hover:bg-slate-50 rounded-xl transition-colors"><Activity size={18} /></button>
-                                        <button className="p-2 hover:bg-slate-50 rounded-xl transition-colors"><Settings size={18} /></button>
+                                    <div className="flex items-center gap-2 text-slate-600 text-xs font-bold uppercase tracking-widest">
+                                        <Bot size={16} className="text-blue-600"/> AI 靜默監聽中
                                     </div>
                                 </div>
                                 
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
                                     {messages.filter(m => m.userId === chatTarget.id).map(msg => (
                                         <div key={msg.id} className={`flex flex-col ${msg.sender === 'admin' ? 'items-end' : 'items-start'}`}>
                                             {msg.sender === 'user' && msg.aiCategory && (
-                                                <span className="text-[9px] font-black text-blue-500 mb-1 flex items-center gap-1 uppercase tracking-widest">
-                                                    <Bot size={10} /> AI 分類：{msg.aiCategory}
-                                                </span>
+                                                <div className="flex gap-1 mb-1 ml-2">
+                                                    <span className="text-xs bg-white/60 text-slate-800 px-2.5 py-1 rounded font-bold uppercase shadow-sm">{msg.aiCategory}</span>
+                                                </div>
                                             )}
-                                            <div className="max-w-[75%]">
-                                                <div className={`p-3.5 text-[13px] shadow-sm leading-relaxed ${
+                                            <div className="flex items-end gap-2 max-w-[75%]">
+                                                {msg.sender === 'admin' && <span className="text-xs text-white/90 font-mono mb-1">{msg.time}</span>}
+                                                <div className={`px-4 py-2.5 text-[15px] shadow-sm leading-relaxed ${
                                                     msg.sender === 'admin' 
-                                                    ? 'bg-[#06c755] text-white rounded-tl-2xl rounded-tr-sm rounded-br-2xl rounded-bl-2xl' 
-                                                    : 'bg-white font-medium text-slate-700 border border-slate-200 rounded-tl-sm rounded-tr-2xl rounded-br-2xl rounded-bl-2xl'
+                                                    ? 'bg-[#06c755] text-white rounded-2xl rounded-tr-sm' 
+                                                    : 'bg-white text-slate-800 rounded-2xl rounded-tl-sm'
                                                 }`}>
                                                     {msg.text}
                                                 </div>
-                                                <p className={`text-[9px] mt-1 text-slate-400 font-mono font-bold ${msg.sender === 'admin' ? 'text-right' : 'text-left'}`}>{msg.time}</p>
+                                                {msg.sender === 'user' && <span className="text-xs text-white/90 font-mono mb-1">{msg.time}</span>}
                                             </div>
                                         </div>
                                     ))}
                                     <div ref={chatEndRef} />
                                 </div>
 
-                                {/* AI 建議回覆區塊 */}
-                                <div className="p-4 bg-white/60 backdrop-blur-sm border-t border-slate-100">
+                                <div className="bg-white">
                                     {activeMessage?.aiSuggestions && (
-                                        <div className="mb-4">
-                                            <div className="flex items-center gap-1.5 mb-2 px-1">
-                                                <Sparkles size={12} className="text-orange-400 fill-orange-400" />
-                                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">AI 建議回覆：內容已根據知識庫優化</span>
+                                        <div className="p-4 bg-slate-50 flex items-center gap-3 overflow-x-auto custom-scrollbar border-b border-slate-100">
+                                            <div className="flex items-center text-orange-500 shrink-0 px-2">
+                                                <Zap size={16} className="fill-orange-500 mr-1.5"/>
+                                                <span className="text-xs font-bold uppercase tracking-widest">AI 建議</span>
                                             </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {activeMessage.aiSuggestions.map((s, idx) => (
-                                                    <button 
-                                                        key={idx} 
-                                                        onClick={() => setInputText(s)}
-                                                        className="bg-white border border-[#06c755] text-[#06c755] hover:bg-[#06c755] hover:text-white transition-all px-3 py-1.5 rounded-full text-[11px] font-bold shadow-sm"
-                                                    >
-                                                        {s}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                            {activeMessage.aiSuggestions.map((s, idx) => (
+                                                <button 
+                                                    key={idx} 
+                                                    onClick={() => setInputText(s)}
+                                                    className="shrink-0 bg-white border border-[#06c755] text-[#06c755] hover:bg-[#06c755] hover:text-white px-4 py-2 rounded-full text-[13px] font-bold transition-colors shadow-sm"
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))}
                                         </div>
                                     )}
 
-                                    <div className="flex gap-3 items-center bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                                        <button className="p-2.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"><Plus size={20}/></button>
-                                        <input 
-                                            type="text" 
+                                    <div className="p-4 flex items-end gap-4">
+                                        <button className="p-2.5 text-slate-400 hover:text-slate-600 transition-colors"><Plus size={26}/></button>
+                                        <textarea 
                                             value={inputText}
                                             onChange={(e) => setInputText(e.target.value)}
                                             placeholder="在此輸入訊息..." 
-                                            className="flex-1 bg-transparent border-none px-2 py-2 text-xs focus:ring-0 outline-none font-medium text-slate-700"
+                                            className="flex-1 bg-slate-100 rounded-2xl border-none px-5 py-3.5 text-[15px] outline-none resize-none min-h-[50px] max-h-[120px] leading-relaxed text-slate-800"
+                                            rows="1"
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && !e.shiftKey) {
                                                     e.preventDefault();
@@ -372,20 +362,18 @@
                                         />
                                         <button 
                                             onClick={handleSend}
-                                            className="bg-[#06c755] text-white p-2.5 rounded-xl hover:bg-[#05a64a] shadow-md shadow-green-100 transition-all"
+                                            className="p-3 bg-[#06c755] text-white rounded-full hover:bg-[#05a64a] shadow-md transition-all mb-1"
                                         >
-                                            <Send size={18}/>
+                                            <Send size={22} className="ml-1" />
                                         </button>
                                     </div>
                                 </div>
                             </>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-slate-300 animate-in">
-                                <div className="w-20 h-20 bg-white rounded-[32px] flex items-center justify-center shadow-sm mb-6">
-                                    <MessageSquare size={40} strokeWidth={1.5} className="text-slate-200" />
-                                </div>
-                                <p className="text-xs font-black uppercase tracking-[0.3em]">選擇一個 LINE OA 對話</p>
-                                <p className="text-[10px] mt-2 text-slate-400 tracking-widest uppercase">Messaging API: Connection Stable</p>
+                            <div className="flex-1 flex flex-col items-center justify-center text-white/80 animate-in">
+                                <MessageSquare size={64} strokeWidth={1} className="mb-6 opacity-60" />
+                                <p className="text-sm font-black uppercase tracking-[0.3em]">請選擇一個對話</p>
+                                <p className="text-xs mt-3 tracking-widest uppercase opacity-80">Messaging API Ready</p>
                             </div>
                         )}
                     </div>
@@ -394,38 +382,40 @@
 
             // --- 子頁面：CRM 權限管理 ---
             const renderCRMView = () => (
-                <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden animate-in duration-500 font-sans">
-                    <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-                        <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-slate-800">
-                            <ShieldCheck size={20} className="text-blue-600" />
+                <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-500 font-sans">
+                    <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                        <h2 className="text-base font-bold uppercase tracking-widest flex items-center gap-3 text-slate-800">
+                            <ShieldCheck size={24} className="text-blue-600" />
                             權限矩陣與 TG 指派
                         </h2>
-                        <button className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-slate-800 transition-all">註冊新成員</button>
+                        <PermissionGate type="operate" role={user.role}>
+                            <button className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase hover:bg-slate-800 transition-all">註冊新成員</button>
+                        </PermissionGate>
                     </div>
-                    <table className="w-full text-left text-[11px] font-sans">
-                        <thead className="bg-slate-50/50 text-slate-400 uppercase font-black">
+                    <table className="w-full text-left text-sm font-sans">
+                        <thead className="bg-slate-50/80 text-slate-500 uppercase font-black text-xs tracking-widest">
                             <tr>
-                                <th className="p-4 pl-6">姓名/部門</th>
-                                <th className="p-4 text-center">操作權</th>
-                                <th className="p-4">TG 分組</th>
-                                <th className="p-4 pr-6 text-right">設定</th>
+                                <th className="p-5 pl-8">姓名/部門</th>
+                                <th className="p-5 text-center">操作權限</th>
+                                <th className="p-5">TG 任務分組</th>
+                                <th className="p-5 pr-8 text-right">設定</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-slate-100">
                             {staffMatrix.map(s => (
                                 <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="p-4 pl-6">
-                                        <p className="font-bold text-slate-800 text-sm">{s.name}</p>
-                                        <p className="text-[10px] text-slate-400 uppercase tracking-tighter mt-0.5">{s.dept}</p>
+                                    <td className="p-5 pl-8">
+                                        <p className="font-bold text-slate-800 text-[15px]">{s.name}</p>
+                                        <p className="text-xs text-slate-400 uppercase tracking-tighter mt-1">{s.dept}</p>
                                     </td>
-                                    <td className="p-4 text-center">
-                                        {s.canOperate ? <CheckCircle size={16} className="text-blue-500 mx-auto" /> : <div className="w-4 h-4 border border-slate-200 rounded-full mx-auto"></div>}
+                                    <td className="p-5 text-center">
+                                        {s.canOperate ? <CheckCircle size={20} className="text-blue-500 mx-auto" /> : <div className="w-5 h-5 border-2 border-slate-200 rounded-full mx-auto"></div>}
                                     </td>
-                                    <td className="p-4">
-                                        <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 font-bold uppercase tracking-widest text-[9px]">{s.tgTarget}</span>
+                                    <td className="p-5">
+                                        <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg border border-blue-100 font-bold uppercase tracking-widest text-xs">{s.tgTarget}</span>
                                     </td>
-                                    <td className="p-4 pr-6 text-right">
-                                        <button className="text-slate-300 hover:text-blue-500 transition-colors"><Settings size={16}/></button>
+                                    <td className="p-5 pr-8 text-right">
+                                        <button className="text-slate-400 hover:text-blue-600 transition-colors"><Settings size={20}/></button>
                                     </td>
                                 </tr>
                             ))}
@@ -437,69 +427,67 @@
             // --- 主導航架構 ---
             return (
                 <div className="min-h-screen flex bg-slate-50 text-slate-800 font-sans antialiased">
-                    {/* Sidebar */}
-                    <aside className="w-[260px] bg-white border-r border-slate-100 flex flex-col p-6 hidden lg:flex fixed h-full z-40 shadow-sm font-sans">
-                        <div className="flex items-center gap-3 mb-10 px-2">
-                            <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-                                <LayoutDashboard size={20} />
+                    <aside className="w-[300px] bg-white border-r border-slate-100 flex flex-col p-8 hidden lg:flex fixed h-full z-40 shadow-sm font-sans">
+                        <div className="flex items-center gap-4 mb-12 px-2">
+                            <div className="w-12 h-12 bg-blue-600 rounded-[18px] flex items-center justify-center text-white shadow-lg">
+                                <LayoutDashboard size={24} />
                             </div>
-                            <div className="leading-none">
-                                <h1 className="text-base font-black uppercase tracking-tight text-slate-800">DS PRO</h1>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Intelligent Hub</p>
+                            <div className="leading-tight">
+                                <h1 className="text-[18px] font-black uppercase tracking-tight text-slate-800">DS PRO</h1>
+                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mt-1 italic">Intelligent Hub</p>
                             </div>
                         </div>
                         
-                        <nav className="flex-1 space-y-2">
+                        <nav className="flex-1 space-y-3">
                             <NavItem id="overview" icon={LayoutDashboard} label="營運數據看板" active={view === 'overview'} onClick={setView} />
                             <NavItem id="chat" icon={MessageSquare} label="LINE 接管對話" active={view === 'chat'} onClick={setView} />
                             <NavItem id="crm" icon={ShieldCheck} label="CRM 與權限矩陣" active={view === 'crm'} onClick={setView} />
-                            <div className="pt-8 opacity-40">
-                                <p className="px-4 text-[9px] font-black uppercase tracking-widest mb-3">資料庫連結</p>
+                            <div className="pt-10 opacity-50">
+                                <p className="px-5 text-[11px] font-black uppercase tracking-widest mb-4">資料庫連結</p>
                                 <NavItem id="cal" icon={Calendar} label="部門行事曆" active={view === 'cal'} onClick={setView} />
                             </div>
                         </nav>
 
-                        <div className="mt-auto p-5 bg-slate-50 rounded-3xl text-center border border-slate-100">
-                            <div className="flex items-center justify-center gap-2 text-green-500 text-[10px] font-black uppercase mb-1">
-                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                        <div className="mt-auto p-6 bg-slate-50 rounded-[28px] text-center border border-slate-100">
+                            <div className="flex items-center justify-center gap-2 text-green-600 text-[11px] font-black uppercase mb-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                                 Worker & GAS: OK
                             </div>
-                            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">AI Silent Monitoring</p>
+                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">AI Silent Monitoring</p>
                         </div>
                     </aside>
 
-                    {/* Main Content */}
-                    <main className="flex-1 lg:ml-[260px] p-8 overflow-y-auto h-screen custom-scrollbar">
-                        <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
-                            <div className="relative w-80 group">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
-                                <input type="text" placeholder="搜尋功能、簽到、人員..." className="w-full bg-white border border-slate-100 rounded-2xl py-3 pl-11 pr-4 text-xs shadow-sm focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-700 transition-all" />
+                    <main className="flex-1 lg:ml-[300px] p-10 overflow-y-auto h-screen custom-scrollbar">
+                        <header className="max-w-6xl mx-auto flex justify-between items-center mb-10">
+                            <div className="relative w-[400px] group">
+                                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                                <input type="text" placeholder="搜尋功能、簽到、人員..." className="w-full bg-white border border-slate-100 rounded-[20px] py-4 pl-12 pr-5 text-sm shadow-sm focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-700 transition-all" />
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 relative cursor-pointer hover:bg-slate-50 transition-all shadow-sm group">
-                                    <Bell size={18} className="group-hover:rotate-12 transition-transform" />
-                                    <div className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></div>
+                            <div className="flex items-center gap-5">
+                                <div className="w-12 h-12 bg-white border border-slate-100 rounded-[20px] flex items-center justify-center text-slate-500 relative cursor-pointer hover:bg-slate-50 transition-all shadow-sm group">
+                                    <Bell size={20} className="group-hover:rotate-12 transition-transform" />
+                                    <div className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></div>
                                 </div>
-                                <div className="h-8 w-px bg-slate-200 mx-1"></div>
-                                <div className="flex items-center gap-3 bg-white p-1.5 pr-4 rounded-2xl border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-all">
-                                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs uppercase">{user.name[0]}</div>
+                                <div className="h-10 w-px bg-slate-200 mx-2"></div>
+                                <div className="flex items-center gap-4 bg-white p-2 pr-6 rounded-[20px] border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-all">
+                                    <div className="w-10 h-10 rounded-[14px] bg-blue-600 text-white flex items-center justify-center font-black text-sm uppercase">{user.name[0]}</div>
                                     <div className="text-left leading-none">
-                                        <p className="text-[11px] font-black text-slate-800 uppercase">{user.name}</p>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">{user.dept}</p>
+                                        <p className="text-[13px] font-black text-slate-800 uppercase">{user.name}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1.5">{user.dept}</p>
                                     </div>
                                 </div>
                             </div>
                         </header>
 
-                        <div className="max-w-5xl mx-auto">
+                        <div className="max-w-6xl mx-auto">
                             {view === 'overview' && renderOverview()}
                             {view === 'chat' && renderChatTakeover()}
                             {view === 'crm' && renderCRMView()}
                             {view === 'cal' && (
-                                <div className="p-20 text-center bg-white rounded-[40px] border border-dashed border-slate-200 animate-in fade-in zoom-in-95 duration-500">
-                                    <Activity size={48} className="mx-auto text-slate-200 mb-4" />
-                                    <p className="text-slate-500 font-bold uppercase tracking-[0.3em] text-xs">跨部資料同步中</p>
-                                    <p className="text-slate-400 text-[10px] mt-2 uppercase tracking-widest italic">Connecting to Google Sheets...</p>
+                                <div className="p-24 text-center bg-white rounded-[40px] border border-dashed border-slate-200 animate-in fade-in zoom-in-95 duration-500">
+                                    <Activity size={56} className="mx-auto text-slate-300 mb-6" />
+                                    <p className="text-slate-500 font-bold uppercase tracking-[0.3em] text-sm">跨部資料同步中</p>
+                                    <p className="text-slate-400 text-xs mt-3 uppercase tracking-widest italic">Connecting to Google Sheets...</p>
                                 </div>
                             )}
                         </div>
@@ -508,15 +496,14 @@
             );
         };
 
-        // --- 共用小組件 ---
         function NavItem({ id, icon: Icon, label, active, onClick }) {
             return (
                 <button 
                     onClick={() => onClick(id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 font-sans ${active ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 scale-105' : 'text-slate-500 hover:bg-slate-50'}`}
+                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-[20px] transition-all duration-200 font-sans ${active ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 scale-105' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
-                    <Icon size={18} strokeWidth={active ? 2.5 : 2} />
-                    <span className="text-xs font-bold tracking-tight">{label}</span>
+                    <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+                    <span className="text-[15px] font-bold tracking-tight">{label}</span>
                 </button>
             );
         }
@@ -536,15 +523,15 @@
             };
 
             return (
-                <div className="bg-white p-7 rounded-[32px] border border-slate-100 shadow-sm group hover:shadow-lg transition-all font-sans relative overflow-hidden">
+                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm group hover:shadow-lg transition-all font-sans relative overflow-hidden">
                     <div className="flex justify-between items-start font-sans relative z-10">
                         <div>
-                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mb-3 font-sans">{title}</p>
-                            <h3 className="text-2xl font-black text-slate-800 tracking-tighter group-hover:text-blue-600 transition-colors font-sans mb-1">{value}</h3>
-                            <span className={`text-[10px] font-black ${textClasses[color] || 'text-slate-400'} font-sans`}>{change}</span>
+                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest leading-none mb-3 font-sans">{title}</p>
+                            <h3 className="text-3xl font-black text-slate-800 tracking-tighter group-hover:text-blue-600 transition-colors font-sans mb-1">{value}</h3>
+                            <span className={`text-[11px] font-black ${textClasses[color] || 'text-slate-400'} font-sans uppercase tracking-widest`}>{change}</span>
                         </div>
-                        <div className={`p-4 ${colorClasses[color]} rounded-[20px] font-sans transition-transform group-hover:scale-110`}>
-                            <Icon size={24} />
+                        <div className={`p-4 ${colorClasses[color]} rounded-[22px] font-sans transition-transform group-hover:scale-110`}>
+                            <Icon size={28} />
                         </div>
                     </div>
                 </div>
