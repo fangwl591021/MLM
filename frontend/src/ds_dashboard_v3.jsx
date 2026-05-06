@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     LayoutDashboard, MessageSquare, Calendar, 
-    BarChart3, Bell, CheckCircle2, 
+    BarChart, Bell, CheckCircle, 
     Search, Smartphone, Zap, Send, ShieldCheck, Lock,
     UserPlus, Database, Activity, 
     UserCheck, Settings, ClipboardList, TrendingUp, Plus,
-    MessageSquareWarning, Sparkles, Bot
+    AlertTriangle, Sparkles, Bot
 } from 'lucide-react';
 
 // --- 核心組件：權限控制 ---
@@ -111,11 +111,11 @@ export default function App() {
     };
 
     // --- 子視圖：營運看板 ---
-    const Overview = () => (
+    const renderOverview = () => (
         <div className="space-y-6 animate-in fade-in duration-500 font-sans">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard title="營運總額" value="12.4M" change="+12%" icon={BarChart3} color="blue" />
-                <StatCard title="AI 異常" value={aiLogs.length} change="待處理" icon={MessageSquareWarning} color="red" />
+                <StatCard title="營運總額" value="12.4M" change="+12%" icon={BarChart} color="blue" />
+                <StatCard title="AI 異常" value={aiLogs.length} change="待處理" icon={AlertTriangle} color="red" />
                 <StatCard title="簽到人次" value={nfcCheckins.length} change="實時同步" icon={Smartphone} color="green" />
                 <StatCard title="部門行程" value={calendarEvents.length} change="本週計" icon={ClipboardList} color="purple" />
             </div>
@@ -129,14 +129,14 @@ export default function App() {
                         </h3>
                         <span className="text-[10px] font-bold text-green-500 bg-green-50 px-2 py-0.5 rounded-full">LIVE</span>
                     </div>
-                    <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
                         {aiLogs.map((log, i) => (
                             <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 transition-colors">
                                 <div className="flex justify-between text-[10px] font-bold mb-1">
                                     <span className={log.type === 'critical' ? 'text-red-500' : 'text-orange-500'}>{log.category}</span>
                                     <span className="text-slate-400">推播：{log.target}</span>
                                 </div>
-                                <p className="text-sm leading-relaxed mb-2">{log.msg}</p>
+                                <p className="text-sm leading-relaxed mb-2 text-slate-700">{log.msg}</p>
                                 <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
                                     <span>UID: {log.user}</span>
                                     <span>{log.time}</span>
@@ -151,12 +151,12 @@ export default function App() {
                         <Smartphone size={18} className="text-blue-500" />
                         NFC 實時報到
                     </h3>
-                    <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                    <div className="space-y-4 flex-1 overflow-y-auto pr-2">
                         {nfcCheckins.map((log, i) => (
                             <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
                                 <div className="font-sans">
                                     <p className="text-xs font-bold text-slate-800">{log.name}</p>
-                                    <p className="text-[9px] text-slate-400 uppercase tracking-tighter">{log.point}</p>
+                                    <p className="text-[9px] text-slate-400 uppercase tracking-tighter mt-1">{log.point}</p>
                                 </div>
                                 <span className="text-[10px] font-mono text-slate-400">{log.time}</span>
                             </div>
@@ -168,17 +168,17 @@ export default function App() {
     );
 
     // --- 子視圖：LINE 接管聊天室 ---
-    const ChatTakeover = () => (
+    const renderChatTakeover = () => (
         <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm flex h-[78vh] overflow-hidden animate-in fade-in zoom-in-95 duration-300">
             {/* 左側清單 */}
-            <div className="w-80 border-r border-slate-50 flex flex-col bg-white">
+            <div className="w-80 border-r border-slate-50 flex flex-col bg-white shrink-0">
                 <div className="p-5 border-b border-slate-50">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
                         <input type="text" placeholder="搜尋 LINE 用戶..." className="w-full bg-slate-50 border-none rounded-xl py-2.5 pl-9 pr-4 text-xs focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-700" />
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 overflow-y-auto">
                     {chatList.map(chat => (
                         <div 
                             key={chat.id} 
@@ -220,7 +220,7 @@ export default function App() {
                             </div>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-5">
                             {messages.filter(m => m.userId === chatTarget.id).map(msg => (
                                 <div key={msg.id} className={`flex flex-col ${msg.sender === 'admin' ? 'items-end' : 'items-start'}`}>
                                     {msg.sender === 'user' && msg.aiCategory && (
@@ -273,7 +273,12 @@ export default function App() {
                                     onChange={(e) => setInputText(e.target.value)}
                                     placeholder="在此輸入訊息..." 
                                     className="flex-1 bg-transparent border-none px-2 py-2 text-xs focus:ring-0 outline-none font-medium text-slate-700"
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSend();
+                                        }
+                                    }}
                                 />
                                 <button 
                                     onClick={handleSend}
@@ -298,7 +303,7 @@ export default function App() {
     );
 
     // --- 子頁面：CRM 權限管理 ---
-    const CRMView = () => (
+    const renderCRMView = () => (
         <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-500 font-sans">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                 <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-slate-800">
@@ -324,7 +329,7 @@ export default function App() {
                                 <p className="text-[10px] text-slate-400 uppercase tracking-tighter mt-0.5">{s.dept}</p>
                             </td>
                             <td className="p-4 text-center">
-                                {s.canOperate ? <CheckCircle2 size={16} className="text-blue-500 mx-auto" /> : <div className="w-4 h-4 border border-slate-200 rounded-full mx-auto"></div>}
+                                {s.canOperate ? <CheckCircle size={16} className="text-blue-500 mx-auto" /> : <div className="w-4 h-4 border border-slate-200 rounded-full mx-auto"></div>}
                             </td>
                             <td className="p-4">
                                 <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 font-bold uppercase tracking-widest text-[9px]">{s.tgTarget}</span>
@@ -404,9 +409,9 @@ export default function App() {
                 </header>
 
                 <div className="max-w-5xl mx-auto">
-                    {view === 'overview' && <Overview />}
-                    {view === 'chat' && <ChatTakeover />}
-                    {view === 'crm' && <CRMView />}
+                    {view === 'overview' && renderOverview()}
+                    {view === 'chat' && renderChatTakeover()}
+                    {view === 'crm' && renderCRMView()}
                     {view === 'cal' && (
                         <div className="p-20 text-center bg-white rounded-[40px] border border-dashed border-slate-200 animate-in fade-in zoom-in-95 duration-500">
                             <Activity size={48} className="mx-auto text-slate-200 mb-4" />
