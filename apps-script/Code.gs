@@ -22,9 +22,12 @@ const HEADERS = {
   knowledge: ["category", "question", "answer"],
 };
 
+let REQUEST_CONFIG = {};
+
 function doPost(e) {
   try {
     const payload = parseRequest_(e);
+    REQUEST_CONFIG = payload.config || {};
     assertSharedSecret_(payload.secret);
 
     const type = payload.type;
@@ -164,19 +167,10 @@ function saveAdminReply_(data) {
 }
 
 function performAIAnalysis_(text, userId) {
-  const props = PropertiesService.getScriptProperties();
-  const apiKey = props.getProperty("GEMINI_API_KEY");
-  const model = props.getProperty("GEMINI_MODEL") || "gemini-2.5-flash";
+  const openAiKey = getConfigProperty_("OPENAI_API_KEY", "");
+  const openAiModel = getConfigProperty_("OPENAI_MODEL", "gpt-5-mini");
+  const openAiUrl = getConfigProperty_("OPENAI_API_URL", "https://api.openai.com/v1/responses");
   const brain = getKnowledgeBase_();
-
-  if (!apiKey) {
-    return normalizeAnalysis_({
-      isImportant: false,
-      category: "未設定 Gemini",
-      sentiment: "neutral",
-      suggestions: ["系統尚未設定 Gemini API Key，請管理員先完成後台設定。"],
-    });
-  }
 
   const prompt = [
     "你是 LINE OA 後台管理員的 AI 助理，只提供管理員回應建議，絕對不要代表官方自動回覆用戶。",
@@ -192,6 +186,98 @@ function performAIAnalysis_(text, userId) {
     "用戶ID: " + userId,
     "用戶訊息: " + text,
   ].join("\n");
+
+  if (openAiKey) {
+    return performOpenAIAnalysis_(prompt, openAiKey, openAiModel, openAiUrl, text);
+  }
+
+  return performGeminiAnalysis_(prompt, text);
+}
+
+function performOpenAIAnalysis_(prompt, apiKey, model, apiUrl, originalText) {
+  try {
+    const response = UrlFetchApp.fetch(apiUrl, {
+      method: "post",
+      contentType: "application/json",
+      muteHttpExceptions: true,
+      headers: {
+        Authorization: "Bearer " + apiKey,
+      },
+      payload: JSON.stringify({
+        model: model,
+        input: [
+          {
+            role: "system",
+            content: "你是嚴謹的繁體中文客服助理。只輸出符合 schema 的 JSON。",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "line_oa_analysis",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                isImportant: { type: "boolean" },
+                category: { type: "string" },
+                sentiment: {
+                  type: "string",
+                  enum: ["positive", "neutral", "negative", "complaint"],
+                },
+                summary: { type: "string" },
+                reportReason: { type: "string" },
+                suggestions: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 3,
+                  items: { type: "string" },
+                },
+              },
+              required: ["isImportant", "category", "sentiment", "summary", "reportReason", "suggestions"],
+            },
+          },
+        },
+        max_output_tokens: 900,
+      }),
+    });
+
+    const body = response.getContentText();
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+      throw new Error("OpenAI HTTP " + response.getResponseCode() + ": " + body);
+    }
+
+    const generated = extractOpenAIText_(JSON.parse(body));
+    if (!generated) throw new Error("OpenAI returned empty content");
+    return normalizeAnalysis_(JSON.parse(generated));
+  } catch (err) {
+    logError_("performOpenAIAnalysis", err && err.message ? err.message : String(err), originalText);
+    return normalizeAnalysis_({
+      isImportant: false,
+      category: "一般查詢",
+      sentiment: "neutral",
+      suggestions: ["您好，這個問題我先為您確認，稍後由專人回覆您。"],
+    });
+  }
+}
+
+function performGeminiAnalysis_(prompt, originalText) {
+  const apiKey = getConfigProperty_("GEMINI_API_KEY", "");
+  const model = getConfigProperty_("GEMINI_MODEL", "gemini-2.5-flash");
+
+  if (!apiKey) {
+    return normalizeAnalysis_({
+      isImportant: false,
+      category: "未設定 AI",
+      sentiment: "neutral",
+      suggestions: ["系統尚未設定 OpenAI API Key，請管理員先完成後台設定。"],
+    });
+  }
 
   try {
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(apiKey);
@@ -224,7 +310,7 @@ function performAIAnalysis_(text, userId) {
     if (!generated) throw new Error("Gemini returned empty content");
     return normalizeAnalysis_(JSON.parse(generated));
   } catch (err) {
-    logError_("performAIAnalysis", err && err.message ? err.message : String(err), text);
+    logError_("performGeminiAnalysis", err && err.message ? err.message : String(err), originalText);
     return normalizeAnalysis_({
       isImportant: false,
       category: "一般查詢",
@@ -232,6 +318,21 @@ function performAIAnalysis_(text, userId) {
       suggestions: ["您好，這個問題我先為您確認，稍後由專人回覆您。"],
     });
   }
+}
+
+function extractOpenAIText_(body) {
+  if (!body) return "";
+  if (body.output_text) return body.output_text;
+
+  const output = body.output || [];
+  for (let i = 0; i < output.length; i += 1) {
+    const content = output[i].content || [];
+    for (let j = 0; j < content.length; j += 1) {
+      if (content[j].text) return content[j].text;
+    }
+  }
+
+  return "";
 }
 
 function normalizeAnalysis_(value) {
@@ -346,14 +447,22 @@ function ensureSheet_(ss, sheetName, headers) {
 }
 
 function getSpreadsheet_() {
-  const id = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  const id = getConfigProperty_("SPREADSHEET_ID", "");
   if (!id) throw new Error("SPREADSHEET_ID is not configured in Script Properties");
   return SpreadsheetApp.openById(id);
 }
 
 function assertSharedSecret_(secret) {
-  const expected = PropertiesService.getScriptProperties().getProperty("GAS_SHARED_SECRET");
+  const expected = getConfigProperty_("GAS_SHARED_SECRET", "");
   if (expected && secret !== expected) throw new Error("Invalid GAS shared secret");
+}
+
+function getConfigProperty_(key, fallback) {
+  const props = PropertiesService.getScriptProperties();
+  const fromProps = props.getProperty(key);
+  if (fromProps) return fromProps;
+  if (REQUEST_CONFIG && REQUEST_CONFIG[key]) return REQUEST_CONFIG[key];
+  return fallback;
 }
 
 function parseRequest_(e) {
