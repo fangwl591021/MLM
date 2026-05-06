@@ -19,6 +19,21 @@ export default {
     }
 
     try {
+      if (url.pathname === "/health" && request.method === "GET") {
+        return jsonResponse({
+          status: "ok",
+          service: "line-oa-ai-suggestion-worker",
+          checks: {
+            GAS_URL: Boolean(env.GAS_URL),
+            GAS_SHARED_SECRET: Boolean(env.GAS_SHARED_SECRET),
+            LINE_CHANNEL_SECRET: Boolean(env.LINE_CHANNEL_SECRET),
+            LINE_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
+            DASHBOARD_API_TOKEN: Boolean(env.DASHBOARD_API_TOKEN),
+            ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
+          },
+        }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
 
@@ -80,6 +95,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
+        routes: ["/health", "/api/data", "/api/send", "/webhook/line"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({
