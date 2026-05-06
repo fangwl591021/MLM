@@ -1,0 +1,490 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+    LayoutDashboard, MessageSquare, Calendar, 
+    Users, BarChart3, Bell, CheckCircle2, 
+    Search, Smartphone, Zap, Send, ShieldCheck, Lock,
+    UserPlus, Trash2, MapPin, Database, Activity, 
+    UserCheck, Settings, ClipboardList, TrendingUp, Plus,
+    MessageSquareWarning, ChevronRight, X, Sparkles, Bot
+} from 'lucide-react';
+
+// --- 核心權限控制閘門 ---
+const PermissionGate = ({ type, role, children }) => {
+    const isAllowed = type === 'operate' ? role === 'admin' : true;
+    return isAllowed ? (
+        children
+    ) : (
+        <div className="relative group cursor-not-allowed">
+            <div className="opacity-40 grayscale pointer-events-none select-none">{children}</div>
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                <span className="bg-slate-900 text-white text-[10px] px-3 py-1.5 rounded-full font-bold shadow-2xl flex items-center gap-1">
+                    <Lock size={12}/> 唯讀帳號受限
+                </span>
+            </div>
+        </div>
+    );
+};
+
+export default function App() {
+    const [view, setView] = useState('chat'); // 預設進入 LINE 對話接管
+    const [user] = useState({ name: '系統管理員', role: 'admin', dept: '決策層' });
+    const [chatTarget, setChatTarget] = useState(null);
+    const [inputText, setInputText] = useState('');
+    const chatEndRef = useRef(null);
+
+    // --- 業務模擬數據 (對接 Worker_v2 與 GAS_v2) ---
+    const [nfcCheckins, setNfcCheckins] = useState([
+        { id: 101, name: '林大華', point: '總部大廳', time: '14:20' },
+        { id: 102, name: '陳小美', point: 'VIP 會客室', time: '14:18' }
+    ]);
+
+    const [aiLogs] = useState([
+        { id: 1, type: 'critical', cat: '重大問題', msg: '北部多位經銷商反映獎金結算數字異常，出現群體抱怨趨勢。', user: 'U8819', target: '核心決策組', time: '10m' },
+        { id: 2, type: 'complaint', cat: '物流延遲', msg: '連續收到關於新產品包裝破損的反映，懷疑物流環節有問題。', user: 'U1202', target: '客服應變組', time: '1h' },
+        { id: 3, type: 'faq', cat: '產品諮詢', msg: '詢問新產品「極效修復精華」的詳細入會搭配方案。', user: 'U5543', target: '一般記錄組', time: '3h' }
+    ]);
+
+    const [calendarEvents] = useState([
+        { id: 1, date: '2026-05-15', title: '全台領袖高峰年會', dept: '企劃部', status: '進行中', loc: '台北國際會議中心' },
+        { id: 2, date: '2026-05-18', title: '營運月度審核會', dept: '秘書處', status: '待執行', loc: '總部會議室' }
+    ]);
+
+    const [staffMatrix] = useState([
+        { id: 'S01', name: '王經理', dept: '管理層', canOperate: true, tgTarget: '核心警報組' },
+        { id: 'S02', name: '李組長', dept: '客服部', canOperate: false, tgTarget: '客服應變組' },
+        { id: 'S03', name: '張專員', dept: '行政部', canOperate: false, tgTarget: '行政記錄組' }
+    ]);
+
+    const [messages, setMessages] = useState([
+        { 
+            id: 1, userId: 'U8819', sender: 'user', 
+            text: '請問這個月的獎金計算方式有調整嗎？', time: '14:05',
+            aiCategory: '獎金制度',
+            aiSuggestions: ['本月制度無更動，可參考官網附件。', '您好，詳細撥款時間預計在15號。']
+        },
+        { id: 2, userId: 'U8819', sender: 'admin', text: '您好，本月維持原獎金制度，若有變動會於官網公告。', time: '14:06' },
+        { 
+            id: 3, userId: 'U1202', sender: 'user', 
+            text: 'NFC 報到感應沒反應，請問該怎麼處理？', time: '14:10',
+            aiCategory: '硬體排除',
+            aiSuggestions: ['請確認手機 NFC 功能已開啟。', '嘗試將手機靠近標籤中心點感應。', '若持續失敗，請手動輸入代碼。']
+        }
+    ]);
+
+    const chatList = [
+        { id: 'U8819', name: '林大華', lastMsg: '您好，本月維持原獎...', time: '14:06', unread: 0, status: 'online' },
+        { id: 'U1202', name: '陳小美', lastMsg: 'NFC 報到感應沒反應...', time: '14:10', unread: 1, status: 'away' },
+        { id: 'U5543', name: '張大名', lastMsg: '感謝回覆', time: '昨日', unread: 0, status: 'offline' }
+    ];
+
+    // 取出當前對話中，使用者最後一句話，用於呈現 AI 建議
+    const activeMessage = useMemo(() => {
+        if (!chatTarget) return null;
+        const userMsgs = messages.filter(m => m.userId === chatTarget.id && m.sender === 'user');
+        return userMsgs[userMsgs.length - 1]; 
+    }, [messages, chatTarget]);
+
+    // --- NFC 偵測邏輯 (URL 參數解析) ---
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('action') === 'checkin') {
+            const pointId = params.get('pointId') || '未知感應點';
+            const newLog = { 
+                id: Date.now(), 
+                name: '感應報到者', 
+                point: pointId, 
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            };
+            setNfcCheckins(prev => [newLog, ...prev]);
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+    }, []);
+
+    // 對話捲動到底部
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages, chatTarget]);
+
+    const handleSend = () => {
+        if (!inputText.trim() || !chatTarget) return;
+        setMessages(prev => [...prev, { 
+            id: Date.now(), 
+            userId: chatTarget.id, 
+            sender: 'admin', 
+            text: inputText, 
+            time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+        }]);
+        setInputText('');
+    };
+
+    // --- 子頁面：營運數據看板 ---
+    const Overview = () => (
+        <div className="space-y-6 animate-in fade-in duration-500 fade-in zoom-in-95">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard title="月營運總額" value="NT$ 12.4M" change="+12%" icon={BarChart3} color="blue" />
+                <StatCard title="AI 異常通報" value={aiLogs.length} change="待處理" icon={MessageSquareWarning} color="red" />
+                <StatCard title="今日報到數" value={nfcCheckins.length} change="實時同步" icon={Smartphone} color="green" />
+                <StatCard title="進行中計畫" value={calendarEvents.length} change="本週行程" icon={ClipboardList} color="purple" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
+                    <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-white rounded-t-3xl">
+                        <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2 text-slate-800">
+                            <Zap size={18} className="text-orange-500 fill-orange-500" />
+                            AI 靜默監測中心 (重要訊息分流)
+                        </h3>
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 rounded-full border border-green-100">
+                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                            <span className="text-[10px] font-black text-green-600 uppercase tracking-widest">Listening</span>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-slate-50 flex-1 overflow-y-auto max-h-[480px] [&::-webkit-scrollbar]:hidden">
+                        {aiLogs.map(log => (
+                            <div key={log.id} className="p-5 hover:bg-slate-50 transition-colors group">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="flex gap-2 items-center">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                            log.type === 'critical' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+                                        }`}>
+                                            {log.cat}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase">
+                                            <Send size={10} /> TG：{log.target}
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-300">{log.time}</span>
+                                </div>
+                                <p className="text-slate-700 text-sm font-medium leading-relaxed mb-3">{log.msg}</p>
+                                <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-400">
+                                    <span>來源用戶: {log.user}...</span>
+                                    <div className="flex items-center gap-1 text-blue-500 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                        <Database size={10} /> 自動同步 GAS
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 flex flex-col">
+                    <h3 className="font-bold text-sm uppercase mb-6 flex items-center gap-2 text-slate-800">
+                        <Smartphone size={18} className="text-blue-500" />
+                        NFC 簽到管理
+                    </h3>
+                    <div className="space-y-4 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+                        {['總部大廳站', 'VIP 接待站', '台北年會場'].map((p, i) => (
+                            <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 group relative transition-all hover:bg-blue-50">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-bold text-slate-700">{p}</span>
+                                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                                </div>
+                                <div className="flex justify-between items-end">
+                                    <p className="text-[9px] text-slate-400 font-mono tracking-tighter uppercase font-bold">DS-POS-0{i+1}</p>
+                                    <div className="text-right leading-none">
+                                        <span className="text-lg font-black text-slate-800">
+                                            {nfcCheckins.filter(c => c.point.includes(p.slice(0, 2))).length}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 ml-1 font-bold uppercase">人次</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        <div className="pt-4 mt-4 border-t border-slate-100">
+                            <p className="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-widest">
+                                <UserCheck size={12}/> 實時報到紀錄
+                            </p>
+                            {nfcCheckins.slice(0, 3).map((c, idx) => (
+                                <div key={idx} className="flex justify-between text-[11px] mb-2 p-2.5 bg-white rounded-xl border border-slate-50 shadow-sm font-medium">
+                                    <span className="text-slate-700">{c.name}</span>
+                                    <span className="text-slate-400 font-mono tracking-tighter">{c.time}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <PermissionGate type="operate" role={user.role}>
+                        <button className="w-full mt-6 py-3 border-2 border-dashed border-slate-200 rounded-[18px] text-slate-400 text-[10px] font-black uppercase hover:bg-white hover:border-blue-400 hover:text-blue-500 transition-all flex items-center justify-center gap-2">
+                            <Plus size={14}/> 設定新感應點
+                        </button>
+                    </PermissionGate>
+                </div>
+            </div>
+        </div>
+    );
+
+    // --- 子頁面：LINE 接管聊天室 (原生資訊流設計) ---
+    const ChatTakeover = () => (
+        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm flex h-[78vh] overflow-hidden animate-in fade-in zoom-in-95">
+            {/* 左側對話清單 */}
+            <div className="w-80 border-r border-slate-50 flex flex-col bg-white shrink-0">
+                <div className="p-4 border-b border-slate-50">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                        <input type="text" placeholder="搜尋對話..." className="w-full bg-slate-50 border-none rounded-xl py-2 pl-9 pr-4 text-xs focus:ring-2 focus:ring-blue-100 outline-none font-medium" />
+                    </div>
+                </div>
+                <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+                    {chatList.map(chat => (
+                        <div 
+                            key={chat.id} 
+                            onClick={() => setChatTarget(chat)}
+                            className={`p-4 flex gap-3 cursor-pointer transition-all border-b border-slate-50/50 ${chatTarget?.id === chat.id ? 'bg-blue-50/50 border-l-4 border-l-blue-600' : 'hover:bg-slate-50'}`}
+                        >
+                            <div className="relative">
+                                <div className="w-10 h-10 bg-slate-100 rounded-[14px] flex-shrink-0 flex items-center justify-center font-bold text-slate-500 uppercase text-sm">{chat.name[0]}</div>
+                                {chat.status === 'online' && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>}
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <div className="flex justify-between items-baseline mb-0.5">
+                                    <span className="text-xs font-bold truncate text-slate-800">{chat.name}</span>
+                                    <span className="text-[9px] text-slate-400 font-mono">{chat.time}</span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 truncate tracking-tight">{chat.lastMsg}</p>
+                            </div>
+                            {chat.unread > 0 && <div className="min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full mt-2 shadow-sm">{chat.unread}</div>}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* 右側聊天視窗 (LINE 經典背景色) */}
+            <div className="flex-1 flex flex-col bg-[#8bacce]">
+                {chatTarget ? (
+                    <>
+                        <div className="px-5 py-3 bg-white/90 backdrop-blur-sm border-b border-white/20 flex justify-between items-center z-10">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-bold text-slate-800">{chatTarget.name}</span>
+                                <span className="bg-[#06c755] text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-widest uppercase">已接管</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                                <Bot size={14} className="text-blue-500"/> AI 靜默監聽中
+                            </div>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden p-6 space-y-4">
+                            {messages.filter(m => m.userId === chatTarget.id).map(msg => (
+                                <div key={msg.id} className={`flex flex-col ${msg.sender === 'admin' ? 'items-end' : 'items-start'}`}>
+                                    {msg.sender === 'user' && msg.aiCategory && (
+                                        <div className="flex gap-1 mb-1 ml-1">
+                                            <span className="text-[9px] bg-white/60 text-slate-800 px-2 py-0.5 rounded font-bold uppercase">{msg.aiCategory}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex items-end gap-1.5 max-w-[75%]">
+                                        {msg.sender === 'admin' && <span className="text-[9px] text-white/80 font-mono mb-1">{msg.time}</span>}
+                                        <div className={`px-3 py-2 text-[13px] shadow-sm leading-relaxed ${
+                                            msg.sender === 'admin' 
+                                            ? 'bg-[#06c755] text-white rounded-2xl rounded-tr-sm' 
+                                            : 'bg-white text-slate-800 rounded-2xl rounded-tl-sm'
+                                        }`}>
+                                            {msg.text}
+                                        </div>
+                                        {msg.sender === 'user' && <span className="text-[9px] text-white/80 font-mono mb-1">{msg.time}</span>}
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={chatEndRef} />
+                        </div>
+
+                        {/* AI 建議回覆與輸入區 */}
+                        <div className="bg-white">
+                            {activeMessage?.aiSuggestions && (
+                                <div className="p-3 bg-slate-50 flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden border-b border-slate-100">
+                                    <div className="flex items-center text-orange-500 shrink-0 px-2">
+                                        <Zap size={14} className="fill-orange-500 mr-1"/>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest">AI 建議</span>
+                                    </div>
+                                    {activeMessage.aiSuggestions.map((s, idx) => (
+                                        <button 
+                                            key={idx} 
+                                            onClick={() => setInputText(s)}
+                                            className="shrink-0 bg-white border border-[#06c755] text-[#06c755] hover:bg-[#06c755] hover:text-white px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors"
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="p-3 flex items-end gap-3">
+                                <button className="p-2 text-slate-400 hover:text-slate-600 transition-colors"><Plus size={22}/></button>
+                                <textarea 
+                                    value={inputText}
+                                    onChange={(e) => setInputText(e.target.value)}
+                                    placeholder="在此輸入訊息..." 
+                                    className="flex-1 bg-slate-100 rounded-xl border-none px-4 py-2.5 text-[13px] outline-none resize-none min-h-[40px] max-h-[100px] leading-relaxed text-slate-700"
+                                    rows="1"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSend();
+                                        }
+                                    }}
+                                />
+                                <button 
+                                    onClick={handleSend}
+                                    className="p-2.5 bg-[#06c755] text-white rounded-full hover:bg-[#05a64a] shadow-md transition-all mb-0.5"
+                                >
+                                    <Send size={18} className="ml-0.5" />
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-white/70 animate-in">
+                        <MessageSquare size={48} strokeWidth={1} className="mb-4 opacity-50" />
+                        <p className="text-xs font-black uppercase tracking-[0.3em]">請選擇一個對話</p>
+                        <p className="text-[9px] mt-2 tracking-widest uppercase">Messaging API Ready</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    // --- 子頁面：CRM 權限矩陣 ---
+    const CRMView = () => (
+        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-500">
+            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+                <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-slate-800">
+                    <ShieldCheck size={20} className="text-blue-600" />
+                    權限矩陣與 TG 指派
+                </h2>
+                <PermissionGate type="operate" role={user.role}>
+                    <button className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-slate-800 transition-all">註冊新成員</button>
+                </PermissionGate>
+            </div>
+            <table className="w-full text-left text-[12px]">
+                <thead className="bg-slate-50/50 text-slate-400 uppercase font-black text-[10px] tracking-widest">
+                    <tr>
+                        <th className="p-4 pl-6">姓名/部門</th>
+                        <th className="p-4 text-center">操作權</th>
+                        <th className="p-4">TG 分組</th>
+                        <th className="p-4 pr-6 text-right">設定</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                    {staffMatrix.map(s => (
+                        <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="p-4 pl-6">
+                                <p className="font-bold text-slate-800">{s.name}</p>
+                                <p className="text-[10px] text-slate-400 uppercase tracking-tighter mt-0.5">{s.dept}</p>
+                            </td>
+                            <td className="p-4 text-center">
+                                {s.canOperate ? <CheckCircle2 size={16} className="text-blue-500 mx-auto" /> : <div className="w-4 h-4 border border-slate-200 rounded-full mx-auto"></div>}
+                            </td>
+                            <td className="p-4">
+                                <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 font-bold uppercase text-[9px] tracking-widest">{s.tgTarget}</span>
+                            </td>
+                            <td className="p-4 pr-6 text-right">
+                                <button className="text-slate-300 hover:text-blue-500 transition-colors"><Settings size={16}/></button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+
+    // --- 主介面與佈局 ---
+    return (
+        <div className="min-h-screen flex bg-slate-50 text-slate-800 font-sans antialiased">
+            {/* Sidebar */}
+            <aside className="w-[260px] bg-white border-r border-slate-100 flex flex-col p-6 hidden lg:flex fixed h-full z-40">
+                <div className="flex items-center gap-3 mb-10 px-2">
+                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                        <LayoutDashboard size={20} />
+                    </div>
+                    <div className="leading-none">
+                        <h1 className="text-base font-black uppercase tracking-tight">DS PRO</h1>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Intelligent Hub</p>
+                    </div>
+                </div>
+                
+                <nav className="flex-1 space-y-2">
+                    <button onClick={() => setView('overview')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 ${view === 'overview' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200/50 scale-105' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        <LayoutDashboard size={18} strokeWidth={view === 'overview' ? 2.5 : 2} />
+                        <span className="text-sm tracking-tight">營運數據看板</span>
+                    </button>
+                    <button onClick={() => setView('chat')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 ${view === 'chat' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200/50 scale-105' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        <MessageSquare size={18} strokeWidth={view === 'chat' ? 2.5 : 2} />
+                        <span className="text-sm tracking-tight">智能接管對話</span>
+                    </button>
+                    <button onClick={() => setView('crm')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 ${view === 'crm' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200/50 scale-105' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        <ShieldCheck size={18} strokeWidth={view === 'crm' ? 2.5 : 2} />
+                        <span className="text-sm tracking-tight">CRM 權限矩陣</span>
+                    </button>
+                    
+                    <div className="pt-8 opacity-40">
+                        <p className="px-4 text-[9px] font-black uppercase tracking-[0.2em] mb-3">資料庫連結</p>
+                        <button onClick={() => setView('cal')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 ${view === 'cal' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200/50 scale-105' : 'text-slate-500 hover:bg-slate-50'}`}>
+                            <Calendar size={18} strokeWidth={view === 'cal' ? 2.5 : 2} />
+                            <span className="text-sm tracking-tight">部門彙整中心</span>
+                        </button>
+                    </div>
+                </nav>
+
+                <div className="mt-auto p-5 bg-slate-50 rounded-2xl text-center">
+                    <div className="flex items-center justify-center gap-2 text-green-500 text-[10px] font-black uppercase mb-1">
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                        Worker & GAS: OK
+                    </div>
+                    <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">AI Silent Monitoring</p>
+                </div>
+            </aside>
+
+            {/* 右側主內容區 */}
+            <main className="flex-1 lg:ml-[260px] p-8 overflow-y-auto">
+                <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
+                    <div className="relative w-80 group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={16}/>
+                        <input type="text" placeholder="搜尋對話、人員、報到點..." className="w-full bg-white border border-slate-100 rounded-2xl py-3 pl-11 pr-4 text-xs shadow-sm focus:ring-2 focus:ring-blue-100 outline-none font-medium transition-all" />
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 relative cursor-pointer hover:bg-slate-50 transition-all shadow-sm group">
+                            <Bell size={18} className="group-hover:rotate-12 transition-transform" />
+                            <div className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></div>
+                        </div>
+                        <div className="h-8 w-px bg-slate-200 mx-1"></div>
+                        <div className="flex items-center gap-3 bg-white p-1.5 pr-4 rounded-2xl border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-all">
+                            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs uppercase">{user.name[0]}</div>
+                            <div className="text-left leading-none">
+                                <p className="text-[11px] font-black text-slate-800 uppercase">{user.name}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">{user.dept}</p>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <div className="max-w-5xl mx-auto">
+                    {view === 'overview' && <Overview />}
+                    {view === 'chat' && <ChatTakeover />}
+                    {view === 'crm' && <CRMView />}
+                    {view === 'cal' && (
+                        <div className="p-20 text-center bg-white rounded-[40px] border border-dashed border-slate-200 animate-in fade-in zoom-in-95 duration-500">
+                            <Activity size={48} className="mx-auto text-slate-200 mb-4" />
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.3em] text-xs">跨部資料同步中</p>
+                            <p className="text-slate-400 text-[10px] mt-2 uppercase tracking-widest italic">Connecting to Google Sheets...</p>
+                        </div>
+                    )}
+                </div>
+            </main>
+        </div>
+    );
+}
+
+// --- 共用組件 ---
+function StatCard({ title, value, change, icon: Icon, color }) {
+    return (
+        <div className="bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm group hover:shadow-md transition-all font-sans">
+            <div className="flex justify-between items-start font-sans">
+                <div>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mb-2">{title}</p>
+                    <h3 className="text-xl font-black text-slate-800 tracking-tighter group-hover:text-blue-600 transition-colors">{value}</h3>
+                    <span className={`text-[9px] font-black ${color === 'blue' || color === 'green' ? 'text-green-500' : 'text-slate-400'}`}>{change}</span>
+                </div>
+                <div className={`p-3 bg-${color}-50 text-${color}-600 rounded-xl`}>
+                    <Icon size={20} />
+                </div>
+            </div>
+        </div>
+    );
+}
