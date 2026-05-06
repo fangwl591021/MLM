@@ -83,6 +83,7 @@ export default {
 
         const payload = JSON.parse(rawBody);
         if (Array.isArray(payload.events) && payload.events.length > 0) {
+          await attachLineProfiles(payload, env);
           ctx.waitUntil(callGas(env, {
             type: "LINE_WEBHOOK",
             data: payload,
@@ -184,6 +185,43 @@ async function pushLineMessage(env, userId, text) {
 
   const detail = await response.text();
   return { ok: response.ok, status: response.status, detail };
+}
+
+async function attachLineProfiles(payload, env) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !Array.isArray(payload.events)) return;
+
+  const cache = new Map();
+  await Promise.all(payload.events.map(async (event) => {
+    const userId = event && event.source && event.source.userId;
+    if (!userId) return;
+
+    if (!cache.has(userId)) {
+      cache.set(userId, fetchLineProfile(env, userId));
+    }
+
+    const profile = await cache.get(userId);
+    if (profile) event.userProfile = profile;
+  }));
+}
+
+async function fetchLineProfile(env, userId) {
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
+      headers: {
+        "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) return null;
+    const profile = await response.json();
+    return {
+      displayName: profile.displayName || "",
+      pictureUrl: profile.pictureUrl || "",
+      statusMessage: profile.statusMessage || "",
+    };
+  } catch (_err) {
+    return null;
+  }
 }
 
 async function safeJson(request) {
