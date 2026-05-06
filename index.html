@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DS PRO - Intelligent Matrix v5</title>
+    <title>DS PRO - Matrix Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -17,7 +17,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
         
         body { 
             font-family: 'Inter', 'Noto Sans TC', sans-serif; 
@@ -27,30 +27,31 @@
             overflow: hidden; 
         }
 
-        /* 徹底解放版面：移除所有捲軸留白與圓角 */
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; }
+        /* 滾動條：最硬核的黑白風格 */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
         
-        /* LINE 原生對話 - 文字加深加重 */
+        /* LINE 原生氣泡：高對比、不包框、不浪費空間 */
         .line-bubble-user { 
             background-color: #ffffff; 
-            border-radius: 16px; 
-            border: 1.5px solid #e2e8f0;
+            border: 3px solid #000000;
+            border-radius: 0px 20px 20px 20px;
             color: #000000;
-            font-weight: 500;
+            font-weight: 700;
         }
 
         .line-bubble-admin { 
             background-color: #06c755; 
             color: #ffffff; 
-            border-radius: 16px;
-            font-weight: 500;
+            border: 3px solid #000000;
+            border-radius: 20px 0px 20px 20px;
+            font-weight: 700;
         }
         
-        /* 側邊欄活性塊 */
+        /* 選單活性：全黑填滿 */
         .nav-active { 
-            background: #0f172a; 
+            background: #000000; 
             color: #ffffff !important; 
         }
 
@@ -60,25 +61,31 @@
             display: flex;
         }
 
-        .animate-in { animation: fadeIn 0.2s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.15s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
 
+        /* 大腦建議標籤：必須非常顯眼 */
         .suggestion-chip {
             background-color: #ffffff;
-            border: 2px solid #06c755;
-            color: #06c755;
-            padding: 10px 18px;
-            border-radius: 24px;
-            font-size: 15px;
-            font-weight: 800;
-            transition: all 0.15s;
+            border: 4px solid #06c755;
+            color: #000000;
+            padding: 12px 24px;
+            border-radius: 0px;
+            font-size: 17px;
+            font-weight: 900;
+            transition: all 0.1s;
             white-space: nowrap;
-            box-shadow: 0 2px 4px rgba(6, 199, 85, 0.1);
         }
         .suggestion-chip:hover {
             background-color: #06c755;
             color: #ffffff;
         }
+
+        /* 移除所有灰階，改用黑線 */
+        .border-main { border: 4px solid #000000; }
+        .border-main-r { border-right: 4px solid #000000; }
+        .border-main-b { border-bottom: 4px solid #000000; }
+        .border-main-t { border-top: 4px solid #000000; }
     </style>
 </head>
 <body>
@@ -90,27 +97,25 @@
         import { 
             LayoutDashboard, MessageSquare, Calendar, BarChart, Bell, CheckCircle, 
             Search, Smartphone, Zap, Send, ShieldCheck, Lock, Activity, Settings, 
-            ClipboardList, Plus, AlertTriangle, Sparkles, Bot, ChevronRight
+            ClipboardList, Plus, AlertTriangle, Sparkles, Bot, Clock, ChevronRight
         } from 'lucide-react';
 
-        // ⚠️ 總監部署後請填入您的實體網址
+        // ⚠️ 部署後填入您的網址
         const WORKER_URL = "https://YOUR_WORKER_URL.workers.dev";
 
         const App = () => {
             const [view, setView] = useState('chat');
-            const [user] = useState({ name: '系統管理員', role: 'admin', dept: '管理層' });
             const [chatTarget, setChatTarget] = useState(null);
             const [inputText, setInputText] = useState('');
             const chatEndRef = useRef(null);
 
-            // --- 實時數據 State ---
+            // --- 實時數據 ---
             const [messages, setMessages] = useState([
-                { id: 1, userId: 'U1202', sender: 'user', text: '請問負離子眼鏡適合哪些人戴？', time: '14:10', aiCategory: '產品諮詢', aiSuggestions: ['適合長時間使用3C的族群與學生。', '每天配戴8-10小時效果較明顯。'] }
+                { id: 1, userId: 'U1202', sender: 'user', text: '請問負離子眼鏡適合哪些人戴？', time: '14:10', aiCategory: '產品-負離子眼鏡', aiSuggestions: ['長時間使用3C的上班族與學生。', '建議每天配戴8至10小時改善眼部疲勞。'] }
             ]);
             const [isSyncing, setIsSyncing] = useState(false);
-            const [syncError, setSyncError] = useState(false);
 
-            // 每 5 秒同步一次對話 (包括歷史紀錄)
+            // 每 5 秒自動同步
             useEffect(() => {
                 const fetchDashboardData = async () => {
                     if (!WORKER_URL || WORKER_URL.includes("YOUR_WORKER_URL")) return;
@@ -130,13 +135,8 @@
                                 time: new Date(Number(r['時間'])).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                             })).reverse(); 
                             if(formattedMsgs.length > 0) setMessages(formattedMsgs);
-                            setSyncError(false);
                         }
-                    } catch (err) {
-                        setSyncError(true);
-                    } finally {
-                        setIsSyncing(false);
-                    }
+                    } catch (err) { console.error("Sync Error"); } finally { setIsSyncing(false); }
                 };
                 fetchDashboardData();
                 const interval = setInterval(fetchDashboardData, 5000);
@@ -157,84 +157,74 @@
                 return userMsgs[userMsgs.length - 1]; 
             }, [messages, chatTarget]);
 
-            useEffect(() => {
-                chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            }, [messages, chatTarget]);
+            useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, chatTarget]);
 
             const handleSend = async () => {
                 if (!inputText || !chatTarget) return;
-                const tempText = inputText;
+                const msgText = inputText;
                 setInputText('');
-                
-                setMessages(prev => [...prev, {
-                    id: Date.now(),
-                    userId: chatTarget.id,
-                    sender: 'admin',
-                    text: tempText,
-                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                }]);
-
+                setMessages(prev => [...prev, { id: Date.now(), userId: chatTarget.id, sender: 'admin', text: msgText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
                 if (WORKER_URL.includes("YOUR_WORKER_URL")) return;
                 try {
                     await fetch(`${WORKER_URL}/api/send`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: chatTarget.id, text: tempText })
+                        body: JSON.stringify({ userId: chatTarget.id, text: msgText })
                     });
                 } catch (e) { console.error(e); }
             };
 
             const renderChatTakeover = () => (
                 <div className="flex h-full w-full bg-white animate-in">
-                    {/* 左側：名單列 (徹底去框) */}
-                    <div className="w-[380px] border-r border-slate-200 flex flex-col bg-white shrink-0">
-                        <div className="p-6 border-b border-slate-200 bg-slate-50">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black" size={20} />
-                                <input type="text" placeholder="搜尋 LINE 用戶..." className="w-full bg-white border-2 border-slate-200 rounded-lg py-3 pl-12 pr-4 text-[16px] focus:border-black outline-none font-bold text-black" />
-                            </div>
+                    {/* 左側：用戶清單 */}
+                    <div className="w-[400px] border-main-r flex flex-col bg-white shrink-0">
+                        <div className="p-8 border-main-b bg-black text-white">
+                            <h2 className="text-2xl font-black uppercase tracking-widest flex items-center gap-3">
+                                <MessageSquare size={28}/> 待命清單
+                            </h2>
+                            <p className="text-xs font-bold mt-2 text-[#06c755]">AI 大腦已在線，隨時提供建議</p>
                         </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
                             {chatList.map(chat => (
-                                <div key={chat.id} onClick={() => setChatTarget(chat)} className={`p-6 flex gap-4 cursor-pointer border-b border-slate-100 transition-colors ${chatTarget?.id === chat.id ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}>
-                                    <div className={`w-14 h-14 rounded-full flex-shrink-0 flex items-center justify-center font-black text-xl uppercase ${chatTarget?.id === chat.id ? 'bg-white text-slate-900' : 'bg-slate-800 text-white'}`}>{chat.name[0]}</div>
+                                <div key={chat.id} onClick={() => setChatTarget(chat)} className={`p-8 flex gap-5 cursor-pointer border-main-b transition-all ${chatTarget?.id === chat.id ? 'bg-black text-white' : 'hover:bg-slate-100 text-black'}`}>
+                                    <div className={`w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center font-black text-2xl uppercase border-4 ${chatTarget?.id === chat.id ? 'border-[#06c755] bg-white text-black' : 'border-black bg-slate-200'}`}>{chat.name[0]}</div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-baseline mb-1">
-                                            <span className="text-[17px] font-black truncate">{chat.name}</span>
-                                            <span className={`text-xs font-bold ${chatTarget?.id === chat.id ? 'text-slate-400' : 'text-slate-500'}`}>{chat.time}</span>
+                                        <div className="flex justify-between items-baseline mb-2">
+                                            <span className="text-xl font-black truncate">{chat.name}</span>
+                                            <span className="text-xs font-black">{chat.time}</span>
                                         </div>
-                                        <p className={`text-[15px] truncate font-medium ${chatTarget?.id === chat.id ? 'text-slate-300' : 'text-slate-700'}`}>{chat.lastMsg}</p>
+                                        <p className="text-[16px] truncate font-bold opacity-90">{chat.lastMsg}</p>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* 右側：對話區 (滿版) */}
+                    {/* 右側：對話細節 */}
                     <div className="flex-1 flex flex-col bg-[#8bacce]">
                         {chatTarget ? (
                             <>
-                                <div className="px-8 py-5 bg-white border-b border-slate-200 flex justify-between items-center z-10">
-                                    <div className="flex items-center gap-4">
-                                        <span className="text-[22px] font-black text-black">{chatTarget.name}</span>
-                                        <span className="bg-[#06c755] text-white text-xs font-black px-3 py-1 rounded-full uppercase tracking-tighter">LINE 接管中</span>
+                                <div className="px-10 py-6 bg-white border-main-b flex justify-between items-center z-10">
+                                    <div className="flex items-center gap-5">
+                                        <span className="text-3xl font-black text-black">{chatTarget.name}</span>
+                                        <span className="bg-[#06c755] text-white text-sm font-black px-4 py-1 border-2 border-black uppercase">管理員接管中</span>
                                     </div>
-                                    <div className="flex items-center gap-2 text-black text-[14px] font-black">
-                                        <Bot size={22} className="text-[#06c755]"/> AI 大腦已聯網 (K-Link 知識庫)
+                                    <div className="flex items-center gap-3 text-black text-[16px] font-black uppercase">
+                                        <Bot size={24} className="text-[#06c755]"/> 大腦已偵測意圖
                                     </div>
                                 </div>
                                 
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-10 space-y-8">
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-10 space-y-10">
                                     {messages.filter(m => m.userId === chatTarget.id).map(msg => (
                                         <div key={msg.id} className={`flex flex-col ${msg.sender === 'admin' ? 'items-end' : 'items-start'}`}>
                                             {msg.sender === 'user' && msg.aiCategory && (
-                                                <div className="flex gap-1 mb-2 ml-2">
-                                                    <span className="text-xs bg-black text-white px-3 py-1 rounded font-black uppercase">{msg.aiCategory}</span>
+                                                <div className="mb-3 ml-2 flex items-center gap-2">
+                                                    <span className="text-sm bg-black text-white px-4 py-1 font-black uppercase border-2 border-black">分類：{msg.aiCategory}</span>
                                                 </div>
                                             )}
-                                            <div className={`flex items-end gap-3 max-w-[85%] ${msg.sender === 'admin' ? 'flex-row' : 'flex-row-reverse'}`}>
-                                                <span className="text-[11px] text-white font-black mb-1 drop-shadow-md">{msg.time}</span>
-                                                <div className={`px-6 py-4 text-[17px] font-bold leading-relaxed shadow-lg ${msg.sender === 'admin' ? 'line-bubble-admin' : 'line-bubble-user'}`}>
+                                            <div className={`flex items-end gap-4 max-w-[80%] ${msg.sender === 'admin' ? 'flex-row' : 'flex-row-reverse'}`}>
+                                                <span className="text-sm text-white font-black drop-shadow-lg">{msg.time}</span>
+                                                <div className={`px-8 py-5 text-[18px] font-black leading-relaxed shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${msg.sender === 'admin' ? 'line-bubble-admin' : 'line-bubble-user'}`}>
                                                     {msg.text}
                                                 </div>
                                             </div>
@@ -243,29 +233,32 @@
                                     <div ref={chatEndRef} />
                                 </div>
 
-                                <div className="bg-white border-t-4 border-[#06c755]">
+                                <div className="bg-white border-main-t">
                                     {activeMessage?.aiSuggestions && (
-                                        <div className="px-8 py-5 flex items-center gap-4 overflow-x-auto custom-scrollbar bg-slate-50 border-b border-slate-100">
+                                        <div className="px-10 py-6 flex items-center gap-5 overflow-x-auto custom-scrollbar bg-slate-50 border-main-b">
                                             <div className="flex items-center text-black shrink-0">
-                                                <Sparkles size={20} className="text-orange-500 mr-2"/>
-                                                <span className="text-[14px] font-black uppercase">大腦建議</span>
+                                                <Sparkles size={24} className="text-orange-500 mr-2"/>
+                                                <span className="text-lg font-black uppercase">點擊自動回覆</span>
                                             </div>
                                             {activeMessage.aiSuggestions.map((s, idx) => (
                                                 <button key={idx} onClick={() => setInputText(s)} className="suggestion-chip">{s}</button>
                                             ))}
                                         </div>
                                     )}
-                                    <div className="px-8 py-6 flex items-end gap-6">
-                                        <button className="p-3 text-black hover:bg-slate-100 rounded-full transition-colors"><Plus size={36}/></button>
-                                        <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="請輸入回覆內容..." className="flex-1 bg-slate-100 rounded-xl border-none px-6 py-4 text-[18px] outline-none resize-none min-h-[60px] max-h-[150px] font-black text-black placeholder:text-slate-400" rows="1" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} />
-                                        <button onClick={handleSend} className="p-5 bg-[#06c755] text-white rounded-full hover:bg-[#05a64a] shadow-xl transition-all mb-1"><Send size={30}/></button>
+                                    <div className="px-10 py-8 flex items-end gap-8 bg-white">
+                                        <button className="p-4 text-black hover:bg-slate-100 border-4 border-black transition-colors"><Plus size={36}/></button>
+                                        <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="請輸入訊息內容..." className="flex-1 bg-slate-50 border-4 border-black px-8 py-5 text-[20px] outline-none resize-none min-h-[70px] max-h-[150px] font-black text-black placeholder:text-slate-400" rows="1" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} />
+                                        <button onClick={handleSend} className="p-6 bg-[#06c755] text-white border-4 border-black hover:bg-[#05a64a] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all mb-1"><Send size={32}/></button>
                                     </div>
                                 </div>
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-white animate-in">
-                                <MessageSquare size={100} strokeWidth={1} className="mb-6 opacity-30" />
-                                <p className="text-2xl font-black tracking-widest uppercase">選擇 LINE 用戶開始對話</p>
+                                <Bot size={120} strokeWidth={2} className="mb-10 animate-bounce" />
+                                <h2 className="text-4xl font-black tracking-widest uppercase text-center leading-relaxed">
+                                    大腦已連線<br/>
+                                    請從左側點擊用戶名單開始
+                                </h2>
                             </div>
                         )}
                     </div>
@@ -274,29 +267,34 @@
 
             return (
                 <div className="full-screen-container">
-                    <aside className="w-[280px] bg-slate-900 flex flex-col h-full shrink-0">
-                        <div className="p-10 bg-slate-800 border-b border-slate-700">
-                            <h1 className="text-3xl font-black tracking-tighter text-white uppercase leading-none">DS PRO</h1>
-                            <p className="text-[10px] font-black text-slate-400 mt-3 tracking-[0.4em] uppercase">Victory Matrix</p>
+                    {/* 左側選單：徹底去圓角 */}
+                    <aside className="w-[280px] bg-black flex flex-col h-full shrink-0">
+                        <div className="p-12 border-main-b bg-white text-black">
+                            <h1 className="text-4xl font-black tracking-tighter uppercase leading-none">DS PRO</h1>
+                            <div className="flex items-center gap-2 mt-4">
+                                <div className="w-3 h-3 bg-[#06c755] rounded-full animate-pulse"></div>
+                                <p className="text-[12px] font-black uppercase tracking-widest">VICTORY MATRIX</p>
+                            </div>
                         </div>
-                        <nav className="flex-1 p-4 space-y-3">
+                        <nav className="flex-1 p-6 space-y-4">
                             <NavItem icon={LayoutDashboard} label="營運看板" active={view === 'overview'} onClick={() => setView('overview')} />
                             <NavItem icon={MessageSquare} label="LINE 接管" active={view === 'chat'} onClick={() => setView('chat')} />
                             <NavItem icon={ShieldCheck} label="權限矩陣" active={view === 'crm'} onClick={() => setView('crm')} />
                         </nav>
-                        <div className="p-8 bg-slate-800 border-t border-slate-700">
-                            <div className={`flex items-center gap-3 text-sm font-black ${syncError ? 'text-red-500' : 'text-green-400'}`}>
-                                <div className={`w-3 h-3 rounded-full ${syncError ? 'bg-red-500' : 'bg-green-400 animate-pulse'}`}></div>
-                                {syncError ? 'DISCONNECTED' : 'BRAIN ONLINE'}
-                            </div>
+                        <div className="p-10 border-main-t bg-slate-900">
+                            <p className="text-[14px] font-black text-white uppercase tracking-widest mb-2">SYSTEM STATUS</p>
+                            <p className="text-[12px] font-bold text-[#06c755]">BRAIN ONLINE V5.0</p>
                         </div>
                     </aside>
 
                     <main className="flex-1 flex flex-col bg-white overflow-hidden">
                         {view === 'chat' ? renderChatTakeover() : (
-                            <div className="p-20 text-center animate-in">
-                                <Activity size={80} className="mx-auto text-slate-200 mb-8" />
-                                <p className="text-black font-black text-3xl uppercase tracking-widest">資料模組串接中</p>
+                            <div className="flex-1 flex items-center justify-center bg-white p-20">
+                                <div className="text-center animate-in">
+                                    <Activity size={100} className="mx-auto text-black mb-10" />
+                                    <p className="text-black font-black text-5xl uppercase tracking-tighter">資料模組串接中</p>
+                                    <p className="text-slate-900 text-xl font-bold mt-6">Connecting to Matrix Persistence Layer...</p>
+                                </div>
                             </div>
                         )}
                     </main>
@@ -306,8 +304,8 @@
 
         function NavItem({ icon: Icon, label, active, onClick }) {
             return (
-                <button onClick={onClick} className={`w-full flex items-center gap-5 px-6 py-6 rounded-xl transition-all font-black text-[18px] ${active ? 'nav-active shadow-2xl' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                    <Icon size={26} strokeWidth={active ? 3 : 2} />
+                <button onClick={onClick} className={`w-full flex items-center gap-6 px-8 py-8 transition-all font-black text-[22px] border-4 ${active ? 'bg-white text-black border-[#06c755] shadow-[10px_10px_0px_0px_rgba(6,199,85,1)]' : 'text-white border-transparent hover:border-white'}`}>
+                    <Icon size={32} strokeWidth={active ? 4 : 2} />
                     <span>{label}</span>
                 </button>
             );
