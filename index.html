@@ -1,318 +1,57 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+<!doctype html>
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DS PRO - Matrix Hub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "react": "https://esm.sh/react@18.2.0",
-            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-            "lucide-react": "https://esm.sh/lucide-react@0.292.0"
-        }
-    }
-    </script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap');
-        
-        body { 
-            font-family: 'Inter', 'Noto Sans TC', sans-serif; 
-            background-color: #ffffff; 
-            color: #000000; 
-            margin: 0; 
-            overflow: hidden; 
-        }
-
-        /* 滾動條：最硬核的黑白風格 */
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #000000; border-radius: 0px; }
-        
-        /* LINE 原生氣泡：高對比、不包框、不浪費空間 */
-        .line-bubble-user { 
-            background-color: #ffffff; 
-            border: 3px solid #000000;
-            border-radius: 0px 20px 20px 20px;
-            color: #000000;
-            font-weight: 700;
-        }
-
-        .line-bubble-admin { 
-            background-color: #06c755; 
-            color: #ffffff; 
-            border: 3px solid #000000;
-            border-radius: 20px 0px 20px 20px;
-            font-weight: 700;
-        }
-        
-        /* 選單活性：全黑填滿 */
-        .nav-active { 
-            background: #000000; 
-            color: #ffffff !important; 
-        }
-
-        .full-screen-container {
-            height: 100vh;
-            width: 100vw;
-            display: flex;
-        }
-
-        .animate-in { animation: fadeIn 0.15s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
-
-        /* 大腦建議標籤：必須非常顯眼 */
-        .suggestion-chip {
-            background-color: #ffffff;
-            border: 4px solid #06c755;
-            color: #000000;
-            padding: 12px 24px;
-            border-radius: 0px;
-            font-size: 17px;
-            font-weight: 900;
-            transition: all 0.1s;
-            white-space: nowrap;
-        }
-        .suggestion-chip:hover {
-            background-color: #06c755;
-            color: #ffffff;
-        }
-
-        /* 移除所有灰階，改用黑線 */
-        .border-main { border: 4px solid #000000; }
-        .border-main-r { border-right: 4px solid #000000; }
-        .border-main-b { border-bottom: 4px solid #000000; }
-        .border-main-t { border-top: 4px solid #000000; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LINE OA AI 建議後台</title>
+  <style>
+    :root{--line:#06c755;--ink:#20242a;--muted:#727b8a;--border:#e6e9ef;--rail:#26303d;--bg:#f5f7f9;--chat:#8da8c5;--admin:#9de46f;--warn:#f79009}*{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Noto Sans TC",Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}.app{display:grid;grid-template-columns:72px 320px minmax(480px,1fr) 360px;height:100vh;min-width:1180px}.rail{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 10px;background:var(--rail);color:#cbd5e1}.logo{width:44px;height:44px;display:grid;place-items:center;margin-bottom:10px;border-radius:11px;background:var(--line);color:#fff;font-size:11px;font-weight:900}.nav{width:48px;height:48px;display:grid;place-items:center;border:0;border-radius:12px;background:transparent;color:inherit;font-size:11px;font-weight:800}.nav.active,.nav:hover{background:#1b2430;color:#fff}.nav svg{width:22px;height:22px;display:block;margin:0 auto 3px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.bottom{margin-top:auto}.inbox,.main,.side{min-height:0;background:#fff;border-right:1px solid var(--border)}.side{border-right:0;border-left:1px solid var(--border);background:#fbfcfd}.head{height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:#fff}.account{display:flex;align-items:center;gap:10px;min-width:0}.mark{width:38px;height:38px;display:grid;place-items:center;flex:0 0 auto;border-radius:50%;background:var(--line);color:#fff;font-weight:900}.title h1,.room h2,.panel h2{margin:0;font-size:15px;line-height:1.25;font-weight:850}.title p,.room p,.panel p{margin:3px 0 0;color:var(--muted);font-size:12px}.setup{display:grid;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);background:#f8fafb}.setup label{font-size:11px;color:var(--muted);font-weight:800}.setup input{width:100%;height:34px;border:1px solid #d9dee7;border-radius:7px;padding:0 10px;background:#fff;outline:none}.setup input:focus,textarea:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.search{padding:12px 16px;border-bottom:1px solid var(--border)}.search input{width:100%;height:36px;border:1px solid #dde2ea;border-radius:999px;padding:0 14px;background:#f5f7f9;outline:none}.list{height:calc(100vh - 64px - 148px - 61px);overflow:auto}.chatitem{width:100%;display:grid;grid-template-columns:46px minmax(0,1fr);gap:11px;padding:14px 16px;border:0;border-bottom:1px solid #eef1f5;background:#fff;text-align:left}.chatitem.active,.chatitem:hover{background:#eefbf4}.chatitem.active{box-shadow:inset 4px 0 0 var(--line)}.avatar{width:46px;height:46px;display:grid;place-items:center;border-radius:50%;background:#dfe6ee;color:#2b3440;font-weight:900}.row{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:13px;font-weight:850}.time{color:var(--muted);font-size:11px;white-space:nowrap}.preview{overflow:hidden;color:var(--muted);font-size:12px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}.tags{display:flex;gap:6px;margin-top:7px}.tag{border-radius:999px;padding:3px 7px;background:#eef2f6;color:#546071;font-size:10px;font-weight:800}.tag.hot{background:#fff1f3;color:#c01048}.main{display:grid;grid-template-rows:64px auto minmax(0,1fr) auto}.pill{border:1px solid #b7ebc8;border-radius:999px;padding:5px 9px;background:#effcf4;color:#07833b;font-size:11px;font-weight:850;white-space:nowrap}.refresh{width:34px;height:34px;border:1px solid #dde2ea;border-radius:8px;background:#fff;color:#4b5563}.refresh svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.error{margin:0;padding:8px 16px;border-bottom:1px solid #fecdd3;background:#fff1f3;color:#d92d20;font-size:12px;font-weight:800}.msgs{overflow:auto;padding:22px 30px;background:linear-gradient(rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px),var(--chat);background-size:32px 32px}.day{width:max-content;margin:0 auto 18px;border-radius:999px;padding:5px 12px;background:rgba(255,255,255,.55);color:#4b5563;font-size:11px;font-weight:800}.msg{display:flex;margin:0 0 14px}.msg.admin{justify-content:flex-end}.wrap{max-width:min(660px,76%)}.bubble{padding:10px 13px;border-radius:5px 17px 17px 17px;background:#fff;color:#111827;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(20,30,45,.08)}.admin .bubble{border-radius:17px 5px 17px 17px;background:var(--admin)}.meta{margin-top:5px;color:rgba(31,35,41,.66);font-size:11px;font-weight:700}.admin .meta{text-align:right}.composer{border-top:1px solid var(--border);background:#fff}.suggestions{display:flex;gap:8px;min-height:48px;padding:9px 16px;overflow-x:auto;border-bottom:1px solid #edf1f5;background:#f8fcf9}.suggestions button{flex:0 0 auto;max-width:440px;border:1px solid #91deb0;border-radius:999px;padding:7px 12px;background:#fff;color:#067a35;font-size:13px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sendrow{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:10px;padding:12px 16px;align-items:end}textarea{min-height:44px;max-height:140px;resize:vertical;border:1px solid #d9dee7;border-radius:10px;padding:11px 12px;background:#f8fafb;color:var(--ink);line-height:1.45;outline:none}.send{width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:50%;background:var(--line);color:#fff}.send svg{width:20px;height:20px;fill:currentColor}.panelhead{height:64px;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:#fff}.panelbody{height:calc(100vh - 64px);overflow:auto;padding:14px}.card{margin-bottom:12px;border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}.cardtitle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;border-bottom:1px solid #edf1f5;font-size:13px;font-weight:900}.cardbody{padding:12px 13px}.chip{border-radius:999px;padding:4px 8px;background:#effcf4;color:#07833b;font-size:11px;font-weight:900}.sidelist{display:grid;gap:8px}.sidebtn{border:1px solid #d9f2e2;border-radius:9px;padding:10px;background:#fbfffc;color:#26303d;line-height:1.45;text-align:left}.alert{margin-bottom:10px;border:1px solid #ffd9b2;border-left:4px solid var(--warn);border-radius:10px;padding:11px;background:#fff7ed}.alert strong{display:block;margin-bottom:6px;color:#9a3412;font-size:13px}.alert p{margin:0 0 8px;color:#374151;line-height:1.45}.muted{color:var(--muted);font-size:12px;line-height:1.5}@media(max-width:980px){body{overflow:auto}.app{grid-template-columns:60px 310px minmax(470px,1fr);width:max-content;min-width:0}.side{display:none}}
+  </style>
 </head>
 <body>
-    <div id="root"></div>
+  <div class="app">
+    <nav class="rail">
+      <div class="logo">LINE</div>
+      <button class="nav active"><svg viewBox="0 0 24 24"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2h9A3.5 3.5 0 0 1 20 5.5v6A3.5 3.5 0 0 1 16.5 15H11l-5 4v-4.2A3.5 3.5 0 0 1 4 11.5z"/></svg>聊天</button>
+      <button class="nav"><svg viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/></svg>AI</button>
+      <button class="nav"><svg viewBox="0 0 24 24"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>監看</button>
+      <div class="bottom"><button class="nav"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.8 1.8 0 0 0-1-1.6 1.8 1.8 0 0 0-2 .4l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.8 1.8 0 0 0 1.6-1 1.8 1.8 0 0 0-.4-2l-.1-.1A2 2 0 0 1 7 4.1l.1.1a1.8 1.8 0 0 0 2 .4 1.8 1.8 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.8 1.8 0 0 0 1 1.6 1.8 1.8 0 0 0 2-.4l.1-.1A2 2 0 0 1 20 7l-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1h.1a2 2 0 0 1 0 4h-.1a1.8 1.8 0 0 0-1.7 1Z"/></svg>設定</button></div>
+    </nav>
 
-    <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef, useMemo } from 'react';
-        import { createRoot } from 'react-dom/client';
-        import { 
-            LayoutDashboard, MessageSquare, Calendar, BarChart, Bell, CheckCircle, 
-            Search, Smartphone, Zap, Send, ShieldCheck, Lock, Activity, Settings, 
-            ClipboardList, Plus, AlertTriangle, Sparkles, Bot, Clock, ChevronRight
-        } from 'lucide-react';
+    <aside class="inbox">
+      <header class="head"><div class="account"><div class="mark">OA</div><div class="title"><h1>LINE OA 管理後台</h1><p>AI 建議模式，不自動回覆</p></div></div></header>
+      <section class="setup"><label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://your-worker.workers.dev" /><label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入 token 後同步真實資料" /></section>
+      <div class="search"><input id="searchBox" placeholder="搜尋聊天、用戶 ID、分類" /></div>
+      <div id="chatList" class="list"></div>
+    </aside>
 
-        // ⚠️ 部署後填入您的網址
-        const WORKER_URL = "https://YOUR_WORKER_URL.workers.dev";
+    <main class="main">
+      <header class="head"><div class="room"><h2 id="activeTitle">請選擇 LINE 對話</h2><p id="activeSubtitle">目前顯示 demo 資料，設定 Worker 後會同步真實聊天室</p></div><div style="display:flex;gap:8px;align-items:center"><span class="pill" id="syncStatus">Demo 模式</span><button class="refresh" id="refreshButton"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.3 5.6L21 8"/><path d="M21 3v5h-5"/></svg></button></div></header>
+      <div id="errorBox"></div><section id="messages" class="msgs"></section>
+      <footer class="composer"><div id="suggestions" class="suggestions"></div><div class="sendrow"><textarea id="replyText" placeholder="點選 AI 建議或手動輸入，按送出後才會回覆 LINE 用戶"></textarea><button id="sendButton" class="send"><svg viewBox="0 0 24 24"><path d="M3 20V4l18 8-18 8Zm2-3 10.85-5L5 7v3.75L11 12l-6 1.25V17Z"/></svg></button></div></footer>
+    </main>
 
-        const App = () => {
-            const [view, setView] = useState('chat');
-            const [chatTarget, setChatTarget] = useState(null);
-            const [inputText, setInputText] = useState('');
-            const chatEndRef = useRef(null);
+    <aside class="side"><header class="panelhead"><div class="panel"><h2>AI 助理</h2><p>僅提供管理員參考</p></div><span class="chip">建議中</span></header><div class="panelbody"><section class="card"><div class="cardtitle"><span>最新建議回覆</span><span class="time" id="suggestionCount">0</span></div><div class="cardbody"><div id="sideSuggestions" class="sidelist"></div></div></section><section class="card"><div class="cardtitle"><span>重要訊息通報</span><span class="time" id="alertCount">0</span></div><div class="cardbody" id="alertList"></div></section><section class="card"><div class="cardtitle">系統原則</div><div class="cardbody muted">LINE webhook 只進行紀錄與 AI 判斷。系統不會自動回覆客戶，只有管理員按下送出後才會推送 LINE 訊息。客訴、負評、建議與重大風險會另行發送 Telegram 通知。</div></section></div></aside>
+  </div>
 
-            // --- 實時數據 ---
-            const [messages, setMessages] = useState([
-                { id: 1, userId: 'U1202', sender: 'user', text: '請問負離子眼鏡適合哪些人戴？', time: '14:10', aiCategory: '產品-負離子眼鏡', aiSuggestions: ['長時間使用3C的上班族與學生。', '建議每天配戴8至10小時改善眼部疲勞。'] }
-            ]);
-            const [isSyncing, setIsSyncing] = useState(false);
-
-            // 每 5 秒自動同步
-            useEffect(() => {
-                const fetchDashboardData = async () => {
-                    if (!WORKER_URL || WORKER_URL.includes("YOUR_WORKER_URL")) return;
-                    try {
-                        setIsSyncing(true);
-                        const res = await fetch(`${WORKER_URL}/api/data`);
-                        const json = await res.json();
-                        if (json.status === "success" && json.data) {
-                            const rawChats = json.data.chats || [];
-                            const formattedMsgs = rawChats.map((r, i) => ({
-                                id: i,
-                                userId: r['用戶ID'],
-                                sender: r['身份'] === 'admin' ? 'admin' : 'user',
-                                text: r['內容'],
-                                aiCategory: r['類別'],
-                                aiSuggestions: r['AI建議'] ? JSON.parse(r['AI建議']) : null,
-                                time: new Date(Number(r['時間'])).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            })).reverse(); 
-                            if(formattedMsgs.length > 0) setMessages(formattedMsgs);
-                        }
-                    } catch (err) { console.error("Sync Error"); } finally { setIsSyncing(false); }
-                };
-                fetchDashboardData();
-                const interval = setInterval(fetchDashboardData, 5000);
-                return () => clearInterval(interval);
-            }, []);
-
-            const chatList = useMemo(() => {
-                const map = new Map();
-                messages.forEach(m => {
-                    map.set(m.userId, { id: m.userId, name: m.userId, lastMsg: m.text, time: m.time });
-                });
-                return Array.from(map.values());
-            }, [messages]);
-
-            const activeMessage = useMemo(() => {
-                if (!chatTarget) return null;
-                const userMsgs = messages.filter(m => m.userId === chatTarget.id && m.sender === 'user');
-                return userMsgs[userMsgs.length - 1]; 
-            }, [messages, chatTarget]);
-
-            useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, chatTarget]);
-
-            const handleSend = async () => {
-                if (!inputText || !chatTarget) return;
-                const msgText = inputText;
-                setInputText('');
-                setMessages(prev => [...prev, { id: Date.now(), userId: chatTarget.id, sender: 'admin', text: msgText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-                if (WORKER_URL.includes("YOUR_WORKER_URL")) return;
-                try {
-                    await fetch(`${WORKER_URL}/api/send`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: chatTarget.id, text: msgText })
-                    });
-                } catch (e) { console.error(e); }
-            };
-
-            const renderChatTakeover = () => (
-                <div className="flex h-full w-full bg-white animate-in">
-                    {/* 左側：用戶清單 */}
-                    <div className="w-[400px] border-main-r flex flex-col bg-white shrink-0">
-                        <div className="p-8 border-main-b bg-black text-white">
-                            <h2 className="text-2xl font-black uppercase tracking-widest flex items-center gap-3">
-                                <MessageSquare size={28}/> 待命清單
-                            </h2>
-                            <p className="text-xs font-bold mt-2 text-[#06c755]">AI 大腦已在線，隨時提供建議</p>
-                        </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
-                            {chatList.map(chat => (
-                                <div key={chat.id} onClick={() => setChatTarget(chat)} className={`p-8 flex gap-5 cursor-pointer border-main-b transition-all ${chatTarget?.id === chat.id ? 'bg-black text-white' : 'hover:bg-slate-100 text-black'}`}>
-                                    <div className={`w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center font-black text-2xl uppercase border-4 ${chatTarget?.id === chat.id ? 'border-[#06c755] bg-white text-black' : 'border-black bg-slate-200'}`}>{chat.name[0]}</div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-baseline mb-2">
-                                            <span className="text-xl font-black truncate">{chat.name}</span>
-                                            <span className="text-xs font-black">{chat.time}</span>
-                                        </div>
-                                        <p className="text-[16px] truncate font-bold opacity-90">{chat.lastMsg}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* 右側：對話細節 */}
-                    <div className="flex-1 flex flex-col bg-[#8bacce]">
-                        {chatTarget ? (
-                            <>
-                                <div className="px-10 py-6 bg-white border-main-b flex justify-between items-center z-10">
-                                    <div className="flex items-center gap-5">
-                                        <span className="text-3xl font-black text-black">{chatTarget.name}</span>
-                                        <span className="bg-[#06c755] text-white text-sm font-black px-4 py-1 border-2 border-black uppercase">管理員接管中</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-black text-[16px] font-black uppercase">
-                                        <Bot size={24} className="text-[#06c755]"/> 大腦已偵測意圖
-                                    </div>
-                                </div>
-                                
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-10 space-y-10">
-                                    {messages.filter(m => m.userId === chatTarget.id).map(msg => (
-                                        <div key={msg.id} className={`flex flex-col ${msg.sender === 'admin' ? 'items-end' : 'items-start'}`}>
-                                            {msg.sender === 'user' && msg.aiCategory && (
-                                                <div className="mb-3 ml-2 flex items-center gap-2">
-                                                    <span className="text-sm bg-black text-white px-4 py-1 font-black uppercase border-2 border-black">分類：{msg.aiCategory}</span>
-                                                </div>
-                                            )}
-                                            <div className={`flex items-end gap-4 max-w-[80%] ${msg.sender === 'admin' ? 'flex-row' : 'flex-row-reverse'}`}>
-                                                <span className="text-sm text-white font-black drop-shadow-lg">{msg.time}</span>
-                                                <div className={`px-8 py-5 text-[18px] font-black leading-relaxed shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${msg.sender === 'admin' ? 'line-bubble-admin' : 'line-bubble-user'}`}>
-                                                    {msg.text}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <div ref={chatEndRef} />
-                                </div>
-
-                                <div className="bg-white border-main-t">
-                                    {activeMessage?.aiSuggestions && (
-                                        <div className="px-10 py-6 flex items-center gap-5 overflow-x-auto custom-scrollbar bg-slate-50 border-main-b">
-                                            <div className="flex items-center text-black shrink-0">
-                                                <Sparkles size={24} className="text-orange-500 mr-2"/>
-                                                <span className="text-lg font-black uppercase">點擊自動回覆</span>
-                                            </div>
-                                            {activeMessage.aiSuggestions.map((s, idx) => (
-                                                <button key={idx} onClick={() => setInputText(s)} className="suggestion-chip">{s}</button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div className="px-10 py-8 flex items-end gap-8 bg-white">
-                                        <button className="p-4 text-black hover:bg-slate-100 border-4 border-black transition-colors"><Plus size={36}/></button>
-                                        <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="請輸入訊息內容..." className="flex-1 bg-slate-50 border-4 border-black px-8 py-5 text-[20px] outline-none resize-none min-h-[70px] max-h-[150px] font-black text-black placeholder:text-slate-400" rows="1" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} />
-                                        <button onClick={handleSend} className="p-6 bg-[#06c755] text-white border-4 border-black hover:bg-[#05a64a] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all mb-1"><Send size={32}/></button>
-                                    </div>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-white animate-in">
-                                <Bot size={120} strokeWidth={2} className="mb-10 animate-bounce" />
-                                <h2 className="text-4xl font-black tracking-widest uppercase text-center leading-relaxed">
-                                    大腦已連線<br/>
-                                    請從左側點擊用戶名單開始
-                                </h2>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-
-            return (
-                <div className="full-screen-container">
-                    {/* 左側選單：徹底去圓角 */}
-                    <aside className="w-[280px] bg-black flex flex-col h-full shrink-0">
-                        <div className="p-12 border-main-b bg-white text-black">
-                            <h1 className="text-4xl font-black tracking-tighter uppercase leading-none">DS PRO</h1>
-                            <div className="flex items-center gap-2 mt-4">
-                                <div className="w-3 h-3 bg-[#06c755] rounded-full animate-pulse"></div>
-                                <p className="text-[12px] font-black uppercase tracking-widest">VICTORY MATRIX</p>
-                            </div>
-                        </div>
-                        <nav className="flex-1 p-6 space-y-4">
-                            <NavItem icon={LayoutDashboard} label="營運看板" active={view === 'overview'} onClick={() => setView('overview')} />
-                            <NavItem icon={MessageSquare} label="LINE 接管" active={view === 'chat'} onClick={() => setView('chat')} />
-                            <NavItem icon={ShieldCheck} label="權限矩陣" active={view === 'crm'} onClick={() => setView('crm')} />
-                        </nav>
-                        <div className="p-10 border-main-t bg-slate-900">
-                            <p className="text-[14px] font-black text-white uppercase tracking-widest mb-2">SYSTEM STATUS</p>
-                            <p className="text-[12px] font-bold text-[#06c755]">BRAIN ONLINE V5.0</p>
-                        </div>
-                    </aside>
-
-                    <main className="flex-1 flex flex-col bg-white overflow-hidden">
-                        {view === 'chat' ? renderChatTakeover() : (
-                            <div className="flex-1 flex items-center justify-center bg-white p-20">
-                                <div className="text-center animate-in">
-                                    <Activity size={100} className="mx-auto text-black mb-10" />
-                                    <p className="text-black font-black text-5xl uppercase tracking-tighter">資料模組串接中</p>
-                                    <p className="text-slate-900 text-xl font-bold mt-6">Connecting to Matrix Persistence Layer...</p>
-                                </div>
-                            </div>
-                        )}
-                    </main>
-                </div>
-            );
-        };
-
-        function NavItem({ icon: Icon, label, active, onClick }) {
-            return (
-                <button onClick={onClick} className={`w-full flex items-center gap-6 px-8 py-8 transition-all font-black text-[22px] border-4 ${active ? 'bg-white text-black border-[#06c755] shadow-[10px_10px_0px_0px_rgba(6,199,85,1)]' : 'text-white border-transparent hover:border-white'}`}>
-                    <Icon size={32} strokeWidth={active ? 4 : 2} />
-                    <span>{label}</span>
-                </button>
-            );
-        }
-
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+  <script>
+    const demoChats=[{"時間":Date.now()-1080000,"身份":"user","用戶ID":"U1202","內容":"請問負離子眼鏡適合長時間看電腦的人戴嗎？","類別":"產品-負離子眼鏡","AI建議":JSON.stringify(["您好，這款眼鏡適合長時間使用 3C 的上班族與學生，可作為日常配戴輔助。","建議依照平常用眼情境配戴，若有眼部疾病或不適仍建議諮詢專業醫師。"]),"重要":"否","情緒":"neutral","狀態":"待回覆"},{"時間":Date.now()-780000,"身份":"admin","用戶ID":"U1202","內容":"您好，這款眼鏡適合長時間使用 3C 的族群作為日常配戴輔助。","類別":"人工回覆","AI建議":"","重要":"否","情緒":"neutral","狀態":"已回覆"},{"時間":Date.now()-420000,"身份":"user","用戶ID":"U8819","內容":"我收到的產品外盒破損，客服一直沒回，這樣真的很糟。","類別":"退換貨作業","AI建議":JSON.stringify(["很抱歉造成您的困擾，請您先保留外盒與商品照片，我們會立即協助確認物流與換貨流程。","若為宅配破損，請提供收貨時間、照片與訂單資訊，我們會協助後續處理。"]),"重要":"是","情緒":"complaint","狀態":"待處理"},{"時間":Date.now()-180000,"身份":"user","用戶ID":"U5543","內容":"這個月獎金是幾號發放？計畫 C 也是一樣嗎？","類別":"獎金計畫","AI建議":JSON.stringify(["計畫 AB 獎金於次月 25 日匯撥；計畫 C 獎金為週結算後次週起算第五週週二匯撥。","您可以提供目前參與的計畫別，我再協助您確認對應的發放時間。"]),"重要":"否","情緒":"neutral","狀態":"待回覆"}];
+    const demoLogs=[{"時間":Date.now()-420000,"用戶ID":"U8819","內容":"我收到的產品外盒破損，客服一直沒回，這樣真的很糟。","類別":"客訴 / 物流破損","情緒":"complaint","原因":"含負評與客服未回覆，需即時處理。","狀態":"待處理","TG通知":"Demo"}];
+    const els={apiBase:document.getElementById('apiBase'),apiToken:document.getElementById('apiToken'),searchBox:document.getElementById('searchBox'),chatList:document.getElementById('chatList'),messages:document.getElementById('messages'),suggestions:document.getElementById('suggestions'),sideSuggestions:document.getElementById('sideSuggestions'),suggestionCount:document.getElementById('suggestionCount'),replyText:document.getElementById('replyText'),sendButton:document.getElementById('sendButton'),refreshButton:document.getElementById('refreshButton'),activeTitle:document.getElementById('activeTitle'),activeSubtitle:document.getElementById('activeSubtitle'),syncStatus:document.getElementById('syncStatus'),alertList:document.getElementById('alertList'),alertCount:document.getElementById('alertCount'),errorBox:document.getElementById('errorBox')};
+    const state={chats:demoChats,aiLogs:demoLogs,activeUserId:'U1202',isDemo:true};
+    els.apiBase.value=localStorage.getItem('line_ai_api_base')||'';els.apiToken.value=localStorage.getItem('line_ai_api_token')||'';
+    els.apiBase.addEventListener('change',save);els.apiToken.addEventListener('change',save);els.searchBox.addEventListener('input',render);els.refreshButton.addEventListener('click',sync);els.sendButton.addEventListener('click',send);setInterval(sync,5000);render();sync();
+    function save(){localStorage.setItem('line_ai_api_base',els.apiBase.value.trim());localStorage.setItem('line_ai_api_token',els.apiToken.value.trim());sync()}
+    async function sync(){const base=api(),token=els.apiToken.value.trim();if(!base||!token){state.isDemo=true;status('Demo 模式',false);render();return}try{status('同步中',false);const r=await fetch(`${base}/api/data`,{headers:{Authorization:`Bearer ${token}`}});const j=await r.json();if(!r.ok||j.status!=='success')throw new Error(j.message||'同步失敗');state.chats=Array.isArray(j.data.chats)&&j.data.chats.length?j.data.chats:demoChats;state.aiLogs=Array.isArray(j.data.aiLogs)?j.data.aiLogs:[];state.isDemo=false;status('已同步',false);err('');render()}catch(e){state.isDemo=true;status('同步失敗',true);err(e.message||String(e));render()}}
+    async function send(){const text=els.replyText.value.trim();if(!text||!state.activeUserId)return;const base=api(),token=els.apiToken.value.trim();if(!base||!token||state.isDemo){state.chats.push({"時間":Date.now(),"身份":"admin","用戶ID":state.activeUserId,"內容":text,"類別":"Demo 回覆","AI建議":"","重要":"否","情緒":"neutral","狀態":"已回覆"});els.replyText.value='';render();return}try{els.sendButton.disabled=true;const r=await fetch(`${base}/api/send`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({userId:state.activeUserId,text})});const j=await r.json();if(!r.ok||j.status!=='success')throw new Error(j.message||'送出失敗');els.replyText.value='';await sync()}catch(e){err(e.message||String(e))}finally{els.sendButton.disabled=false}}
+    function render(){const groups=group(filter());if(!state.activeUserId&&groups[0])state.activeUserId=groups[0].userId;list(groups);messages(groups);inspect(groups)}
+    function filter(){const q=els.searchBox.value.trim().toLowerCase();return q?state.chats.filter(x=>[x['用戶ID'],x['內容'],x['類別'],x['狀態']].filter(Boolean).some(v=>String(v).toLowerCase().includes(q))):state.chats}
+    function group(rows){const m=new Map();rows.slice().sort((a,b)=>Number(a['時間']||0)-Number(b['時間']||0)).forEach(r=>{const id=r['用戶ID']||'unknown';if(!m.has(id))m.set(id,[]);m.get(id).push(r)});return Array.from(m.entries()).map(([userId,messages])=>({userId,messages,last:messages[messages.length-1]})).sort((a,b)=>Number(b.last['時間']||0)-Number(a.last['時間']||0))}
+    function list(groups){els.chatList.innerHTML=groups.map(g=>{const l=g.last||{},hot=g.messages.some(m=>m['重要']==='是'),act=g.userId===state.activeUserId?' active':'';return `<button class="chatitem${act}" data-id="${esc(g.userId)}"><div class="avatar">${esc(g.userId[0]||'U')}</div><div><div class="row"><span>${esc(g.userId)}</span><span class="time">${fmt(l['時間'])}</span></div><div class="preview">${esc(l['內容']||'')}</div><div class="tags"><span class="tag">${esc(l['類別']||'一般')}</span>${hot?'<span class="tag hot">重要</span>':''}</div></div></button>`}).join('')||'<div class="muted" style="padding:18px">沒有符合的聊天。</div>';document.querySelectorAll('.chatitem').forEach(b=>b.onclick=()=>{state.activeUserId=b.dataset.id;render()})}
+    function messages(groups){const g=groups.find(x=>x.userId===state.activeUserId)||groups[0];if(!g){els.messages.innerHTML='<div class="day">尚無對話</div>';return}state.activeUserId=g.userId;els.activeTitle.textContent=g.userId;els.activeSubtitle.textContent=state.isDemo?'Demo 對話，接上 Worker 後同步 LINE OA 真實聊天室':`共 ${g.messages.length} 則訊息，AI 建議僅供管理員參考`;els.messages.innerHTML='<div class="day">今天</div>'+g.messages.map(m=>{const admin=m['身份']==='admin',meta=[fmt(m['時間']),m['類別']||'',m['重要']==='是'?'重要':''].filter(Boolean).join(' · ');return `<div class="msg ${admin?'admin':'user'}"><div class="wrap"><div class="bubble">${esc(m['內容']||'')}</div><div class="meta">${esc(meta)}</div></div></div>`}).join('');els.messages.scrollTop=els.messages.scrollHeight;const s=sugs(g);els.suggestions.innerHTML=s.length?s.map(x=>`<button data-s="${esc(x)}">${esc(x)}</button>`).join(''):'<span class="muted">目前沒有 AI 建議</span>';document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{els.replyText.value=b.dataset.s;els.replyText.focus()})}
+    function inspect(groups){const g=groups.find(x=>x.userId===state.activeUserId)||groups[0],s=g?sugs(g):[];els.suggestionCount.textContent=String(s.length);els.sideSuggestions.innerHTML=s.length?s.map(x=>`<button class="sidebtn" data-s="${esc(x)}">${esc(x)}</button>`).join(''):'<div class="muted">選擇對話後，AI 建議會顯示在這裡。</div>';document.querySelectorAll('.sidebtn').forEach(b=>b.onclick=()=>{els.replyText.value=b.dataset.s;els.replyText.focus()});els.alertCount.textContent=String(state.aiLogs.length);els.alertList.innerHTML=state.aiLogs.length?state.aiLogs.map(l=>`<article class="alert"><strong>${esc(l['類別']||'重要訊息')} · ${esc(l['狀態']||'待處理')}</strong><p>${esc(l['內容']||'')}</p><div class="time">${esc(l['用戶ID']||'')} · ${fmt(l['時間'])} · TG ${esc(l['TG通知']||'')}</div></article>`).join(''):'<div class="muted">目前沒有客訴、負評、建議或重大風險通報。</div>'}
+    function sugs(g){const m=[...g.messages].reverse().find(x=>x['身份']==='user');try{const p=typeof(m&&m['AI建議'])==='string'?JSON.parse(m['AI建議']):m&&m['AI建議'];return Array.isArray(p)?p.filter(Boolean):[]}catch{return[]}}
+    function api(){return els.apiBase.value.trim().replace(/\/+$/,'')}function status(t,bad){els.syncStatus.textContent=t;els.syncStatus.style.background=bad?'#fff1f3':'#effcf4';els.syncStatus.style.color=bad?'#d92d20':'#07833b'}function err(m){els.errorBox.innerHTML=m?`<p class="error">${esc(m)}</p>`:''}function fmt(v){const n=Number(v);return n?new Date(n).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}function esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;')}
+  </script>
 </body>
 </html>
