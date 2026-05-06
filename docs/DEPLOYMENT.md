@@ -28,11 +28,17 @@ The page works in demo mode without any backend. To connect real data, enter:
 
 ```text
 SPREADSHEET_ID
-GEMINI_API_KEY
 GAS_SHARED_SECRET
 TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID
-GEMINI_MODEL=gemini-2.5-flash
+```
+
+OpenAI can be set either in Apps Script properties or forwarded from Cloudflare Worker:
+
+```text
+OPENAI_API_KEY
+OPENAI_MODEL=gpt-5-mini
+OPENAI_API_URL=https://api.openai.com/v1/responses
 ```
 
 5. Run `setupSheets()`.
@@ -51,6 +57,10 @@ GAS_SHARED_SECRET
 LINE_CHANNEL_SECRET
 LINE_CHANNEL_ACCESS_TOKEN
 DASHBOARD_API_TOKEN
+SPREADSHEET_ID
+OPENAI_API_KEY
+OPENAI_MODEL=gpt-5-mini
+OPENAI_API_URL=https://api.openai.com/v1/responses
 ALLOWED_ORIGIN=https://fangwl591021.github.io
 ```
 
