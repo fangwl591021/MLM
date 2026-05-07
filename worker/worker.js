@@ -36,11 +36,7 @@ export default {
 
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
-
-        const data = await callGas(env, {
-          type: "FETCH_DASHBOARD_DATA",
-        });
-
+        const data = await callGas(env, { type: "FETCH_DASHBOARD_DATA" });
         return jsonResponse(data, 200, corsHeaders);
       }
 
@@ -50,6 +46,7 @@ export default {
         const body = await safeJson(request);
         const userId = String(body.userId || "").trim();
         const text = String(body.text || "").trim();
+        const userName = String(body.userName || "").trim();
 
         if (!userId || !text) {
           return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
@@ -66,7 +63,7 @@ export default {
 
         ctx.waitUntil(callGas(env, {
           type: "SAVE_ADMIN_REPLY",
-          data: { userId, text, time: Date.now() },
+          data: { userId, userName, text, time: Date.now() },
         }));
 
         return jsonResponse({ status: "success" }, 200, corsHeaders);
