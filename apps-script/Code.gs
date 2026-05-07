@@ -22,6 +22,7 @@ function doPost(e) {
     const payload = parseRequest_(e);
     assertSharedSecret_(payload.secret);
     if (payload.type === "FETCH_DASHBOARD_DATA") return fetchDashboardData_();
+    if (payload.type === "IMPORT_KNOWLEDGE_BASE") return importKnowledgeBase_(payload.data);
     if (payload.type === "LINE_WEBHOOK") return handleLineWebhook_(payload.data);
     if (payload.type === "SAVE_ADMIN_REPLY") return saveAdminReply_(payload.data);
     if (payload.type === "SETUP_SHEETS") return setupSheets();
@@ -42,17 +43,55 @@ function setupSheets() {
 }
 
 function updateKnowledgeBaseFromJson(jsonText) {
-  const rows = JSON.parse(jsonText);
-  if (!Array.isArray(rows)) throw new Error("Knowledge base JSON must be an array");
+  return importKnowledgeBase_({ knowledge: JSON.parse(jsonText), source: "Apps Script editor" });
+}
+
+function importKnowledgeBase_(data) {
+  const payload = data || {};
+  const parsed = typeof payload.knowledge === "string" ? JSON.parse(payload.knowledge) : payload.knowledge;
+  const normalized = normalizeKnowledgePayload_(parsed);
+  if (!normalized.items.length) throw new Error("Knowledge base JSON has no valid Q&A items");
+
   const ss = getSpreadsheet_();
   const sheet = ensureSheet_(ss, SHEETS.knowledge, HEADERS.knowledge);
   sheet.clearContents();
-  sheet.appendRow(HEADERS.knowledge);
-  rows.forEach(function (item) {
-    sheet.appendRow([item.category || "", item.question || "", item.answer || ""]);
+  sheet.getRange(1, 1, 1, HEADERS.knowledge.length).setValues([HEADERS.knowledge]);
+  sheet.setFrozenRows(1);
+
+  const values = normalized.items.map(function (item) {
+    return [item.category, item.question, item.answer];
   });
-  PropertiesService.getScriptProperties().setProperty("KNOWLEDGE_BASE_JSON", JSON.stringify(rows));
-  return json_({ status: "success", count: rows.length });
+  sheet.getRange(2, 1, values.length, HEADERS.knowledge.length).setValues(values);
+
+  const meta = {
+    title: normalized.title || "",
+    version: normalized.version || "",
+    source: payload.source || payload.fileName || "dashboard-upload",
+    count: normalized.items.length,
+    updatedAt: new Date().toISOString(),
+  };
+  PropertiesService.getScriptProperties().setProperty("KNOWLEDGE_BASE_META", JSON.stringify(meta));
+  PropertiesService.getScriptProperties().deleteProperty("KNOWLEDGE_BASE_JSON");
+
+  return json_({ status: "success", count: normalized.items.length, meta: meta });
+}
+
+function normalizeKnowledgePayload_(payload) {
+  const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const items = Array.isArray(payload) ? payload : (Array.isArray(source.items) ? source.items : []);
+  const normalizedItems = items.map(function (item, index) {
+    const row = item || {};
+    const category = String(row.category || row.categoryName || row.分類 || "未分類").trim();
+    const question = String(row.question || row.q || row.問題 || "").trim();
+    const answer = String(row.answer || row.a || row.答案 || "").trim();
+    if (!question || !answer) throw new Error("Invalid knowledge item at index " + index + ": question and answer are required");
+    return { category: category, question: question, answer: answer };
+  });
+  return {
+    title: String(source.title || source.name || "").trim(),
+    version: String(source.version || source.updatedAt || "").trim(),
+    items: normalizedItems,
+  };
 }
 
 function fetchDashboardData_() {
@@ -63,6 +102,7 @@ function fetchDashboardData_() {
     data: {
       chats: getSheetDataAsJson_(ss, SHEETS.chats, 200),
       aiLogs: getSheetDataAsJson_(ss, SHEETS.aiLogs, 100),
+      knowledgeMeta: getKnowledgeMeta_(),
     },
   });
 }
@@ -83,32 +123,11 @@ function handleLineWebhook_(data) {
 
     const analysis = performAIAnalysis_(text, userId, userName);
     const now = Date.now();
-    chatSheet.appendRow([
-      now,
-      "user",
-      userId,
-      text,
-      analysis.category,
-      JSON.stringify(analysis.suggestions || []),
-      analysis.isImportant ? "是" : "否",
-      analysis.sentiment || "neutral",
-      "待回覆",
-      userName,
-    ]);
+    chatSheet.appendRow([now, "user", userId, text, analysis.category, JSON.stringify(analysis.suggestions || []), analysis.isImportant ? "是" : "否", analysis.sentiment || "neutral", "待回覆", userName]);
 
     if (analysis.isImportant) {
       const tgStatus = sendTelegramAlert_(userId, userName, text, analysis);
-      aiSheet.appendRow([
-        now,
-        userId,
-        text,
-        analysis.category,
-        analysis.sentiment || "neutral",
-        analysis.reportReason || analysis.summary || "",
-        "待處理",
-        tgStatus,
-        userName,
-      ]);
+      aiSheet.appendRow([now, userId, text, analysis.category, analysis.sentiment || "neutral", analysis.reportReason || analysis.summary || "", "待處理", tgStatus, userName]);
     }
   });
 
@@ -119,18 +138,7 @@ function saveAdminReply_(data) {
   if (!data || !data.userId || !data.text) return json_({ status: "error", message: "userId and text are required" });
   const ss = getSpreadsheet_();
   const sheet = ensureSheet_(ss, SHEETS.chats, HEADERS.chats);
-  sheet.appendRow([
-    data.time || Date.now(),
-    "admin",
-    data.userId,
-    data.text,
-    "人工回覆",
-    "",
-    "否",
-    "neutral",
-    "已回覆",
-    data.userName || "",
-  ]);
+  sheet.appendRow([data.time || Date.now(), "admin", data.userId, data.text, "人工回覆", "", "否", "neutral", "已回覆", data.userName || ""]);
   return json_({ status: "success" });
 }
 
@@ -140,14 +148,7 @@ function performAIAnalysis_(text, userId, userName) {
   const openAiUrl = getConfigProperty_("OPENAI_API_URL", "https://api.openai.com/v1/responses");
   const prompt = buildPrompt_(text, userId, userName);
   if (openAiKey) return performOpenAIAnalysis_(prompt, openAiKey, openAiModel, openAiUrl, text);
-  return normalizeAnalysis_({
-    isImportant: false,
-    category: "未設定 AI",
-    sentiment: "neutral",
-    summary: "AI key missing",
-    reportReason: "",
-    suggestions: ["系統尚未設定 OpenAI API Key，請管理員先完成後台設定。"],
-  });
+  return normalizeAnalysis_({ isImportant: false, category: "未設定 AI", sentiment: "neutral", summary: "AI key missing", reportReason: "", suggestions: ["系統尚未設定 OpenAI API Key，請管理員先完成後台設定。"] });
 }
 
 function buildPrompt_(text, userId, userName) {
@@ -210,14 +211,7 @@ function performOpenAIAnalysis_(prompt, apiKey, model, apiUrl, originalText) {
     return normalizeAnalysis_(JSON.parse(generated));
   } catch (err) {
     logError_("performOpenAIAnalysis", err.message || String(err), originalText);
-    return normalizeAnalysis_({
-      isImportant: false,
-      category: "一般查詢",
-      sentiment: "neutral",
-      summary: "AI fallback",
-      reportReason: "",
-      suggestions: ["您好，這個問題我先為您確認，稍後由專人回覆您。"],
-    });
+    return normalizeAnalysis_({ isImportant: false, category: "一般查詢", sentiment: "neutral", summary: "AI fallback", reportReason: "", suggestions: ["您好，這個問題我先為您確認，稍後由專人回覆您。"] });
   }
 }
 
@@ -252,23 +246,9 @@ function sendTelegramAlert_(userId, userName, text, analysis) {
   const botToken = props.getProperty("TELEGRAM_BOT_TOKEN");
   const chatId = props.getProperty("TELEGRAM_CHAT_ID");
   if (!botToken || !chatId) return "未設定";
-  const message = [
-    "LINE OA 重要訊息通報",
-    "分類：" + analysis.category,
-    "情緒：" + analysis.sentiment,
-    "用戶：" + (userName || userId),
-    "用戶ID：" + userId,
-    "原因：" + (analysis.reportReason || analysis.summary || "AI 判定需人工關注"),
-    "原文：" + text,
-    "建議：" + ((analysis.suggestions || [])[0] || "請管理員查看後台"),
-  ].join("\n");
+  const message = ["LINE OA 重要訊息通報", "分類：" + analysis.category, "情緒：" + analysis.sentiment, "用戶：" + (userName || userId), "用戶ID：" + userId, "原因：" + (analysis.reportReason || analysis.summary || "AI 判定需人工關注"), "原文：" + text, "建議：" + ((analysis.suggestions || [])[0] || "請管理員查看後台")].join("\n");
   try {
-    const response = UrlFetchApp.fetch("https://api.telegram.org/bot" + botToken + "/sendMessage", {
-      method: "post",
-      contentType: "application/json",
-      muteHttpExceptions: true,
-      payload: JSON.stringify({ chat_id: chatId, text: message }),
-    });
+    const response = UrlFetchApp.fetch("https://api.telegram.org/bot" + botToken + "/sendMessage", { method: "post", contentType: "application/json", muteHttpExceptions: true, payload: JSON.stringify({ chat_id: chatId, text: message }) });
     return response.getResponseCode() >= 200 && response.getResponseCode() < 300 ? "已通知" : "通知失敗:" + response.getResponseCode();
   } catch (err) {
     logError_("sendTelegramAlert", err.message || String(err), message);
@@ -282,21 +262,22 @@ function getEventDisplayName_(event, userId) {
 }
 
 function getKnowledgeBase_() {
-  const props = PropertiesService.getScriptProperties();
-  const json = props.getProperty("KNOWLEDGE_BASE_JSON");
-  if (json) {
-    try {
-      const parsed = JSON.parse(json);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (err) {
-      logError_("getKnowledgeBase", "Invalid KNOWLEDGE_BASE_JSON", err.message);
-    }
-  }
   const ss = getSpreadsheet_();
   ensureSheet_(ss, SHEETS.knowledge, HEADERS.knowledge);
-  return getSheetDataAsJson_(ss, SHEETS.knowledge, 500).map(function (row) {
+  return getSheetDataAsJson_(ss, SHEETS.knowledge, 1000).map(function (row) {
     return { category: row.category || "", question: row.question || "", answer: row.answer || "" };
   }).filter(function (row) { return row.question && row.answer; });
+}
+
+function getKnowledgeMeta_() {
+  const props = PropertiesService.getScriptProperties();
+  const json = props.getProperty("KNOWLEDGE_BASE_META");
+  let meta = {};
+  if (json) {
+    try { meta = JSON.parse(json); } catch (_err) { meta = {}; }
+  }
+  if (!meta.count) meta.count = getKnowledgeBase_().length;
+  return meta;
 }
 
 function getSheetDataAsJson_(ss, sheetName, limit) {
