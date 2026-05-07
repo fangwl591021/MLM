@@ -57,10 +57,7 @@ function importKnowledgeBase_(data) {
   sheet.clearContents();
   sheet.getRange(1, 1, 1, HEADERS.knowledge.length).setValues([HEADERS.knowledge]);
   sheet.setFrozenRows(1);
-
-  const values = normalized.items.map(function (item) {
-    return [item.category, item.question, item.answer];
-  });
+  const values = normalized.items.map(function (item) { return [item.category, item.question, item.answer]; });
   sheet.getRange(2, 1, values.length, HEADERS.knowledge.length).setValues(values);
 
   const meta = {
@@ -72,7 +69,6 @@ function importKnowledgeBase_(data) {
   };
   PropertiesService.getScriptProperties().setProperty("KNOWLEDGE_BASE_META", JSON.stringify(meta));
   PropertiesService.getScriptProperties().deleteProperty("KNOWLEDGE_BASE_JSON");
-
   return json_({ status: "success", count: normalized.items.length, meta: meta });
 }
 
@@ -102,6 +98,7 @@ function fetchDashboardData_() {
     data: {
       chats: getSheetDataAsJson_(ss, SHEETS.chats, 200),
       aiLogs: getSheetDataAsJson_(ss, SHEETS.aiLogs, 100),
+      systemErrors: getSheetDataAsJson_(ss, SHEETS.errors, 20),
       knowledgeMeta: getKnowledgeMeta_(),
     },
   });
@@ -148,7 +145,7 @@ function performAIAnalysis_(text, userId, userName) {
   const openAiUrl = getConfigProperty_("OPENAI_API_URL", "https://api.openai.com/v1/responses");
   const prompt = buildPrompt_(text, userId, userName);
   if (openAiKey) return performOpenAIAnalysis_(prompt, openAiKey, openAiModel, openAiUrl, text);
-  return normalizeAnalysis_({ isImportant: false, category: "未設定 AI", sentiment: "neutral", summary: "AI key missing", reportReason: "", suggestions: ["系統尚未設定 OpenAI API Key，請管理員先完成後台設定。"] });
+  return performLocalKnowledgeFallback_(text, "OpenAI API Key missing");
 }
 
 function buildPrompt_(text, userId, userName) {
@@ -210,9 +207,80 @@ function performOpenAIAnalysis_(prompt, apiKey, model, apiUrl, originalText) {
     if (!generated) throw new Error("OpenAI returned empty content");
     return normalizeAnalysis_(JSON.parse(generated));
   } catch (err) {
-    logError_("performOpenAIAnalysis", err.message || String(err), originalText);
-    return normalizeAnalysis_({ isImportant: false, category: "一般查詢", sentiment: "neutral", summary: "AI fallback", reportReason: "", suggestions: ["您好，這個問題我先為您確認，稍後由專人回覆您。"] });
+    const message = err && err.message ? err.message : String(err);
+    logError_("performOpenAIAnalysis", message, originalText);
+    return performLocalKnowledgeFallback_(originalText, message);
   }
+}
+
+function performLocalKnowledgeFallback_(text, reason) {
+  const matches = findKnowledgeMatches_(text, getKnowledgeBase_()).slice(0, 3);
+  const important = isImportantLocal_(text);
+  if (!matches.length) {
+    return normalizeAnalysis_({
+      isImportant: important,
+      category: "一般查詢",
+      sentiment: important ? "complaint" : "neutral",
+      summary: "OpenAI fallback without knowledge match",
+      reportReason: important ? "AI 連線失敗，但訊息含客訴或風險關鍵字" : "",
+      suggestions: ["您好，這個問題我先為您確認，稍後由專人回覆您。"],
+    });
+  }
+  const suggestions = matches.map(function (item) {
+    return "您好，關於「" + item.question + "」，" + item.answer;
+  });
+  return normalizeAnalysis_({
+    isImportant: important,
+    category: matches[0].category || "知識庫查詢",
+    sentiment: important ? "complaint" : "neutral",
+    summary: "OpenAI fallback with knowledge match: " + (reason || ""),
+    reportReason: important ? "AI 連線失敗，但訊息含客訴或風險關鍵字，已用知識庫先產生建議" : "",
+    suggestions: suggestions,
+  });
+}
+
+function findKnowledgeMatches_(text, brain) {
+  const tokens = createSearchTokens_(text);
+  const compactText = normalizeSearchText_(text);
+  return (brain || []).map(function (item) {
+    const question = String(item.question || "");
+    const answer = String(item.answer || "");
+    const category = String(item.category || "");
+    const haystack = normalizeSearchText_(category + " " + question + " " + answer);
+    let score = 0;
+    if (compactText && (haystack.indexOf(compactText) >= 0 || compactText.indexOf(normalizeSearchText_(question)) >= 0)) score += 120;
+    tokens.forEach(function (token) {
+      if (haystack.indexOf(token) >= 0) score += Math.min(token.length * 8, 32);
+    });
+    return { category: category, question: question, answer: answer, score: score };
+  }).filter(function (item) {
+    return item.score > 0;
+  }).sort(function (a, b) {
+    return b.score - a.score;
+  });
+}
+
+function createSearchTokens_(text) {
+  const normalized = normalizeSearchText_(text);
+  const set = {};
+  const parts = normalized.match(/[a-z0-9]+|[\u4e00-\u9fff]+/g) || [];
+  parts.forEach(function (part) {
+    if (part.length >= 2) set[part] = true;
+    if (/^[\u4e00-\u9fff]+$/.test(part)) {
+      for (let size = 2; size <= 4; size += 1) {
+        for (let i = 0; i <= part.length - size; i += 1) set[part.slice(i, i + size)] = true;
+      }
+    }
+  });
+  return Object.keys(set).slice(0, 100);
+}
+
+function normalizeSearchText_(text) {
+  return String(text || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function isImportantLocal_(text) {
+  return /客訴|負評|抱怨|投訴|破損|瑕疵|退貨|退款|爭議|違規|檢舉|沒回|不滿|很糟|生氣/.test(String(text || ""));
 }
 
 function extractOpenAIText_(body) {
