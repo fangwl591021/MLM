@@ -3,39 +3,207 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LINE OA AI 建議後台</title>
+  <title>LINE OA 管理後台</title>
   <style>
-    :root{--line:#06c755;--ink:#20242a;--muted:#707987;--border:#e5e9f0;--rail:#26303d;--page:#f5f7f9;--chat:#8da8c5;--admin:#9de46f;--warn:#f79009;--danger:#d92d20}*{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;background:var(--page);color:var(--ink);font-family:"Noto Sans TC",Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}.app{display:grid;grid-template-columns:72px 320px minmax(480px,1fr) 360px;height:100vh;min-width:1180px}.rail{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 10px;background:var(--rail);color:#cbd5e1}.logo{width:44px;height:44px;display:grid;place-items:center;margin-bottom:10px;border-radius:11px;background:var(--line);color:#fff;font-size:11px;font-weight:900}.nav{width:48px;height:48px;border:0;border-radius:12px;background:transparent;color:inherit;font-size:11px;font-weight:800}.nav.active,.nav:hover{background:#1b2430;color:#fff}.bottom{margin-top:auto}.inbox,.main,.side{min-height:0;background:#fff;border-right:1px solid var(--border)}.side{border-right:0;border-left:1px solid var(--border);background:#fbfcfd}.head{height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:#fff}.account{display:flex;align-items:center;gap:10px;min-width:0}.mark{width:38px;height:38px;display:grid;place-items:center;flex:0 0 auto;border-radius:50%;background:var(--line);color:#fff;font-weight:900}.title h1,.room h2,.panel h2{margin:0;font-size:15px;line-height:1.25;font-weight:850}.title p,.room p,.panel p{margin:3px 0 0;color:var(--muted);font-size:12px}.setup{display:grid;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);background:#f8fafb}.setup label{font-size:11px;color:var(--muted);font-weight:800}.setup input{width:100%;height:34px;border:1px solid #d9dee7;border-radius:7px;padding:0 10px;background:#fff;outline:none}.setup input:focus,textarea:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.search{padding:12px 16px;border-bottom:1px solid var(--border)}.search input{width:100%;height:36px;border:1px solid #dde2ea;border-radius:999px;padding:0 14px;background:#f5f7f9;outline:none}.list{height:calc(100vh - 64px - 148px - 61px);overflow:auto}.chatitem{width:100%;display:grid;grid-template-columns:46px minmax(0,1fr);gap:11px;padding:14px 16px;border:0;border-bottom:1px solid #eef1f5;background:#fff;text-align:left}.chatitem.active,.chatitem:hover{background:#eefbf4}.chatitem.active{box-shadow:inset 4px 0 0 var(--line)}.avatar{width:46px;height:46px;display:grid;place-items:center;border-radius:50%;background:#dfe6ee;color:#2b3440;font-weight:900}.row{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:13px;font-weight:850}.time{color:var(--muted);font-size:11px;white-space:nowrap}.preview{overflow:hidden;color:var(--muted);font-size:12px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}.tags{display:flex;gap:6px;margin-top:7px}.tag{border-radius:999px;padding:3px 7px;background:#eef2f6;color:#546071;font-size:10px;font-weight:800}.tag.hot{background:#fff1f3;color:#c01048}.main{display:grid;grid-template-rows:64px auto minmax(0,1fr) auto}.pill{border:1px solid #b7ebc8;border-radius:999px;padding:5px 9px;background:#effcf4;color:#07833b;font-size:11px;font-weight:850;white-space:nowrap}.refresh{width:34px;height:34px;border:1px solid #dde2ea;border-radius:8px;background:#fff;color:#4b5563}.error{margin:0;padding:8px 16px;border-bottom:1px solid #fecdd3;background:#fff1f3;color:var(--danger);font-size:12px;font-weight:800}.msgs{overflow:auto;padding:22px 30px;background:linear-gradient(rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px),var(--chat);background-size:32px 32px}.day{width:max-content;margin:0 auto 18px;border-radius:999px;padding:5px 12px;background:rgba(255,255,255,.55);color:#4b5563;font-size:11px;font-weight:800}.msg{display:flex;margin:0 0 14px}.msg.admin{justify-content:flex-end}.wrap{max-width:min(660px,76%)}.bubble{padding:10px 13px;border-radius:5px 17px 17px 17px;background:#fff;color:#111827;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(20,30,45,.08)}.admin .bubble{border-radius:17px 5px 17px 17px;background:var(--admin)}.meta{margin-top:5px;color:rgba(31,35,41,.66);font-size:11px;font-weight:700}.admin .meta{text-align:right}.composer{border-top:1px solid var(--border);background:#fff}.suggestions{display:flex;gap:8px;min-height:48px;padding:9px 16px;overflow-x:auto;border-bottom:1px solid #edf1f5;background:#f8fcf9}.suggestions button{flex:0 0 auto;max-width:440px;border:1px solid #91deb0;border-radius:999px;padding:7px 12px;background:#fff;color:#067a35;font-size:13px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sendrow{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:10px;padding:12px 16px;align-items:end}textarea{min-height:44px;max-height:140px;resize:vertical;border:1px solid #d9dee7;border-radius:10px;padding:11px 12px;background:#f8fafb;color:var(--ink);line-height:1.45;outline:none}.send{width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:50%;background:var(--line);color:#fff;font-weight:900}.panelhead{height:64px;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:#fff}.panelbody{height:calc(100vh - 64px);overflow:auto;padding:14px}.card{margin-bottom:12px;border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}.cardtitle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;border-bottom:1px solid #edf1f5;font-size:13px;font-weight:900}.cardbody{padding:12px 13px}.chip{border-radius:999px;padding:4px 8px;background:#effcf4;color:#07833b;font-size:11px;font-weight:900}.sidelist{display:grid;gap:8px}.sidebtn{border:1px solid #d9f2e2;border-radius:9px;padding:10px;background:#fbfffc;color:#26303d;line-height:1.45;text-align:left}.alert{margin-bottom:10px;border:1px solid #ffd9b2;border-left:4px solid var(--warn);border-radius:10px;padding:11px;background:#fff7ed}.alert strong{display:block;margin-bottom:6px;color:#9a3412;font-size:13px}.alert p{margin:0 0 8px;color:#374151;line-height:1.45}.muted{color:var(--muted);font-size:12px;line-height:1.5}@media(max-width:980px){body{overflow:auto}.app{grid-template-columns:60px 310px minmax(470px,1fr);width:max-content;min-width:0}.side{display:none}}
+    :root{--line:#06c755;--ink:#111827;--muted:#6b7280;--border:#dfe5ec;--soft:#f6f8fa;--chat:#8fa9c4;--admin:#9ee86b;--warn:#f79009;--danger:#d92d20}*{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;background:#fff;color:var(--ink);font-family:Inter,"Noto Sans TC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}.app{display:grid;grid-template-columns:360px minmax(620px,1fr) 390px;height:100vh}.left,.chat,.assist{min-height:0;background:#fff}.left{border-right:1px solid var(--border)}.assist{border-left:1px solid var(--border);background:#fbfcfe}.brand{height:70px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)}.oa{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:var(--line);color:#fff;font-weight:900}.brand h1,.room h2,.assist h2{margin:0;font-size:17px;line-height:1.2;font-weight:900}.brand p,.room p,.assist p{margin:4px 0 0;color:var(--muted);font-size:12px}.config{display:grid;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border);background:#f8fafc}.config label{color:#5d6675;font-size:12px;font-weight:800}.config input,.search input,textarea{width:100%;border:1px solid #d8dee8;background:#fff;outline:none}.config input{height:38px;border-radius:8px;padding:0 11px}.search{padding:14px 16px;border-bottom:1px solid var(--border)}.search input{height:40px;border-radius:999px;padding:0 15px;background:#f4f7fa}.config input:focus,.search input:focus,textarea:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.list{height:calc(100vh - 70px - 160px - 69px);overflow:auto}.item{width:100%;display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px;padding:16px;border:0;border-bottom:1px solid #edf1f5;background:#fff;text-align:left}.item:hover,.item.active{background:#ebfbf3}.item.active{box-shadow:inset 4px 0 0 var(--line)}.avatar{width:48px;height:48px;display:grid;place-items:center;border-radius:50%;background:#e4ebf3;color:#233044;font-weight:900}.avatar.named{background:#dff8e9;color:#057a36}.line{display:flex;justify-content:space-between;gap:8px;min-width:0}.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:900}.time{color:var(--muted);font-size:11px;white-space:nowrap}.uid{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7a8492;font-size:11px}.preview{margin-top:5px;overflow:hidden;color:#4b5563;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tags{display:flex;gap:6px;margin-top:8px}.tag{border-radius:999px;padding:3px 8px;background:#eef2f7;color:#536072;font-size:11px;font-weight:800}.tag.hot{background:#fff1f3;color:#c01048}.chat{display:grid;grid-template-rows:70px auto minmax(0,1fr) auto}.head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);background:#fff}.actions{display:flex;align-items:center;gap:8px}.pill{border:1px solid #b6ecc8;border-radius:999px;padding:6px 10px;background:#effcf4;color:#07833b;font-size:12px;font-weight:900}.pill.bad{border-color:#fecdd3;background:#fff1f3;color:var(--danger)}.refresh{width:38px;height:38px;border:1px solid #d8dee8;border-radius:10px;background:#fff;color:#4b5563}.error{margin:0;padding:9px 18px;border-bottom:1px solid #fecdd3;background:#fff1f3;color:var(--danger);font-size:12px;font-weight:800}.messages{overflow:auto;padding:24px 34px;background:linear-gradient(rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.10) 1px,transparent 1px),var(--chat);background-size:36px 36px}.day{width:max-content;margin:0 auto 18px;border-radius:999px;padding:6px 13px;background:rgba(255,255,255,.58);color:#45505d;font-size:12px;font-weight:900}.msg{display:flex;margin:0 0 16px}.msg.admin{justify-content:flex-end}.wrap{max-width:min(680px,78%)}.bubble{padding:11px 14px;border-radius:6px 18px 18px 18px;background:#fff;color:#111827;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(20,30,45,.08)}.admin .bubble{border-radius:18px 6px 18px 18px;background:var(--admin)}.meta{margin-top:5px;color:rgba(31,35,41,.68);font-size:11px;font-weight:700}.admin .meta{text-align:right}.composer{border-top:1px solid var(--border);background:#fff}.suggestions{display:flex;gap:8px;min-height:50px;padding:10px 16px;overflow-x:auto;border-bottom:1px solid #edf1f5;background:#f8fcf9}.suggestions button{flex:0 0 auto;max-width:520px;border:1px solid #91deb0;border-radius:999px;padding:8px 13px;background:#fff;color:#067a35;font-size:13px;font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sendrow{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:12px;padding:12px 16px;align-items:end}textarea{min-height:48px;max-height:140px;resize:vertical;border-radius:12px;padding:12px;background:#fbfcfd;line-height:1.45}.send{width:48px;height:48px;border:0;border-radius:50%;background:var(--line);color:#fff;font-size:18px;font-weight:900}.assistHead{height:70px;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:#fff}.assistBody{height:calc(100vh - 70px);overflow:auto;padding:16px}.card{margin-bottom:13px;border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}.cardTitle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border-bottom:1px solid #edf1f5;font-size:14px;font-weight:900}.cardBody{padding:13px 14px}.sideList{display:grid;gap:9px}.sideBtn{border:1px solid #d9f2e2;border-radius:10px;padding:11px;background:#fbfffc;color:#26303d;line-height:1.48;text-align:left}.alert{margin-bottom:10px;border:1px solid #ffd9b2;border-left:4px solid var(--warn);border-radius:10px;padding:11px;background:#fff7ed}.alert strong{display:block;margin-bottom:6px;color:#9a3412;font-size:13px}.alert p{margin:0 0 8px;color:#374151;line-height:1.45}.muted{color:var(--muted);font-size:12px;line-height:1.55}@media(max-width:1100px){body{overflow:auto}.app{grid-template-columns:340px minmax(620px,1fr);width:max-content}.assist{display:none}}
   </style>
 </head>
 <body>
   <div class="app">
-    <nav class="rail"><div class="logo">LINE</div><button class="nav active">聊天</button><button class="nav">AI</button><button class="nav">監看</button><div class="bottom"><button class="nav">設定</button></div></nav>
-    <aside class="inbox"><header class="head"><div class="account"><div class="mark">OA</div><div class="title"><h1>LINE OA 管理後台</h1><p>AI 建議模式，不自動回覆</p></div></div></header><section class="setup"><label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" /><label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入 token 後同步真實資料" /></section><div class="search"><input id="searchBox" placeholder="搜尋聊天、用戶 ID、分類" /></div><div id="chatList" class="list"></div></aside>
-    <main class="main"><header class="head"><div class="room"><h2 id="activeTitle">請選擇 LINE 對話</h2><p id="activeSubtitle">目前顯示 demo 資料，設定 Worker 後會同步真實聊天室</p></div><div style="display:flex;gap:8px;align-items:center"><span class="pill" id="syncStatus">Demo 模式</span><button class="refresh" id="refreshButton">↻</button></div></header><div id="errorBox"></div><section id="messages" class="msgs"></section><footer class="composer"><div id="suggestions" class="suggestions"></div><div class="sendrow"><textarea id="replyText" placeholder="點選 AI 建議或手動輸入，按送出後才會回覆 LINE 用戶"></textarea><button id="sendButton" class="send">➤</button></div></footer></main>
-    <aside class="side"><header class="panelhead"><div class="panel"><h2>AI 助理</h2><p>僅提供管理員參考</p></div><span class="chip">建議中</span></header><div class="panelbody"><section class="card"><div class="cardtitle"><span>最新建議回覆</span><span class="time" id="suggestionCount">0</span></div><div class="cardbody"><div id="sideSuggestions" class="sidelist"></div></div></section><section class="card"><div class="cardtitle"><span>重要訊息通報</span><span class="time" id="alertCount">0</span></div><div class="cardbody" id="alertList"></div></section><section class="card"><div class="cardtitle">系統原則</div><div class="cardbody muted">LINE webhook 只做紀錄與 AI 判斷。系統不會自動回覆客戶，只有管理員按下送出才會推送 LINE 訊息。客訴、負評、建議與重大風險會發送 Telegram 通知。</div></section></div></aside>
+    <aside class="left">
+      <header class="brand"><div class="oa">OA</div><div><h1>LINE OA 管理後台</h1><p>AI 建議模式，不自動回覆</p></div></header>
+      <section class="config">
+        <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
+        <label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入後同步聊天室" />
+      </section>
+      <div class="search"><input id="searchBox" placeholder="搜尋聊天、用戶名稱、用戶 ID、分類" /></div>
+      <div id="chatList" class="list"></div>
+    </aside>
+
+    <main class="chat">
+      <header class="head"><div class="room"><h2 id="activeTitle">請選擇 LINE 對話</h2><p id="activeSubtitle">AI 建議僅供管理員參考</p></div><div class="actions"><span class="pill" id="syncStatus">同步中</span><button class="refresh" id="refreshButton">↻</button></div></header>
+      <div id="errorBox"></div>
+      <section id="messages" class="messages"></section>
+      <footer class="composer"><div id="suggestions" class="suggestions"></div><div class="sendrow"><textarea id="replyText" placeholder="點選 AI 建議或手動輸入，按送出後才會回覆 LINE 用戶"></textarea><button id="sendButton" class="send">➤</button></div></footer>
+    </main>
+
+    <aside class="assist">
+      <header class="assistHead"><div><h2>AI 助理</h2><p>僅提供管理員參考</p></div><span class="pill">建議中</span></header>
+      <div class="assistBody">
+        <section class="card"><div class="cardTitle"><span>最新建議回覆</span><span class="time" id="suggestionCount">0</span></div><div class="cardBody"><div id="sideSuggestions" class="sideList"></div></div></section>
+        <section class="card"><div class="cardTitle"><span>重要訊息通報</span><span class="time" id="alertCount">0</span></div><div class="cardBody" id="alertList"></div></section>
+        <section class="card"><div class="cardTitle">系統原則</div><div class="cardBody muted">LINE webhook 只做紀錄與 AI 判斷。系統不會自動回覆客戶，只有管理員按下送出才會推送 LINE 訊息。客訴、負評、建議與重大風險會發送 Telegram 通知。</div></section>
+      </div>
+    </aside>
   </div>
+
   <script>
-    const DEFAULT_API_BASE='https://mlm.fangwl591021.workers.dev';
-    const demoChats=[{"時間":Date.now()-1080000,"身份":"user","用戶ID":"U1202","內容":"請問負離子眼鏡適合長時間看電腦的人戴嗎？","類別":"產品-負離子眼鏡","AI建議":JSON.stringify(["您好，這款眼鏡適合長時間使用 3C 的上班族與學生，可作為日常配戴輔助。","建議依照平常用眼情境配戴，若有眼部疾病或不適仍建議諮詢專業醫師。"]),"重要":"否","情緒":"neutral","狀態":"待回覆"},{"時間":Date.now()-780000,"身份":"admin","用戶ID":"U1202","內容":"您好，這款眼鏡適合長時間使用 3C 的族群作為日常配戴輔助。","類別":"人工回覆","AI建議":"","重要":"否","情緒":"neutral","狀態":"已回覆"},{"時間":Date.now()-420000,"身份":"user","用戶ID":"U8819","內容":"我收到的產品外盒破損，客服一直沒回，這樣真的很糟。","類別":"退換貨作業","AI建議":JSON.stringify(["很抱歉造成您的困擾，請您先保留外盒與商品照片，我們會立即協助確認物流與換貨流程。","若為宅配破損，請提供收貨時間、照片與訂單資訊，我們會協助後續處理。"]),"重要":"是","情緒":"complaint","狀態":"待處理"},{"時間":Date.now()-180000,"身份":"user","用戶ID":"U5543","內容":"這個月獎金是幾號發放？計畫 C 也是一樣嗎？","類別":"獎金計畫","AI建議":JSON.stringify(["計畫 AB 獎金於次月 25 日匯撥；計畫 C 獎金為週結算後次週起算第五週週二匯撥。","您可以提供目前參與的計畫別，我再協助您確認對應的發放時間。"]),"重要":"否","情緒":"neutral","狀態":"待回覆"}];
-    const demoLogs=[{"時間":Date.now()-420000,"用戶ID":"U8819","內容":"我收到的產品外盒破損，客服一直沒回，這樣真的很糟。","類別":"客訴 / 物流破損","情緒":"complaint","原因":"含負評與客服未回覆，需即時處理。","狀態":"待處理","TG通知":"Demo"}];
-    const $=id=>document.getElementById(id);const els={apiBase:$('apiBase'),apiToken:$('apiToken'),searchBox:$('searchBox'),chatList:$('chatList'),messages:$('messages'),suggestions:$('suggestions'),sideSuggestions:$('sideSuggestions'),suggestionCount:$('suggestionCount'),replyText:$('replyText'),sendButton:$('sendButton'),refreshButton:$('refreshButton'),activeTitle:$('activeTitle'),activeSubtitle:$('activeSubtitle'),syncStatus:$('syncStatus'),alertList:$('alertList'),alertCount:$('alertCount'),errorBox:$('errorBox')};
-    const state={chats:demoChats,aiLogs:demoLogs,activeUserId:'U1202',isDemo:true};
-    const stored=localStorage.getItem('line_ai_api_base')||DEFAULT_API_BASE;els.apiBase.value=sanitizeApiBase(stored);localStorage.setItem('line_ai_api_base',els.apiBase.value);els.apiToken.value=localStorage.getItem('line_ai_api_token')||'';
-    els.apiBase.addEventListener('change',save);els.apiToken.addEventListener('change',save);els.searchBox.addEventListener('input',render);els.refreshButton.addEventListener('click',sync);els.sendButton.addEventListener('click',send);setInterval(sync,5000);render();sync();
-    function save(){els.apiBase.value=sanitizeApiBase(els.apiBase.value);localStorage.setItem('line_ai_api_base',els.apiBase.value);localStorage.setItem('line_ai_api_token',els.apiToken.value.trim());sync()}
-    async function sync(){const base=api(),token=els.apiToken.value.trim();if(!base||!token){state.isDemo=true;status('Demo 模式',false);err('');render();return}try{status('同步中',false);const r=await fetch(`${base}/api/data`,{headers:{Authorization:`Bearer ${token}`}});const j=await r.json();if(!r.ok||j.status!=='success')throw new Error(j.message||'同步失敗');state.chats=Array.isArray(j.data.chats)&&j.data.chats.length?j.data.chats:demoChats;state.aiLogs=Array.isArray(j.data.aiLogs)?j.data.aiLogs:[];state.isDemo=false;status('已同步',false);err('');render()}catch(e){state.isDemo=true;status('同步失敗',true);err(e.message||String(e));render()}}
-    async function send(){const text=els.replyText.value.trim();if(!text||!state.activeUserId)return;const base=api(),token=els.apiToken.value.trim();if(!base||!token||state.isDemo){state.chats.push({"時間":Date.now(),"身份":"admin","用戶ID":state.activeUserId,"內容":text,"類別":"Demo 回覆","AI建議":"","重要":"否","情緒":"neutral","狀態":"已回覆"});els.replyText.value='';render();return}try{els.sendButton.disabled=true;const r=await fetch(`${base}/api/send`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({userId:state.activeUserId,text})});const j=await r.json();if(!r.ok||j.status!=='success')throw new Error(j.message||'送出失敗');els.replyText.value='';await sync()}catch(e){err(e.message||String(e))}finally{els.sendButton.disabled=false}}
-    function render(){const groups=group(filterRows());if(!state.activeUserId&&groups[0])state.activeUserId=groups[0].userId;list(groups);messages(groups);inspect(groups)}
-    function filterRows(){const q=els.searchBox.value.trim().toLowerCase();return q?state.chats.filter(x=>[x['用戶ID'],x['內容'],x['類別'],x['狀態']].filter(Boolean).some(v=>String(v).toLowerCase().includes(q))):state.chats}
-    function group(rows){const m=new Map();rows.slice().sort((a,b)=>Number(a['時間']||0)-Number(b['時間']||0)).forEach(r=>{const id=r['用戶ID']||'unknown';if(!m.has(id))m.set(id,[]);m.get(id).push(r)});return Array.from(m.entries()).map(([userId,messages])=>({userId,messages,last:messages[messages.length-1]})).sort((a,b)=>Number(b.last['時間']||0)-Number(a.last['時間']||0))}
-    function list(groups){els.chatList.innerHTML=groups.map(g=>{const l=g.last||{},hot=g.messages.some(m=>m['重要']==='是'),act=g.userId===state.activeUserId?' active':'';return `<button class="chatitem${act}" data-id="${esc(g.userId)}"><div class="avatar">${esc(g.userId[0]||'U')}</div><div><div class="row"><span>${esc(g.userId)}</span><span class="time">${fmt(l['時間'])}</span></div><div class="preview">${esc(l['內容']||'')}</div><div class="tags"><span class="tag">${esc(l['類別']||'一般')}</span>${hot?'<span class="tag hot">重要</span>':''}</div></div></button>`}).join('')||'<div class="muted" style="padding:18px">沒有符合的聊天。</div>';document.querySelectorAll('.chatitem').forEach(b=>b.onclick=()=>{state.activeUserId=b.dataset.id;render()})}
-    function messages(groups){const g=groups.find(x=>x.userId===state.activeUserId)||groups[0];if(!g){els.messages.innerHTML='<div class="day">尚無對話</div>';return}state.activeUserId=g.userId;els.activeTitle.textContent=g.userId;els.activeSubtitle.textContent=state.isDemo?'Demo 對話，接上 Worker 後同步 LINE OA 真實聊天室':`共 ${g.messages.length} 則訊息，AI 建議僅供管理員參考`;els.messages.innerHTML='<div class="day">今天</div>'+g.messages.map(m=>{const admin=m['身份']==='admin',meta=[fmt(m['時間']),m['類別']||'',m['重要']==='是'?'重要':''].filter(Boolean).join(' · ');return `<div class="msg ${admin?'admin':'user'}"><div class="wrap"><div class="bubble">${esc(m['內容']||'')}</div><div class="meta">${esc(meta)}</div></div></div>`}).join('');els.messages.scrollTop=els.messages.scrollHeight;const s=sugs(g);els.suggestions.innerHTML=s.length?s.map(x=>`<button data-s="${esc(x)}">${esc(x)}</button>`).join(''):'<span class="muted">目前沒有 AI 建議</span>';document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{els.replyText.value=b.dataset.s;els.replyText.focus()})}
-    function inspect(groups){const g=groups.find(x=>x.userId===state.activeUserId)||groups[0],s=g?sugs(g):[];els.suggestionCount.textContent=String(s.length);els.sideSuggestions.innerHTML=s.length?s.map(x=>`<button class="sidebtn" data-s="${esc(x)}">${esc(x)}</button>`).join(''):'<div class="muted">選擇對話後，AI 建議會顯示在這裡。</div>';document.querySelectorAll('.sidebtn').forEach(b=>b.onclick=()=>{els.replyText.value=b.dataset.s;els.replyText.focus()});els.alertCount.textContent=String(state.aiLogs.length);els.alertList.innerHTML=state.aiLogs.length?state.aiLogs.map(l=>`<article class="alert"><strong>${esc(l['類別']||'重要訊息')} · ${esc(l['狀態']||'待處理')}</strong><p>${esc(l['內容']||'')}</p><div class="time">${esc(l['用戶ID']||'')} · ${fmt(l['時間'])} · TG ${esc(l['TG通知']||'')}</div></article>`).join(''):'<div class="muted">目前沒有客訴、負評、建議或重大風險通報。</div>'}
-    function sugs(g){const m=[...g.messages].reverse().find(x=>x['身份']==='user');try{const p=typeof(m&&m['AI建議'])==='string'?JSON.parse(m['AI建議']):m&&m['AI建議'];return Array.isArray(p)?p.filter(Boolean):[]}catch{return[]}}
-    function api(){const v=sanitizeApiBase(els.apiBase.value);if(v!==els.apiBase.value.trim().replace(/\/+$/,'')){els.apiBase.value=v;localStorage.setItem('line_ai_api_base',v)}return v}
-    function sanitizeApiBase(value){const raw=String(value||'').trim().replace(/\/+$/,'');if(!raw||raw==='admin'||raw==='/admin')return DEFAULT_API_BASE;try{const u=new URL(raw,window.location.origin);const sameStaticHost=u.hostname===window.location.hostname||u.hostname==='fangwl591021.github.io';const staticAdmin=/\/admin$/i.test(u.pathname);if(sameStaticHost||staticAdmin)return DEFAULT_API_BASE;return u.origin+u.pathname.replace(/\/+$/,'')}catch{return DEFAULT_API_BASE}}
-    function status(t,bad){els.syncStatus.textContent=t;els.syncStatus.style.background=bad?'#fff1f3':'#effcf4';els.syncStatus.style.color=bad?'#d92d20':'#07833b'}function err(m){els.errorBox.innerHTML=m?`<p class="error">${esc(m)}</p>`:''}function fmt(v){const n=Number(v);return n?new Date(n).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}function esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;')}
+    const DEFAULT_API_BASE = 'https://mlm.fangwl591021.workers.dev';
+    const demoChats = [
+      {'時間':Date.now()-420000,'身份':'user','用戶ID':'Udemo001','用戶名稱':'王小明','內容':'包裝破損如何更換？','類別':'退換貨作業','AI建議':JSON.stringify(['很抱歉造成您的困擾，請您先保留外盒與商品照片，我們會協助確認物流破損與換貨流程。','若是宅配破損，請提供收貨時間、照片與訂單資訊，我們會盡快協助後續處理。']),'重要':'是','情緒':'complaint','狀態':'待處理'},
+      {'時間':Date.now()-180000,'身份':'user','用戶ID':'Udemo002','用戶名稱':'陳小姐','內容':'康美霜用法？','類別':'產品總覽','AI建議':JSON.stringify(['您好，康美霜屬於康立補系列產品。建議先依產品標示與個人膚況使用，如有敏感或不適請先停止並諮詢專業人員。']),'重要':'否','情緒':'neutral','狀態':'待回覆'}
+    ];
+    const demoLogs = [{'時間':Date.now()-420000,'用戶ID':'Udemo001','用戶名稱':'王小明','內容':'包裝破損如何更換？','類別':'客訴 / 物流破損','情緒':'complaint','原因':'含破損與換貨需求，需人工關注。','狀態':'待處理','TG通知':'Demo'}];
+    const $ = id => document.getElementById(id);
+    const els = {apiBase:$('apiBase'),apiToken:$('apiToken'),searchBox:$('searchBox'),chatList:$('chatList'),messages:$('messages'),suggestions:$('suggestions'),sideSuggestions:$('sideSuggestions'),suggestionCount:$('suggestionCount'),replyText:$('replyText'),sendButton:$('sendButton'),refreshButton:$('refreshButton'),activeTitle:$('activeTitle'),activeSubtitle:$('activeSubtitle'),syncStatus:$('syncStatus'),alertList:$('alertList'),alertCount:$('alertCount'),errorBox:$('errorBox')};
+    const state = {chats:demoChats, aiLogs:demoLogs, activeUserId:'', isDemo:true};
+
+    els.apiBase.value = sanitizeApiBase(localStorage.getItem('line_ai_api_base') || DEFAULT_API_BASE);
+    els.apiToken.value = localStorage.getItem('line_ai_api_token') || '';
+    els.apiBase.addEventListener('change', saveSettings);
+    els.apiToken.addEventListener('change', saveSettings);
+    els.searchBox.addEventListener('input', render);
+    els.refreshButton.addEventListener('click', sync);
+    els.sendButton.addEventListener('click', sendReply);
+    setInterval(sync, 5000);
+    render();
+    sync();
+
+    function saveSettings(){
+      els.apiBase.value = sanitizeApiBase(els.apiBase.value);
+      localStorage.setItem('line_ai_api_base', els.apiBase.value);
+      localStorage.setItem('line_ai_api_token', els.apiToken.value.trim());
+      sync();
+    }
+
+    async function sync(){
+      const base = apiBase();
+      const token = els.apiToken.value.trim();
+      if(!base || !token){
+        state.chats = demoChats; state.aiLogs = demoLogs; state.isDemo = true;
+        setStatus('Demo 模式'); clearError(); render(); return;
+      }
+      try{
+        setStatus('同步中');
+        const res = await fetch(`${base}/api/data`, {headers:{Authorization:`Bearer ${token}`}});
+        const json = await res.json();
+        if(!res.ok || json.status !== 'success') throw new Error(json.message || '同步失敗');
+        state.chats = Array.isArray(json.data.chats) && json.data.chats.length ? json.data.chats : [];
+        state.aiLogs = Array.isArray(json.data.aiLogs) ? json.data.aiLogs : [];
+        state.isDemo = false;
+        setStatus('已同步'); clearError(); render();
+      }catch(err){
+        setStatus('同步失敗', true); showError(err.message || String(err));
+      }
+    }
+
+    async function sendReply(){
+      const text = els.replyText.value.trim();
+      if(!text || !state.activeUserId) return;
+      const current = currentGroup();
+      if(state.isDemo || !els.apiToken.value.trim()){
+        state.chats.push({'時間':Date.now(),'身份':'admin','用戶ID':state.activeUserId,'用戶名稱':current ? current.displayName : '', '內容':text,'類別':'Demo 回覆','AI建議':'','重要':'否','情緒':'neutral','狀態':'已回覆'});
+        els.replyText.value = ''; render(); return;
+      }
+      try{
+        els.sendButton.disabled = true;
+        const res = await fetch(`${apiBase()}/api/send`, {method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${els.apiToken.value.trim()}`},body:JSON.stringify({userId:state.activeUserId,text,userName:current ? current.displayName : ''})});
+        const json = await res.json();
+        if(!res.ok || json.status !== 'success') throw new Error(json.message || '送出失敗');
+        els.replyText.value = '';
+        await sync();
+      }catch(err){ showError(err.message || String(err)); }
+      finally{ els.sendButton.disabled = false; }
+    }
+
+    function render(){
+      const groups = groupRows(filteredRows());
+      if(!state.activeUserId && groups[0]) state.activeUserId = groups[0].userId;
+      renderList(groups); renderMessages(groups); renderAssistant(groups);
+    }
+
+    function filteredRows(){
+      const q = els.searchBox.value.trim().toLowerCase();
+      if(!q) return state.chats;
+      return state.chats.filter(row => [row['用戶名稱'], row['用戶ID'], row['內容'], row['類別'], row['狀態']].filter(Boolean).some(value => String(value).toLowerCase().includes(q)));
+    }
+
+    function groupRows(rows){
+      const map = new Map();
+      rows.slice().sort((a,b)=>Number(a['時間']||0)-Number(b['時間']||0)).forEach(row => {
+        const id = row['用戶ID'] || 'unknown';
+        if(!map.has(id)) map.set(id, []);
+        map.get(id).push(row);
+      });
+      return Array.from(map.entries()).map(([userId,messages]) => {
+        const last = messages[messages.length - 1] || {};
+        const displayName = nameOf(last, userId);
+        return {userId, displayName, messages, last};
+      }).sort((a,b)=>Number(b.last['時間']||0)-Number(a.last['時間']||0));
+    }
+
+    function renderList(groups){
+      els.chatList.innerHTML = groups.map(group => {
+        const last = group.last || {};
+        const hot = group.messages.some(row => row['重要'] === '是');
+        const active = group.userId === state.activeUserId ? ' active' : '';
+        const named = group.displayName && group.displayName !== group.userId;
+        return `<button class="item${active}" data-id="${esc(group.userId)}"><div class="avatar ${named?'named':''}">${esc(initialOf(group.displayName))}</div><div><div class="line"><span class="name">${esc(group.displayName)}</span><span class="time">${fmt(last['時間'])}</span></div><div class="uid">${esc(group.userId)}</div><div class="preview">${esc(last['內容'] || '')}</div><div class="tags"><span class="tag">${esc(last['類別'] || '一般查詢')}</span>${hot?'<span class="tag hot">重要</span>':''}</div></div></button>`;
+      }).join('') || '<div class="muted" style="padding:18px">沒有符合的聊天。</div>';
+      document.querySelectorAll('.item').forEach(btn => btn.onclick = () => {state.activeUserId = btn.dataset.id; render();});
+    }
+
+    function renderMessages(groups){
+      const group = groups.find(item => item.userId === state.activeUserId) || groups[0];
+      if(!group){ els.activeTitle.textContent = '尚無對話'; els.activeSubtitle.textContent = '等待 LINE webhook 收到訊息'; els.messages.innerHTML = '<div class="day">尚無訊息</div>'; return; }
+      state.activeUserId = group.userId;
+      els.activeTitle.textContent = group.displayName;
+      els.activeSubtitle.textContent = `共 ${group.messages.length} 則訊息 · 用戶ID ${group.userId}`;
+      els.messages.innerHTML = '<div class="day">今天</div>' + group.messages.map(row => {
+        const isAdmin = row['身份'] === 'admin';
+        const meta = [fmt(row['時間']), row['類別'] || '', row['重要'] === '是' ? '重要' : ''].filter(Boolean).join(' · ');
+        return `<div class="msg ${isAdmin?'admin':'user'}"><div class="wrap"><div class="bubble">${esc(row['內容'] || '')}</div><div class="meta">${esc(meta)}</div></div></div>`;
+      }).join('');
+      els.messages.scrollTop = els.messages.scrollHeight;
+      const suggestions = suggestionsFor(group);
+      els.suggestions.innerHTML = suggestions.length ? suggestions.map(text => `<button data-suggestion="${esc(text)}">${esc(text)}</button>`).join('') : '<span class="muted">目前沒有 AI 建議</span>';
+      document.querySelectorAll('[data-suggestion]').forEach(btn => btn.onclick = () => {els.replyText.value = btn.dataset.suggestion; els.replyText.focus();});
+    }
+
+    function renderAssistant(groups){
+      const group = groups.find(item => item.userId === state.activeUserId) || groups[0];
+      const suggestions = group ? suggestionsFor(group) : [];
+      els.suggestionCount.textContent = String(suggestions.length);
+      els.sideSuggestions.innerHTML = suggestions.length ? suggestions.map(text => `<button class="sideBtn" data-side-suggestion="${esc(text)}">${esc(text)}</button>`).join('') : '<div class="muted">選擇對話後，AI 建議會顯示在這裡。</div>';
+      document.querySelectorAll('[data-side-suggestion]').forEach(btn => btn.onclick = () => {els.replyText.value = btn.dataset.sideSuggestion; els.replyText.focus();});
+      els.alertCount.textContent = String(state.aiLogs.length);
+      els.alertList.innerHTML = state.aiLogs.length ? state.aiLogs.map(row => `<article class="alert"><strong>${esc(nameOf(row, row['用戶ID']))} · ${esc(row['類別'] || '重要訊息')}</strong><p>${esc(row['內容'] || '')}</p><div class="time">${esc(row['狀態'] || '待處理')} · ${fmt(row['時間'])} · TG ${esc(row['TG通知'] || '')}</div></article>`).join('') : '<div class="muted">目前沒有客訴、負評、建議或重大風險通報。</div>';
+    }
+
+    function currentGroup(){ return groupRows(state.chats).find(item => item.userId === state.activeUserId); }
+    function suggestionsFor(group){
+      const row = [...group.messages].reverse().find(item => item['身份'] === 'user');
+      if(!row) return [];
+      try{
+        const value = typeof row['AI建議'] === 'string' ? JSON.parse(row['AI建議']) : row['AI建議'];
+        return Array.isArray(value) ? value.filter(Boolean) : [];
+      }catch(_err){ return []; }
+    }
+    function nameOf(row, fallback){
+      const value = row && (row['用戶名稱'] || row['displayName'] || row['userName'] || row['姓名']);
+      return String(value || fallback || 'unknown').trim();
+    }
+    function initialOf(name){ return String(name || 'U').trim().charAt(0).toUpperCase() || 'U'; }
+    function apiBase(){
+      const value = sanitizeApiBase(els.apiBase.value);
+      if(value !== els.apiBase.value){ els.apiBase.value = value; localStorage.setItem('line_ai_api_base', value); }
+      return value;
+    }
+    function sanitizeApiBase(value){
+      const raw = String(value || '').trim().replace(/\/+$/,'');
+      if(!raw || raw === 'admin' || raw === '/admin') return DEFAULT_API_BASE;
+      try{
+        const url = new URL(raw, window.location.origin);
+        const isStaticHost = url.hostname === window.location.hostname || url.hostname === 'fangwl591021.github.io';
+        if(isStaticHost || /\/admin$/i.test(url.pathname)) return DEFAULT_API_BASE;
+        return url.origin + url.pathname.replace(/\/+$/,'');
+      }catch(_err){ return DEFAULT_API_BASE; }
+    }
+    function setStatus(text, bad){ els.syncStatus.textContent = text; els.syncStatus.className = bad ? 'pill bad' : 'pill'; }
+    function showError(text){ els.errorBox.innerHTML = text ? `<p class="error">${esc(text)}</p>` : ''; }
+    function clearError(){ showError(''); }
+    function fmt(value){ const n = Number(value); return n ? new Date(n).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''; }
+    function esc(value){ return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
   </script>
 </body>
 </html>
