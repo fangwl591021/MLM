@@ -57,6 +57,25 @@ export default {
         return jsonResponse(data, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/conversation-meta" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const userId = String(body.userId || "").trim();
+        if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
+
+        const data = await callGas(env, {
+          type: "UPDATE_CONVERSATION_META",
+          data: {
+            userId,
+            userName: String(body.userName || "").trim(),
+            status: body.status === undefined ? undefined : String(body.status || "").trim(),
+            tags: Array.isArray(body.tags) ? body.tags.map((tag) => String(tag || "").trim()).filter(Boolean) : body.tags,
+            note: body.note === undefined ? undefined : String(body.note || ""),
+          },
+        });
+        return jsonResponse(data, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/send" && request.method === "POST") {
         assertDashboardAuth(request, env);
 
@@ -76,10 +95,25 @@ export default {
 
         ctx.waitUntil(callGas(env, {
           type: "SAVE_ADMIN_REPLY",
-          data: { userId, userName, text, time: Date.now() },
+          data: { userId, userName, text, time: Date.now(), category: "人工回覆", status: "處理完畢" },
         }));
 
         return jsonResponse({ status: "success" }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/log-reply" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const userId = String(body.userId || "").trim();
+        const text = String(body.text || "").trim();
+        const userName = String(body.userName || "").trim();
+        if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
+
+        const data = await callGas(env, {
+          type: "SAVE_ADMIN_REPLY",
+          data: { userId, userName, text, time: Date.now(), category: "客服補記", status: "處理完畢" },
+        });
+        return jsonResponse(data, 200, corsHeaders);
       }
 
       if ((url.pathname === "/" || url.pathname === "/webhook/line") && request.method === "POST") {
@@ -101,7 +135,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/data", "/api/knowledge", "/api/send", "/webhook/line"],
+        routes: ["/health", "/api/data", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
