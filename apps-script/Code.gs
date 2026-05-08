@@ -8,6 +8,7 @@ const SHEETS = {
   aiLogs: "AI監看紀錄",
   errors: "系統錯誤紀錄",
   knowledge: "知識庫",
+  chatMeta: "對話管理",
 };
 
 const HEADERS = {
@@ -15,6 +16,7 @@ const HEADERS = {
   aiLogs: ["時間", "用戶ID", "內容", "類別", "情緒", "原因", "狀態", "TG通知", "用戶名稱"],
   errors: ["時間", "來源", "訊息", "細節"],
   knowledge: ["category", "question", "answer"],
+  chatMeta: ["用戶ID", "用戶名稱", "處理狀態", "標籤", "備註", "更新時間"],
 };
 
 function doPost(e) {
@@ -25,6 +27,7 @@ function doPost(e) {
     if (payload.type === "IMPORT_KNOWLEDGE_BASE") return importKnowledgeBase_(payload.data);
     if (payload.type === "LINE_WEBHOOK") return handleLineWebhook_(payload.data);
     if (payload.type === "SAVE_ADMIN_REPLY") return saveAdminReply_(payload.data);
+    if (payload.type === "UPDATE_CONVERSATION_META") return updateConversationMeta_(payload.data);
     if (payload.type === "SETUP_SHEETS") return setupSheets();
     return json_({ status: "error", message: "Unknown request type: " + payload.type });
   } catch (err) {
@@ -39,6 +42,7 @@ function setupSheets() {
   ensureSheet_(ss, SHEETS.aiLogs, HEADERS.aiLogs);
   ensureSheet_(ss, SHEETS.errors, HEADERS.errors);
   ensureSheet_(ss, SHEETS.knowledge, HEADERS.knowledge);
+  ensureSheet_(ss, SHEETS.chatMeta, HEADERS.chatMeta);
   return json_({ status: "success", message: "Sheets are ready" });
 }
 
@@ -98,6 +102,7 @@ function fetchDashboardData_() {
     data: {
       chats: getSheetDataAsJson_(ss, SHEETS.chats, 200),
       aiLogs: getSheetDataAsJson_(ss, SHEETS.aiLogs, 100),
+      chatMeta: getSheetDataAsJson_(ss, SHEETS.chatMeta, 500),
       systemErrors: getSheetDataAsJson_(ss, SHEETS.errors, 20),
       knowledgeMeta: getKnowledgeMeta_(),
     },
@@ -121,6 +126,7 @@ function handleLineWebhook_(data) {
     const analysis = performAIAnalysis_(text, userId, userName);
     const now = Date.now();
     chatSheet.appendRow([now, "user", userId, text, analysis.category, JSON.stringify(analysis.suggestions || []), analysis.isImportant ? "是" : "否", analysis.sentiment || "neutral", "待回覆", userName]);
+    upsertConversationMeta_(ss, { userId: userId, userName: userName, status: analysis.isImportant ? "待處理" : "待回覆" });
 
     if (analysis.isImportant) {
       const tgStatus = sendTelegramAlert_(userId, userName, text, analysis);
@@ -135,8 +141,64 @@ function saveAdminReply_(data) {
   if (!data || !data.userId || !data.text) return json_({ status: "error", message: "userId and text are required" });
   const ss = getSpreadsheet_();
   const sheet = ensureSheet_(ss, SHEETS.chats, HEADERS.chats);
-  sheet.appendRow([data.time || Date.now(), "admin", data.userId, data.text, "人工回覆", "", "否", "neutral", "已回覆", data.userName || ""]);
+  const category = data.category || "人工回覆";
+  const status = data.status || "處理完畢";
+  sheet.appendRow([data.time || Date.now(), "admin", data.userId, data.text, category, "", "否", "neutral", status, data.userName || ""]);
+  upsertConversationMeta_(ss, { userId: data.userId, userName: data.userName || "", status: status });
   return json_({ status: "success" });
+}
+
+function updateConversationMeta_(data) {
+  if (!data || !data.userId) return json_({ status: "error", message: "userId is required" });
+  const ss = getSpreadsheet_();
+  const meta = upsertConversationMeta_(ss, data);
+  return json_({ status: "success", meta: meta });
+}
+
+function upsertConversationMeta_(ss, data) {
+  const sheet = ensureSheet_(ss, SHEETS.chatMeta, HEADERS.chatMeta);
+  const userId = String(data.userId || "").trim();
+  if (!userId) throw new Error("userId is required");
+
+  const values = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+  for (let i = 1; i < values.length; i += 1) {
+    if (String(values[i][0] || "") === userId) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  const current = rowIndex > 0 ? sheet.getRange(rowIndex, 1, 1, HEADERS.chatMeta.length).getValues()[0] : [userId, "", "待回覆", "", "", ""];
+  const tags = normalizeTags_(data.tags === undefined ? current[3] : data.tags).join(",");
+  const row = [
+    userId,
+    data.userName !== undefined && data.userName !== "" ? String(data.userName) : String(current[1] || ""),
+    data.status !== undefined && data.status !== "" ? String(data.status) : String(current[2] || "待回覆"),
+    tags,
+    data.note !== undefined ? String(data.note || "") : String(current[4] || ""),
+    Date.now(),
+  ];
+
+  if (rowIndex > 0) {
+    sheet.getRange(rowIndex, 1, 1, HEADERS.chatMeta.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
+
+  const result = {};
+  HEADERS.chatMeta.forEach(function (header, index) { result[header] = row[index]; });
+  return result;
+}
+
+function normalizeTags_(value) {
+  const source = Array.isArray(value) ? value : String(value || "").split(/[,，]/);
+  const seen = {};
+  return source.map(function (tag) { return String(tag || "").trim(); }).filter(function (tag) {
+    if (!tag || seen[tag]) return false;
+    seen[tag] = true;
+    return true;
+  }).slice(0, 8);
 }
 
 function performAIAnalysis_(text, userId, userName) {
