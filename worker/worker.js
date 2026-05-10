@@ -40,6 +40,54 @@ export default {
         return jsonResponse(data, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/profile-debug" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const userId = String(url.searchParams.get("userId") || url.searchParams.get("uid") || "").trim();
+        if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
+        const gasMeta = await callGas(env, { type: "GET_CONVERSATION_META", data: { userId } });
+        const direct = await fetchLineProfileWithDetail(env, userId);
+        return jsonResponse({
+          status: "success",
+          userId,
+          stored: gasMeta.meta || null,
+          placeholderDetected: isPlaceholderName(gasMeta.meta && gasMeta.meta["用戶名稱"], userId),
+          profileChecks: { direct },
+        }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/backfill-profiles" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const limit = Math.max(1, Math.min(Number(body.limit || 100), 300));
+        const targets = await callGas(env, { type: "FETCH_PROFILE_BACKFILL_TARGETS", data: { limit } });
+        const results = [];
+
+        for (const target of targets.targets || []) {
+          const userId = String(target.userId || target["用戶ID"] || "").trim();
+          if (!userId) continue;
+          const profile = await fetchLineProfileWithDetail(env, userId);
+          const result = { userId, profileStatus: profile.status, updated: false };
+          if (profile.ok && profile.data && (profile.data.displayName || profile.data.pictureUrl)) {
+            const updated = await callGas(env, {
+              type: "UPDATE_CONVERSATION_META",
+              data: {
+                userId,
+                userName: profile.data.displayName || "",
+                pictureUrl: profile.data.pictureUrl || "",
+              },
+            });
+            result.updated = updated.status === "success";
+            result.displayName = profile.data.displayName || "";
+            result.pictureUrl = profile.data.pictureUrl || "";
+          } else {
+            result.error = profile.detail || profile.error || "LINE profile unavailable";
+          }
+          results.push(result);
+        }
+
+        return jsonResponse({ status: "success", scanned: (targets.targets || []).length, results }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/knowledge" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
@@ -68,6 +116,7 @@ export default {
           data: {
             userId,
             userName: String(body.userName || "").trim(),
+            pictureUrl: String(body.pictureUrl || "").trim(),
             status: body.status === undefined ? undefined : String(body.status || "").trim(),
             tags: Array.isArray(body.tags) ? body.tags.map((tag) => String(tag || "").trim()).filter(Boolean) : body.tags,
             note: body.note === undefined ? undefined : String(body.note || ""),
@@ -135,7 +184,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/data", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line"],
+        routes: ["/health", "/api/data", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -207,16 +256,37 @@ async function attachLineProfiles(payload, env) {
 }
 
 async function fetchLineProfile(env, userId) {
+  const result = await fetchLineProfileWithDetail(env, userId);
+  return result.ok ? result.data : null;
+}
+
+async function fetchLineProfileWithDetail(env, userId) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
   try {
     const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
       headers: { "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
     });
-    if (!response.ok) return null;
-    const profile = await response.json();
-    return { displayName: profile.displayName || "", pictureUrl: profile.pictureUrl || "", statusMessage: profile.statusMessage || "" };
-  } catch (_err) {
-    return null;
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
+    if (!response.ok) return { ok: false, status: response.status, detail: text };
+    return {
+      ok: true,
+      status: response.status,
+      data: {
+        displayName: data && data.displayName ? data.displayName : "",
+        pictureUrl: data && data.pictureUrl ? data.pictureUrl : "",
+        statusMessage: data && data.statusMessage ? data.statusMessage : "",
+      },
+    };
+  } catch (err) {
+    return { ok: false, status: 0, error: err && err.message ? err.message : String(err) };
   }
+}
+
+function isPlaceholderName(value, userId) {
+  const text = String(value || "").trim();
+  return !text || text === String(userId || "") || /^U[a-z0-9]{8,}$/i.test(text) || /^用戶\s*[a-z0-9]{4,}$/i.test(text);
 }
 
 async function safeJson(request) {
