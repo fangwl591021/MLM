@@ -97,12 +97,15 @@ function normalizeKnowledgePayload_(payload) {
 function fetchDashboardData_() {
   const ss = getSpreadsheet_();
   setupSheets();
+  const chatMeta = getSheetDataAsJson_(ss, SHEETS.chatMeta, 500);
+  const chats = enrichChatNames_(getSheetDataAsJson_(ss, SHEETS.chats, 200), chatMeta);
+  const aiLogs = enrichChatNames_(getSheetDataAsJson_(ss, SHEETS.aiLogs, 100), chatMeta);
   return json_({
     status: "success",
     data: {
-      chats: getSheetDataAsJson_(ss, SHEETS.chats, 200),
-      aiLogs: getSheetDataAsJson_(ss, SHEETS.aiLogs, 100),
-      chatMeta: getSheetDataAsJson_(ss, SHEETS.chatMeta, 500),
+      chats: chats,
+      aiLogs: aiLogs,
+      chatMeta: chatMeta,
       systemErrors: getSheetDataAsJson_(ss, SHEETS.errors, 20),
       knowledgeMeta: getKnowledgeMeta_(),
     },
@@ -120,16 +123,16 @@ function handleLineWebhook_(data) {
     if (!event.message || event.message.type !== "text") return;
     const text = String(event.message.text || "").trim();
     const userId = event.source && event.source.userId ? event.source.userId : "unknown";
-    const userName = getEventDisplayName_(event, userId);
+    const userName = resolveEventDisplayName_(ss, event, userId);
     if (!text) return;
 
-    const analysis = performAIAnalysis_(text, userId, userName);
+    const analysis = performAIAnalysis_(text, userId, userName || userId);
     const now = Date.now();
     chatSheet.appendRow([now, "user", userId, text, analysis.category, JSON.stringify(analysis.suggestions || []), analysis.isImportant ? "是" : "否", analysis.sentiment || "neutral", "待回覆", userName]);
     upsertConversationMeta_(ss, { userId: userId, userName: userName, status: analysis.isImportant ? "待處理" : "待回覆" });
 
     if (analysis.isImportant) {
-      const tgStatus = sendTelegramAlert_(userId, userName, text, analysis);
+      const tgStatus = sendTelegramAlert_(userId, userName || userId, text, analysis);
       aiSheet.appendRow([now, userId, text, analysis.category, analysis.sentiment || "neutral", analysis.reportReason || analysis.summary || "", "待處理", tgStatus, userName]);
     }
   });
@@ -143,8 +146,9 @@ function saveAdminReply_(data) {
   const sheet = ensureSheet_(ss, SHEETS.chats, HEADERS.chats);
   const category = data.category || "人工回覆";
   const status = data.status || "處理完畢";
-  sheet.appendRow([data.time || Date.now(), "admin", data.userId, data.text, category, "", "否", "neutral", status, data.userName || ""]);
-  upsertConversationMeta_(ss, { userId: data.userId, userName: data.userName || "", status: status });
+  const stableName = selectStableUserName_(data.userId, getKnownUserName_(ss, data.userId), data.userName || "");
+  sheet.appendRow([data.time || Date.now(), "admin", data.userId, data.text, category, "", "否", "neutral", status, stableName]);
+  upsertConversationMeta_(ss, { userId: data.userId, userName: stableName, status: status });
   return json_({ status: "success" });
 }
 
@@ -171,24 +175,88 @@ function upsertConversationMeta_(ss, data) {
 
   const current = rowIndex > 0 ? sheet.getRange(rowIndex, 1, 1, HEADERS.chatMeta.length).getValues()[0] : [userId, "", "待回覆", "", "", ""];
   const tags = normalizeTags_(data.tags === undefined ? current[3] : data.tags).join(",");
+  const stableName = selectStableUserName_(userId, current[1], data.userName);
   const row = [
     userId,
-    data.userName !== undefined && data.userName !== "" ? String(data.userName) : String(current[1] || ""),
+    stableName,
     data.status !== undefined && data.status !== "" ? String(data.status) : String(current[2] || "待回覆"),
     tags,
     data.note !== undefined ? String(data.note || "") : String(current[4] || ""),
     Date.now(),
   ];
 
-  if (rowIndex > 0) {
-    sheet.getRange(rowIndex, 1, 1, HEADERS.chatMeta.length).setValues([row]);
-  } else {
-    sheet.appendRow(row);
-  }
+  if (rowIndex > 0) sheet.getRange(rowIndex, 1, 1, HEADERS.chatMeta.length).setValues([row]);
+  else sheet.appendRow(row);
 
   const result = {};
   HEADERS.chatMeta.forEach(function (header, index) { result[header] = row[index]; });
   return result;
+}
+
+function resolveEventDisplayName_(ss, event, userId) {
+  const profile = event && event.userProfile ? event.userProfile : {};
+  const profileName = profile.displayName ? String(profile.displayName).trim() : "";
+  if (profileName && !looksLikeUserId_(profileName, userId)) return profileName;
+  return getKnownUserName_(ss, userId);
+}
+
+function getKnownUserName_(ss, userId) {
+  const metaName = getKnownNameFromMeta_(ss, userId);
+  if (metaName) return metaName;
+  return getKnownNameFromChats_(ss, userId);
+}
+
+function getKnownNameFromMeta_(ss, userId) {
+  const sheet = ss.getSheetByName(SHEETS.chatMeta);
+  if (!sheet) return "";
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i += 1) {
+    if (String(values[i][0] || "") === String(userId || "")) {
+      const name = String(values[i][1] || "").trim();
+      return looksLikeUserId_(name, userId) ? "" : name;
+    }
+  }
+  return "";
+}
+
+function getKnownNameFromChats_(ss, userId) {
+  const sheet = ss.getSheetByName(SHEETS.chats);
+  if (!sheet) return "";
+  const values = sheet.getDataRange().getValues();
+  for (let i = values.length - 1; i >= 1; i -= 1) {
+    if (String(values[i][2] || "") === String(userId || "")) {
+      const name = String(values[i][9] || "").trim();
+      if (name && !looksLikeUserId_(name, userId)) return name;
+    }
+  }
+  return "";
+}
+
+function selectStableUserName_(userId, currentName, incomingName) {
+  const current = String(currentName || "").trim();
+  const incoming = String(incomingName || "").trim();
+  if (incoming && !looksLikeUserId_(incoming, userId)) return incoming;
+  if (current && !looksLikeUserId_(current, userId)) return current;
+  return "";
+}
+
+function looksLikeUserId_(value, userId) {
+  const text = String(value || "").trim();
+  return !text || text === String(userId || "") || /^U[a-z0-9]{8,}$/i.test(text) || text === "unknown";
+}
+
+function enrichChatNames_(rows, chatMeta) {
+  const names = {};
+  (chatMeta || []).forEach(function (row) {
+    const userId = row["用戶ID"];
+    const name = row["用戶名稱"];
+    if (userId && name && !looksLikeUserId_(name, userId)) names[userId] = name;
+  });
+  return (rows || []).map(function (row) {
+    const userId = row["用戶ID"];
+    if (userId && names[userId] && looksLikeUserId_(row["用戶名稱"], userId)) row["用戶名稱"] = names[userId];
+    return row;
+  });
 }
 
 function normalizeTags_(value) {
@@ -384,11 +452,6 @@ function sendTelegramAlert_(userId, userName, text, analysis) {
     logError_("sendTelegramAlert", err.message || String(err), message);
     return "通知失敗";
   }
-}
-
-function getEventDisplayName_(event, userId) {
-  const profile = event && event.userProfile ? event.userProfile : {};
-  return profile.displayName ? String(profile.displayName) : userId;
 }
 
 function getKnowledgeBase_() {
