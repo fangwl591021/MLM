@@ -559,7 +559,7 @@ async function updateConversationMeta(env, input) {
 async function backfillProfiles(env, limit, options = {}) {
   const force = Boolean(options.force);
   const staleBefore = Date.now() - Number(options.staleMs || 0);
-  const staleClause = force ? "" : "AND (p.last_profile_sync IS NULL OR p.last_profile_sync < ?)";
+  const staleClause = force ? "" : "AND (p.profile_status IS NULL OR p.last_profile_sync IS NULL OR p.last_profile_sync < ?)";
   const bindings = force ? [limit] : [staleBefore, limit];
   const { results } = await env.DB.prepare(`
     SELECT t.user_id, t.source_type, t.source_id, t.display_name, t.picture_url
