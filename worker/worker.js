@@ -1,13 +1,18 @@
 /**
- * Cloudflare Worker: LINE OA webhook relay + dashboard API.
+ * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
  * Core rule:
  * - Incoming LINE messages are never auto-replied.
- * - The Worker verifies LINE, forwards events to Google Apps Script, and returns OK.
- * - Only an authenticated dashboard admin can manually push a LINE message or import knowledge JSON.
+ * - D1 is the primary realtime store.
+ * - GAS is kept as an async backup / legacy bridge.
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
+const STATUS_PENDING = "\u5f85\u56de\u8986";
+const STATUS_IMPORTANT = "\u5f85\u8655\u7406";
+const STATUS_DONE = "\u8655\u7406\u5b8c\u7562";
+const ADMIN_ROLE = "admin";
+const USER_ROLE = "user";
 
 export default {
   async fetch(request, env, ctx) {
@@ -24,11 +29,13 @@ export default {
           status: "ok",
           service: "line-oa-ai-suggestion-worker",
           checks: {
+            DB: Boolean(env.DB),
             GAS_URL: Boolean(env.GAS_URL),
             GAS_SHARED_SECRET: Boolean(env.GAS_SHARED_SECRET),
             LINE_CHANNEL_SECRET: Boolean(env.LINE_CHANNEL_SECRET),
             LINE_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
             DASHBOARD_API_TOKEN: Boolean(env.DASHBOARD_API_TOKEN),
+            OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
         }, 200, corsHeaders);
@@ -36,21 +43,60 @@ export default {
 
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        const data = await callGas(env, { type: "FETCH_DASHBOARD_DATA" });
-        return jsonResponse(data, 200, corsHeaders);
+        return jsonResponse(await fetchDashboardData(env), 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/migrate-gas-to-d1" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        if (!env.DB) return jsonResponse({ status: "error", message: "DB is not configured" }, 500, corsHeaders);
+        const result = await migrateGasToD1(env);
+        return jsonResponse(result, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/line-oa/threads" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const data = await fetchDashboardData(env);
+        return jsonResponse({ success: true, status: "success", data: data.data.threads || [] }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/line-oa/thread" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const id = stringValue(url.searchParams.get("id"));
+        if (!id) return jsonResponse({ success: false, status: "error", message: "id is required" }, 400, corsHeaders);
+        const thread = await fetchThread(env, id);
+        if (!thread) return jsonResponse({ success: false, status: "error", message: "thread not found" }, 404, corsHeaders);
+        return jsonResponse({ success: true, status: "success", data: thread }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/line-oa/thread" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const userId = stringValue(body.userId || body.id).replace(/^user:/, "");
+        if (!userId) return jsonResponse({ success: false, status: "error", message: "userId or id is required" }, 400, corsHeaders);
+        const meta = await updateConversationMeta(env, {
+          userId,
+          userName: stringValue(body.name || body.userName),
+          pictureUrl: stringValue(body.pictureUrl),
+          status: body.status === undefined ? undefined : stringValue(body.status),
+          tags: body.tags,
+          note: body.note === undefined ? undefined : String(body.note || ""),
+        });
+        ctx.waitUntil(backupGas(env, { type: "UPDATE_CONVERSATION_META", data: metaToGasPayload(meta) }));
+        return jsonResponse({ success: true, status: "success", data: meta }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/profile-debug" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        const userId = String(url.searchParams.get("userId") || url.searchParams.get("uid") || "").trim();
+        const userId = stringValue(url.searchParams.get("userId") || url.searchParams.get("uid"));
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
-        const gasMeta = await callGas(env, { type: "GET_CONVERSATION_META", data: { userId } });
+        const stored = await getProfile(env, userId);
         const direct = await fetchLineProfileWithDetail(env, userId);
         return jsonResponse({
           status: "success",
           userId,
-          stored: gasMeta.meta || null,
-          placeholderDetected: isPlaceholderName(gasMeta.meta && gasMeta.meta["用戶名稱"], userId),
+          stored,
+          placeholderDetected: isPlaceholderName(stored && stored.display_name, userId),
+          missingPicture: !(stored && stored.picture_url),
           profileChecks: { direct },
         }, 200, corsHeaders);
       }
@@ -58,133 +104,94 @@ export default {
       if (url.pathname === "/api/backfill-profiles" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
-        const limit = Math.max(1, Math.min(Number(body.limit || 100), 300));
-        const targets = await callGas(env, { type: "FETCH_PROFILE_BACKFILL_TARGETS", data: { limit } });
-        const results = [];
-
-        for (const target of targets.targets || []) {
-          const userId = String(target.userId || target["用戶ID"] || "").trim();
-          if (!userId) continue;
-          const profile = await fetchLineProfileWithDetail(env, userId);
-          const result = { userId, profileStatus: profile.status, updated: false };
-          if (profile.ok && profile.data && (profile.data.displayName || profile.data.pictureUrl)) {
-            const updated = await callGas(env, {
-              type: "UPDATE_CONVERSATION_META",
-              data: {
-                userId,
-                userName: profile.data.displayName || "",
-                pictureUrl: profile.data.pictureUrl || "",
-              },
-            });
-            result.updated = updated.status === "success";
-            result.displayName = profile.data.displayName || "";
-            result.pictureUrl = profile.data.pictureUrl || "";
-          } else {
-            result.error = profile.detail || profile.error || "LINE profile unavailable";
-          }
-          results.push(result);
-        }
-
-        return jsonResponse({ status: "success", scanned: (targets.targets || []).length, results }, 200, corsHeaders);
+        const limit = clampNumber(body.limit || 100, 1, 300);
+        const results = await backfillProfiles(env, limit);
+        return jsonResponse({ status: "success", scanned: results.length, results }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/knowledge" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
-        const knowledge = body.knowledge;
-        if (!knowledge) return jsonResponse({ status: "error", message: "knowledge is required" }, 400, corsHeaders);
-
-        const data = await callGas(env, {
+        if (!body.knowledge) return jsonResponse({ status: "error", message: "knowledge is required" }, 400, corsHeaders);
+        const result = await importKnowledge(env, body.knowledge, stringValue(body.fileName || "dashboard-upload.json"));
+        ctx.waitUntil(backupGas(env, {
           type: "IMPORT_KNOWLEDGE_BASE",
-          data: {
-            knowledge,
-            fileName: String(body.fileName || "dashboard-upload.json"),
-            source: "dashboard-upload",
-          },
-        });
-        return jsonResponse(data, 200, corsHeaders);
+          data: { knowledge: body.knowledge, fileName: body.fileName || "dashboard-upload.json", source: "dashboard-upload" },
+        }));
+        return jsonResponse(result, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/conversation-meta" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
-        const userId = String(body.userId || "").trim();
+        const userId = stringValue(body.userId);
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
-
-        const data = await callGas(env, {
-          type: "UPDATE_CONVERSATION_META",
-          data: {
-            userId,
-            userName: String(body.userName || "").trim(),
-            pictureUrl: String(body.pictureUrl || "").trim(),
-            status: body.status === undefined ? undefined : String(body.status || "").trim(),
-            tags: Array.isArray(body.tags) ? body.tags.map((tag) => String(tag || "").trim()).filter(Boolean) : body.tags,
-            note: body.note === undefined ? undefined : String(body.note || ""),
-          },
+        const meta = await updateConversationMeta(env, {
+          userId,
+          userName: stringValue(body.userName),
+          pictureUrl: stringValue(body.pictureUrl),
+          status: body.status === undefined ? undefined : stringValue(body.status),
+          tags: body.tags,
+          note: body.note === undefined ? undefined : String(body.note || ""),
         });
-        return jsonResponse(data, 200, corsHeaders);
+        ctx.waitUntil(backupGas(env, { type: "UPDATE_CONVERSATION_META", data: metaToGasPayload(meta) }));
+        return jsonResponse({ status: "success", meta }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/send" && request.method === "POST") {
         assertDashboardAuth(request, env);
-
         const body = await safeJson(request);
-        const userId = String(body.userId || "").trim();
-        const text = String(body.text || "").trim();
-        const userName = String(body.userName || "").trim();
-
-        if (!userId || !text) {
-          return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
-        }
+        const userId = stringValue(body.userId);
+        const text = stringValue(body.text);
+        if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
 
         const lineResult = await pushLineMessage(env, userId, text);
         if (!lineResult.ok) {
           return jsonResponse({ status: "error", message: "LINE push failed", detail: lineResult.detail }, lineResult.status || 502, corsHeaders);
         }
 
-        ctx.waitUntil(callGas(env, {
+        const now = Date.now();
+        await saveAdminMessage(env, { userId, text, createdAt: now, status: STATUS_DONE });
+        ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
-          data: { userId, userName, text, time: Date.now(), category: "人工回覆", status: "處理完畢" },
+          data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u4eba\u5de5\u56de\u8986", status: STATUS_DONE },
         }));
-
         return jsonResponse({ status: "success" }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/log-reply" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
-        const userId = String(body.userId || "").trim();
-        const text = String(body.text || "").trim();
-        const userName = String(body.userName || "").trim();
+        const userId = stringValue(body.userId);
+        const text = stringValue(body.text);
         if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
 
-        const data = await callGas(env, {
+        const now = Date.now();
+        await saveAdminMessage(env, { userId, text, createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
+        ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
-          data: { userId, userName, text, time: Date.now(), category: "客服補記", status: "處理完畢" },
-        });
-        return jsonResponse(data, 200, corsHeaders);
+          data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u88dc\u8a18\u4e0d\u63a8\u9001", status: STATUS_DONE },
+        }));
+        return jsonResponse({ status: "success" }, 200, corsHeaders);
       }
 
       if ((url.pathname === "/" || url.pathname === "/webhook/line") && request.method === "POST") {
         const rawBody = await request.text();
         const signature = request.headers.get("x-line-signature") || "";
         const validLine = await verifyLineSignature(rawBody, signature, env.LINE_CHANNEL_SECRET);
-
         if (!validLine) return new Response("Invalid LINE signature", { status: 401, headers: corsHeaders });
 
         const payload = JSON.parse(rawBody);
         if (Array.isArray(payload.events) && payload.events.length > 0) {
-          await attachLineProfiles(payload, env);
-          ctx.waitUntil(callGas(env, { type: "LINE_WEBHOOK", data: payload }));
+          ctx.waitUntil(processLineWebhook(env, payload));
         }
-
         return new Response("OK", { status: 200, headers: corsHeaders });
       }
 
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/data", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line"],
+        routes: ["/health", "/api/data", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -192,30 +199,642 @@ export default {
   },
 };
 
-function buildCorsHeaders(request, env) {
-  const requestOrigin = request.headers.get("Origin") || "";
-  const allowedOrigin = env.ALLOWED_ORIGIN || "";
-  const origin = allowedOrigin && requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin || "*";
+async function fetchDashboardData(env) {
+  if (!env.DB) return withThreadData(await callGas(env, { type: "FETCH_DASHBOARD_DATA" }));
+  const [threads, aiLogs, knowledgeMeta] = await Promise.all([
+    fetchThreads(env, 120),
+    fetchAiLogs(env, 100),
+    getKnowledgeMeta(env),
+  ]);
+  if (!threads.length && env.GAS_URL) {
+    const gasData = await backupGas(env, { type: "FETCH_DASHBOARD_DATA" });
+    if (gasData && gasData.status === "success") return withThreadData(gasData);
+  }
   return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": "86400",
-    ...JSON_HEADERS,
+    status: "success",
+    data: {
+      threads,
+      chats: threads.flatMap((thread) => thread.messages.map((message) => message.raw)),
+      aiLogs,
+      chatMeta: threads.map(threadToMetaRow),
+      systemErrors: [],
+      knowledgeMeta,
+    },
   };
 }
 
-function assertDashboardAuth(request, env) {
-  if (!env.DASHBOARD_API_TOKEN) throw httpError("DASHBOARD_API_TOKEN is not configured", 500);
-  const auth = request.headers.get("Authorization") || "";
-  const expected = `Bearer ${env.DASHBOARD_API_TOKEN}`;
-  if (auth !== expected) throw httpError("Unauthorized dashboard request", 401);
+async function fetchThreads(env, limit = 120) {
+  const { results } = await env.DB.prepare("SELECT * FROM threads ORDER BY last_message_at DESC, updated_at DESC LIMIT ?").bind(limit).all();
+  if (!results.length) return [];
+  const ids = results.map((row) => row.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const messageRows = await env.DB.prepare(`SELECT * FROM messages WHERE thread_id IN (${placeholders}) ORDER BY created_at ASC`).bind(...ids).all();
+  const byThread = new Map(ids.map((id) => [id, []]));
+  for (const row of messageRows.results || []) {
+    if (!byThread.has(row.thread_id)) byThread.set(row.thread_id, []);
+    byThread.get(row.thread_id).push(row);
+  }
+  return results.map((row) => threadFromD1(row, byThread.get(row.id) || []));
 }
 
-function httpError(message, status) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
+async function fetchThread(env, id) {
+  const lookup = id.startsWith("user:") ? id : `user:${id}`;
+  const row = await env.DB.prepare("SELECT * FROM threads WHERE id = ? OR user_id = ?").bind(lookup, id.replace(/^user:/, "")).first();
+  if (!row) return null;
+  const messages = await env.DB.prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC").bind(row.id).all();
+  return threadFromD1(row, messages.results || []);
+}
+
+async function fetchAiLogs(env, limit = 100) {
+  const { results } = await env.DB.prepare("SELECT * FROM ai_logs ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+  return (results || []).map((row) => ({
+    "\u6642\u9593": row.created_at,
+    "\u7528\u6236ID": row.user_id,
+    "\u5167\u5bb9": row.text,
+    "\u985e\u5225": row.category,
+    "\u60c5\u7dd2": row.sentiment,
+    "\u539f\u56e0": row.report_reason,
+    "\u72c0\u614b": row.status,
+    "TG\u901a\u77e5": row.telegram_status,
+  }));
+}
+
+async function migrateGasToD1(env) {
+  const gas = await callGas(env, { type: "FETCH_DASHBOARD_DATA" });
+  const data = gas.data || {};
+  const chats = Array.isArray(data.chats) ? data.chats : [];
+  const chatMeta = Array.isArray(data.chatMeta) ? data.chatMeta : [];
+  const threads = buildThreadsFromGas(chats, chatMeta);
+  let threadCount = 0;
+  let messageCount = 0;
+  let profileCount = 0;
+
+  for (const thread of threads) {
+    const now = Date.now();
+    const threadId = `user:${thread.userId}`;
+    await upsertProfile(env, {
+      userId: thread.userId,
+      displayName: thread.hasRealName ? thread.name : "",
+      pictureUrl: thread.pictureUrl,
+      now,
+    });
+    profileCount += 1;
+
+    await env.DB.prepare(`
+      INSERT INTO threads (id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
+        picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
+        summary = excluded.summary,
+        status = excluded.status,
+        risk = excluded.risk,
+        tags = excluded.tags,
+        note = excluded.note,
+        last_message_at = excluded.last_message_at,
+        updated_at = excluded.updated_at
+    `).bind(
+      threadId,
+      thread.userId,
+      thread.hasRealName ? thread.name : "",
+      thread.pictureUrl || "",
+      thread.summary || "",
+      thread.status || STATUS_PENDING,
+      thread.risk || "low",
+      JSON.stringify(thread.tags || []),
+      thread.note || "",
+      thread.lastMessageAt || now,
+      thread.lastMessageAt || now,
+      now,
+    ).run();
+    threadCount += 1;
+
+    for (const message of thread.messages || []) {
+      const messageId = message.id || `${threadId}:${message.createdAt || now}:${crypto.randomUUID()}`;
+      await env.DB.prepare(`
+        INSERT OR IGNORE INTO messages (id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        messageId,
+        threadId,
+        thread.userId,
+        message.senderRole === ADMIN_ROLE ? ADMIN_ROLE : USER_ROLE,
+        "text",
+        message.text || "",
+        message.category || "",
+        JSON.stringify(message.suggestions || []),
+        message.important ? 1 : 0,
+        (message.raw && message.raw["\u60c5\u7dd2"]) || "neutral",
+        JSON.stringify(message.raw || {}),
+        message.createdAt || now,
+      ).run();
+      messageCount += 1;
+    }
+  }
+
+  return { status: "success", threads: threadCount, messages: messageCount, profiles: profileCount };
+}
+
+function threadFromD1(row, messages) {
+  const tags = parseJsonArray(row.tags);
+  const name = stringValue(row.display_name) || row.user_id;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name,
+    displayName: name,
+    pictureUrl: stringValue(row.picture_url),
+    summary: stringValue(row.summary),
+    status: normalizeStatusForDisplay(row.status),
+    risk: row.risk || "low",
+    tags,
+    note: stringValue(row.note),
+    lastMessageAt: Number(row.last_message_at || 0),
+    hasRealName: !isPlaceholderName(name, row.user_id),
+    messages: messages.map((message) => messageFromD1(row, message)),
+  };
+}
+
+function messageFromD1(thread, message) {
+  const suggestions = parseJsonArray(message.suggestions);
+  const raw = {
+    "\u6642\u9593": message.created_at,
+    "\u8eab\u4efd": message.sender_role === ADMIN_ROLE ? "admin" : "user",
+    "\u7528\u6236ID": message.user_id,
+    "\u5167\u5bb9": message.text,
+    "\u985e\u5225": message.category,
+    "AI\u5efa\u8b70": JSON.stringify(suggestions),
+    "\u91cd\u8981": message.important ? "\u662f" : "\u5426",
+    "\u60c5\u7dd2": message.sentiment || "neutral",
+    "\u72c0\u614b": normalizeStatusForDisplay(thread.status),
+    "\u7528\u6236\u540d\u7a31": thread.display_name || "",
+    "\u982d\u50cfURL": thread.picture_url || "",
+  };
+  return {
+    id: message.id,
+    type: message.message_type || "text",
+    senderRole: message.sender_role === ADMIN_ROLE ? ADMIN_ROLE : USER_ROLE,
+    senderId: message.user_id,
+    senderName: message.sender_role === ADMIN_ROLE ? "\u7ba1\u7406\u54e1" : (thread.display_name || message.user_id),
+    text: message.text,
+    createdAt: message.created_at,
+    category: message.category,
+    suggestions,
+    important: Boolean(message.important),
+    raw,
+  };
+}
+
+async function processLineWebhook(env, payload) {
+  await attachLineProfiles(payload, env);
+  for (const event of payload.events || []) {
+    if (!event || event.type !== "message" || !event.message || event.message.type !== "text") continue;
+    const userId = event.source && event.source.userId ? event.source.userId : "";
+    const text = stringValue(event.message.text);
+    if (!userId || !text) continue;
+    await saveIncomingMessage(env, event, userId, text);
+  }
+  await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
+}
+
+async function saveIncomingMessage(env, event, userId, text) {
+  const now = Number(event.timestamp || Date.now());
+  const sourceType = stringValue(event.source && event.source.type) || "user";
+  const sourceId = stringValue((event.source && (event.source.groupId || event.source.roomId)) || userId);
+  const threadId = `user:${userId}`;
+  const profile = await resolveProfile(env, userId, event.source || {}, event.userProfile || null);
+  const analysis = await analyzeMessage(env, text, userId, profile.displayName || userId);
+  const status = analysis.isImportant ? STATUS_IMPORTANT : STATUS_PENDING;
+  const risk = analysis.isImportant ? "high" : "low";
+  const messageId = stringValue(event.message.id) || `${threadId}:${now}:${crypto.randomUUID()}`;
+
+  await upsertProfile(env, {
+    userId,
+    displayName: profile.displayName,
+    pictureUrl: profile.pictureUrl,
+    sourceType,
+    sourceId,
+    profileStatus: profile.profileStatus,
+    profileError: profile.profileError,
+    now,
+  });
+
+  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ?").bind(threadId).first();
+  await env.DB.prepare(`
+    INSERT INTO threads (id, user_id, source_type, source_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
+      picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
+      summary = excluded.summary,
+      status = excluded.status,
+      risk = excluded.risk,
+      last_message_at = excluded.last_message_at,
+      updated_at = excluded.updated_at
+  `).bind(
+    threadId,
+    userId,
+    sourceType,
+    sourceId,
+    profile.displayName || "",
+    profile.pictureUrl || "",
+    text,
+    status,
+    risk,
+    current ? current.tags : "[]",
+    current ? current.note : "",
+    now,
+    now,
+    now,
+  ).run();
+
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO messages (id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    messageId,
+    threadId,
+    userId,
+    USER_ROLE,
+    "text",
+    text,
+    analysis.category,
+    JSON.stringify(analysis.suggestions || []),
+    analysis.isImportant ? 1 : 0,
+    analysis.sentiment || "neutral",
+    JSON.stringify(event),
+    now,
+  ).run();
+
+  if (analysis.isImportant) {
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO ai_logs (id, thread_id, user_id, text, category, sentiment, report_reason, status, telegram_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      `ai:${messageId}`,
+      threadId,
+      userId,
+      text,
+      analysis.category,
+      analysis.sentiment || "neutral",
+      analysis.reportReason || analysis.summary || "",
+      STATUS_IMPORTANT,
+      "gas-backup",
+      now,
+    ).run();
+  }
+}
+
+async function saveAdminMessage(env, input) {
+  const userId = stringValue(input.userId);
+  const text = stringValue(input.text);
+  const now = Number(input.createdAt || Date.now());
+  const threadId = `user:${userId}`;
+  const profile = await getProfile(env, userId);
+  const name = profile && profile.display_name ? profile.display_name : "";
+  const pictureUrl = profile && profile.picture_url ? profile.picture_url : "";
+  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ?").bind(threadId).first();
+
+  await env.DB.prepare(`
+    INSERT INTO threads (id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      summary = excluded.summary,
+      status = excluded.status,
+      last_message_at = excluded.last_message_at,
+      updated_at = excluded.updated_at
+  `).bind(threadId, userId, name, pictureUrl, text, input.status || STATUS_DONE, "low", current ? current.tags : "[]", current ? current.note : "", now, now, now).run();
+
+  await env.DB.prepare(`
+    INSERT INTO messages (id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(`admin:${threadId}:${now}:${crypto.randomUUID()}`, threadId, userId, ADMIN_ROLE, "text", text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", "{}", now).run();
+}
+
+async function updateConversationMeta(env, input) {
+  const userId = stringValue(input.userId);
+  const now = Date.now();
+  const threadId = `user:${userId}`;
+  const existing = await env.DB.prepare("SELECT * FROM threads WHERE id = ?").bind(threadId).first();
+  const currentTags = existing ? parseJsonArray(existing.tags) : [];
+  const tags = input.tags === undefined ? currentTags : normalizeTags(input.tags);
+  const displayName = chooseStableName(userId, input.userName, existing && existing.display_name);
+  const pictureUrl = stringValue(input.pictureUrl || (existing && existing.picture_url));
+  const status = input.status !== undefined && input.status !== "" ? stringValue(input.status) : (existing && existing.status) || STATUS_PENDING;
+  const note = input.note !== undefined ? String(input.note || "") : (existing && existing.note) || "";
+
+  await env.DB.prepare(`
+    INSERT INTO threads (id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
+      picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
+      status = excluded.status,
+      tags = excluded.tags,
+      note = excluded.note,
+      updated_at = excluded.updated_at
+  `).bind(threadId, userId, displayName, pictureUrl, existing ? existing.summary : "", status, existing ? existing.risk : "low", JSON.stringify(tags), note, existing ? existing.last_message_at : 0, existing ? existing.created_at : now, now).run();
+
+  if (displayName || pictureUrl) {
+    await upsertProfile(env, { userId, displayName, pictureUrl, now });
+  }
+
+  return {
+    userId,
+    userName: displayName,
+    pictureUrl,
+    status,
+    tags,
+    note,
+    updatedAt: now,
+  };
+}
+
+async function backfillProfiles(env, limit) {
+  const { results } = await env.DB.prepare(`
+    SELECT user_id, source_type, source_id, display_name, picture_url
+    FROM threads
+    WHERE display_name = '' OR display_name = user_id OR picture_url = ''
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `).bind(limit).all();
+  const output = [];
+  for (const row of results || []) {
+    const source = sourceFromD1(row);
+    const profile = await fetchLineProfileWithDetail(env, row.user_id, source);
+    const result = { userId: row.user_id, profileStatus: profile.status, updated: false };
+    if (profile.ok && profile.data && (profile.data.displayName || profile.data.pictureUrl)) {
+      const now = Date.now();
+      await upsertProfile(env, {
+        userId: row.user_id,
+        displayName: profile.data.displayName,
+        pictureUrl: profile.data.pictureUrl,
+        sourceType: row.source_type,
+        sourceId: row.source_id,
+        profileStatus: profile.status,
+        now,
+      });
+      await updateConversationMeta(env, {
+        userId: row.user_id,
+        userName: profile.data.displayName || row.display_name,
+        pictureUrl: profile.data.pictureUrl || row.picture_url,
+      });
+      result.updated = true;
+      result.displayName = profile.data.displayName || "";
+      result.pictureUrl = profile.data.pictureUrl || "";
+    } else {
+      result.error = profile.detail || profile.error || "LINE profile unavailable";
+    }
+    output.push(result);
+  }
+  return output;
+}
+
+async function resolveProfile(env, userId, source, webhookProfile) {
+  const stored = await getProfile(env, userId);
+  const incomingName = webhookProfile && webhookProfile.displayName ? webhookProfile.displayName : "";
+  const incomingPicture = webhookProfile && webhookProfile.pictureUrl ? webhookProfile.pictureUrl : "";
+  if (incomingName || incomingPicture) {
+    return {
+      displayName: chooseStableName(userId, incomingName, stored && stored.display_name),
+      pictureUrl: incomingPicture || (stored && stored.picture_url) || "",
+      profileStatus: 200,
+      profileError: "",
+    };
+  }
+
+  const shouldRefresh = !stored || !stored.display_name || !stored.picture_url || Date.now() - Number(stored.last_profile_sync || 0) > 86400000;
+  if (shouldRefresh) {
+    const fetched = await fetchLineProfileWithDetail(env, userId, source);
+    if (fetched.ok && fetched.data) {
+      return {
+        displayName: chooseStableName(userId, fetched.data.displayName, stored && stored.display_name),
+        pictureUrl: fetched.data.pictureUrl || (stored && stored.picture_url) || "",
+        profileStatus: fetched.status,
+        profileError: "",
+      };
+    }
+    return {
+      displayName: stored && stored.display_name ? stored.display_name : "",
+      pictureUrl: stored && stored.picture_url ? stored.picture_url : "",
+      profileStatus: fetched.status || 0,
+      profileError: fetched.detail || fetched.error || "LINE profile unavailable",
+    };
+  }
+
+  return {
+    displayName: stored.display_name || "",
+    pictureUrl: stored.picture_url || "",
+    profileStatus: stored.profile_status || null,
+    profileError: stored.profile_error || "",
+  };
+}
+
+async function getProfile(env, userId) {
+  if (!env.DB) return null;
+  return await env.DB.prepare("SELECT * FROM profiles WHERE user_id = ?").bind(userId).first();
+}
+
+async function upsertProfile(env, input) {
+  if (!env.DB || !input.userId) return;
+  const now = Number(input.now || Date.now());
+  const displayName = stringValue(input.displayName);
+  const pictureUrl = stringValue(input.pictureUrl);
+  await env.DB.prepare(`
+    INSERT INTO profiles (user_id, display_name, picture_url, source_type, source_id, profile_status, profile_error, last_profile_sync, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE profiles.display_name END,
+      picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE profiles.picture_url END,
+      source_type = CASE WHEN excluded.source_type != '' THEN excluded.source_type ELSE profiles.source_type END,
+      source_id = CASE WHEN excluded.source_id != '' THEN excluded.source_id ELSE profiles.source_id END,
+      profile_status = excluded.profile_status,
+      profile_error = excluded.profile_error,
+      last_profile_sync = excluded.last_profile_sync,
+      updated_at = excluded.updated_at
+  `).bind(input.userId, displayName, pictureUrl, stringValue(input.sourceType || "user"), stringValue(input.sourceId), input.profileStatus || null, stringValue(input.profileError), now, now, now).run();
+}
+
+async function analyzeMessage(env, text, userId, userName) {
+  const local = await localKnowledgeSuggestion(env, text);
+  const important = isImportantText(text);
+  const fallback = {
+    isImportant: important,
+    category: local.category || (important ? "\u91cd\u8981\u8a0a\u606f" : "\u4e00\u822c\u8a0a\u606f"),
+    sentiment: important ? "negative" : "neutral",
+    suggestions: local.suggestions.length ? local.suggestions : ["\u60a8\u597d\uff0c\u611f\u8b1d\u60a8\u7684\u7559\u8a00\u3002\u8acb\u554f\u60a8\u5177\u9ad4\u60f3\u4e86\u89e3\u54ea\u65b9\u9762\u7684\u8cc7\u8a0a\uff1f"],
+    summary: local.summary || "local fallback",
+    reportReason: important ? "\u542b\u5ba2\u8a34\u3001\u8ca0\u8a55\u6216\u9ad8\u98a8\u96aa\u95dc\u9375\u5b57" : "",
+  };
+
+  if (!env.OPENAI_API_KEY) return fallback;
+  try {
+    const prompt = [
+      "\u4f60\u662f LINE OA \u5f8c\u53f0\u7ba1\u7406\u54e1\u7684 AI \u52a9\u7406\uff0c\u53ea\u7522\u751f\u7ba1\u7406\u54e1\u56de\u8986\u5efa\u8b70\uff0c\u7d55\u5c0d\u4e0d\u81ea\u52d5\u56de\u8986\u7528\u6236\u3002",
+      "\u8acb\u6839\u64da\u77e5\u8b58\u5eab\u8207\u7528\u6236\u8a0a\u606f\uff0c\u8f38\u51fa JSON\uff1a{\"isImportant\":boolean,\"category\":\"\",\"sentiment\":\"neutral|negative|positive\",\"suggestions\":[\"\"],\"summary\":\"\",\"reportReason\":\"\"}",
+      `userId: ${userId}`,
+      `userName: ${userName}`,
+      `message: ${text}`,
+      `knowledge: ${JSON.stringify(local.matches.slice(0, 6))}`,
+    ].join("\n");
+    const generated = await callOpenAI(env, prompt);
+    const parsed = JSON.parse(generated);
+    return {
+      ...fallback,
+      ...parsed,
+      suggestions: Array.isArray(parsed.suggestions) && parsed.suggestions.length ? parsed.suggestions.map(stringValue).filter(Boolean).slice(0, 3) : fallback.suggestions,
+      isImportant: Boolean(parsed.isImportant || fallback.isImportant),
+    };
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+async function localKnowledgeSuggestion(env, text) {
+  if (!env.DB) return { matches: [], suggestions: [] };
+  const { results } = await env.DB.prepare("SELECT category, question, answer FROM knowledge_items ORDER BY id ASC LIMIT 1000").all();
+  const terms = tokenize(text);
+  const matches = (results || []).map((item) => {
+    const haystack = `${item.category} ${item.question} ${item.answer}`;
+    const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0) + (text.includes(item.question) ? 5 : 0);
+    return { ...item, score };
+  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 6);
+  if (!matches.length) return { matches: [], suggestions: [] };
+  return {
+    matches,
+    category: matches[0].category,
+    suggestions: matches.slice(0, 2).map((item) => `\u60a8\u597d\uff0c\u95dc\u65bc${item.category}\uff0c${item.answer}`),
+    summary: "local knowledge match",
+  };
+}
+
+async function callOpenAI(env, prompt) {
+  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
+  const model = env.OPENAI_MODEL || "gpt-5-mini";
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      input: prompt,
+      text: { format: { type: "json_object" } },
+      max_output_tokens: 700,
+    }),
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`OpenAI HTTP ${response.status}: ${body}`);
+  return extractOpenAIText(JSON.parse(body));
+}
+
+function extractOpenAIText(body) {
+  if (body.output_text) return body.output_text;
+  for (const item of body.output || []) {
+    for (const part of item.content || []) {
+      if (part.text) return part.text;
+    }
+  }
+  throw new Error("OpenAI returned empty content");
+}
+
+async function importKnowledge(env, payload, fileName) {
+  const normalized = normalizeKnowledgePayload(typeof payload === "string" ? JSON.parse(payload) : payload);
+  const now = Date.now();
+  await env.DB.prepare("DELETE FROM knowledge_items").run();
+  const statements = normalized.items.map((item) => env.DB.prepare("INSERT INTO knowledge_items (category, question, answer, source, created_at) VALUES (?, ?, ?, ?, ?)").bind(item.category, item.question, item.answer, fileName, now));
+  if (statements.length) await env.DB.batch(statements);
+  const meta = { title: normalized.title, version: normalized.version, source: fileName, count: normalized.items.length, updatedAt: new Date(now).toISOString() };
+  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind("knowledge_meta", JSON.stringify(meta), now).run();
+  return { status: "success", count: normalized.items.length, meta };
+}
+
+async function getKnowledgeMeta(env) {
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind("knowledge_meta").first();
+  if (row && row.value) {
+    try { return JSON.parse(row.value); } catch (_err) { /* ignore */ }
+  }
+  const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM knowledge_items").first();
+  return { count: Number((count && count.count) || 0), source: "D1", updatedAt: "" };
+}
+
+function normalizeKnowledgePayload(payload) {
+  const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const items = Array.isArray(payload) ? payload : (Array.isArray(source.items) ? source.items : []);
+  return {
+    title: stringValue(source.title || source.name),
+    version: stringValue(source.version || source.updatedAt),
+    items: items.map((item, index) => {
+      const category = stringValue(item.category || item.categoryName || "\u4e00\u822c");
+      const question = stringValue(item.question || item.q || item["\u554f\u984c"]);
+      const answer = stringValue(item.answer || item.a || item["\u7b54\u6848"]);
+      if (!question || !answer) throw new Error(`Invalid knowledge item at index ${index}: question and answer are required`);
+      return { category, question, answer };
+    }),
+  };
+}
+
+async function pushLineMessage(env, userId, text) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
+  const response = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+    body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
+  });
+  const detail = await response.text();
+  return { ok: response.ok, status: response.status, detail };
+}
+
+async function attachLineProfiles(payload, env) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !Array.isArray(payload.events)) return;
+  const cache = new Map();
+  await Promise.all(payload.events.map(async (event) => {
+    const userId = event && event.source && event.source.userId;
+    if (!userId) return;
+    const cacheKey = `${event.source.type || "user"}:${event.source.groupId || event.source.roomId || ""}:${userId}`;
+    if (!cache.has(cacheKey)) cache.set(cacheKey, fetchLineProfile(env, userId, event.source));
+    const profile = await cache.get(cacheKey);
+    if (profile) event.userProfile = profile;
+  }));
+}
+
+async function fetchLineProfile(env, userId, source = {}) {
+  const result = await fetchLineProfileWithDetail(env, userId, source);
+  return result.ok ? result.data : null;
+}
+
+async function fetchLineProfileWithDetail(env, userId, source = {}) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
+  const endpoints = [];
+  if (source && source.type === "group" && source.groupId) endpoints.push({ kind: "groupMember", url: `https://api.line.me/v2/bot/group/${encodeURIComponent(source.groupId)}/member/${encodeURIComponent(userId)}` });
+  if (source && source.type === "room" && source.roomId) endpoints.push({ kind: "roomMember", url: `https://api.line.me/v2/bot/room/${encodeURIComponent(source.roomId)}/member/${encodeURIComponent(userId)}` });
+  endpoints.push({ kind: "userProfile", url: `https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}` });
+
+  const attempts = [];
+  try {
+    for (const endpoint of endpoints) {
+      const response = await fetch(endpoint.url, { headers: { Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` } });
+      const text = await response.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
+      attempts.push({ kind: endpoint.kind, status: response.status, detail: response.ok ? "" : text });
+      if (response.ok) {
+        return {
+          ok: true,
+          status: response.status,
+          source: endpoint.kind,
+          attempts,
+          data: {
+            displayName: data && data.displayName ? data.displayName : "",
+            pictureUrl: data && data.pictureUrl ? data.pictureUrl : "",
+            statusMessage: data && data.statusMessage ? data.statusMessage : "",
+          },
+        };
+      }
+    }
+    const last = attempts[attempts.length - 1] || {};
+    return { ok: false, status: last.status || 0, detail: last.detail || "LINE profile unavailable", attempts };
+  } catch (err) {
+    return { ok: false, status: 0, error: err && err.message ? err.message : String(err), attempts };
+  }
 }
 
 async function callGas(env, payload) {
@@ -232,61 +851,178 @@ async function callGas(env, payload) {
   return data;
 }
 
-async function pushLineMessage(env, userId, text) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-    body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
-  });
-  const detail = await response.text();
-  return { ok: response.ok, status: response.status, detail };
+async function backupGas(env, payload) {
+  if (!env.GAS_URL) return null;
+  try { return await callGas(env, payload); } catch (_err) { return null; }
 }
 
-async function attachLineProfiles(payload, env) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !Array.isArray(payload.events)) return;
-  const cache = new Map();
-  await Promise.all(payload.events.map(async (event) => {
-    const userId = event && event.source && event.source.userId;
-    if (!userId) return;
-    if (!cache.has(userId)) cache.set(userId, fetchLineProfile(env, userId));
-    const profile = await cache.get(userId);
-    if (profile) event.userProfile = profile;
-  }));
+function withThreadData(payload) {
+  const data = payload && payload.data ? payload.data : {};
+  return { ...(payload || {}), data: { ...data, threads: buildThreadsFromGas(data.chats || [], data.chatMeta || []) } };
 }
 
-async function fetchLineProfile(env, userId) {
-  const result = await fetchLineProfileWithDetail(env, userId);
-  return result.ok ? result.data : null;
-}
-
-async function fetchLineProfileWithDetail(env, userId) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
-  try {
-    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
-      headers: { "Authorization": `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-    });
-    const text = await response.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
-    if (!response.ok) return { ok: false, status: response.status, detail: text };
-    return {
-      ok: true,
-      status: response.status,
-      data: {
-        displayName: data && data.displayName ? data.displayName : "",
-        pictureUrl: data && data.pictureUrl ? data.pictureUrl : "",
-        statusMessage: data && data.statusMessage ? data.statusMessage : "",
-      },
-    };
-  } catch (err) {
-    return { ok: false, status: 0, error: err && err.message ? err.message : String(err) };
+function buildThreadsFromGas(chats, chatMeta) {
+  const metaByUser = new Map();
+  for (const row of chatMeta || []) {
+    const userId = stringValue(row["\u7528\u6236ID"] || row.userId);
+    if (userId) metaByUser.set(userId, row);
   }
+  const groups = new Map();
+  for (const row of (chats || []).slice().sort((a, b) => numberValue(a["\u6642\u9593"]) - numberValue(b["\u6642\u9593"]))) {
+    const userId = stringValue(row["\u7528\u6236ID"] || row.userId || "unknown");
+    if (!groups.has(userId)) groups.set(userId, []);
+    groups.get(userId).push(row);
+  }
+  return Array.from(groups.entries()).map(([userId, messages]) => {
+    const meta = metaByUser.get(userId) || {};
+    const last = messages[messages.length - 1] || {};
+    const name = chooseStableName(userId, meta["\u7528\u6236\u540d\u7a31"], last["\u7528\u6236\u540d\u7a31"]) || userId;
+    return {
+      id: `user:${userId}`,
+      userId,
+      name,
+      displayName: name,
+      pictureUrl: stringValue(meta["\u982d\u50cfURL"] || last["\u982d\u50cfURL"]),
+      summary: stringValue(last["\u5167\u5bb9"]),
+      status: normalizeStatusForDisplay(meta["\u8655\u7406\u72c0\u614b"] || last["\u72c0\u614b"] || STATUS_PENDING),
+      risk: messages.some((row) => row["\u91cd\u8981"] === "\u662f") ? "high" : "low",
+      tags: normalizeTags(meta["\u6a19\u7c64"]),
+      note: stringValue(meta["\u5099\u8a3b"]),
+      lastMessageAt: numberValue(last["\u6642\u9593"]),
+      hasRealName: !isPlaceholderName(name, userId),
+      messages: messages.map((row, index) => ({
+        id: `${userId}:${numberValue(row["\u6642\u9593"]) || index}`,
+        type: "text",
+        senderRole: row["\u8eab\u4efd"] === "admin" ? ADMIN_ROLE : USER_ROLE,
+        senderId: userId,
+        senderName: row["\u8eab\u4efd"] === "admin" ? "\u7ba1\u7406\u54e1" : name,
+        text: stringValue(row["\u5167\u5bb9"]),
+        createdAt: numberValue(row["\u6642\u9593"]),
+        category: stringValue(row["\u985e\u5225"]),
+        suggestions: parseJsonArray(row["AI\u5efa\u8b70"]),
+        important: row["\u91cd\u8981"] === "\u662f",
+        raw: row,
+      })),
+    };
+  }).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+}
+
+function threadToMetaRow(thread) {
+  return {
+    "\u7528\u6236ID": thread.userId,
+    "\u7528\u6236\u540d\u7a31": thread.name,
+    "\u8655\u7406\u72c0\u614b": thread.status,
+    "\u6a19\u7c64": thread.tags.join(","),
+    "\u5099\u8a3b": thread.note,
+    "\u982d\u50cfURL": thread.pictureUrl,
+  };
+}
+
+function metaToGasPayload(meta) {
+  return {
+    userId: meta.userId,
+    userName: meta.userName,
+    pictureUrl: meta.pictureUrl,
+    status: meta.status,
+    tags: meta.tags,
+    note: meta.note,
+  };
+}
+
+function normalizeStatusForDisplay(status) {
+  const value = stringValue(status);
+  if (!value || value === "pending") return STATUS_PENDING;
+  if (value === "important") return STATUS_IMPORTANT;
+  if (value === "done") return STATUS_DONE;
+  return value;
+}
+
+function sourceFromD1(row) {
+  if (row.source_type === "group" && row.source_id) return { type: "group", groupId: row.source_id };
+  if (row.source_type === "room" && row.source_id) return { type: "room", roomId: row.source_id };
+  return { type: "user" };
+}
+
+function chooseStableName(userId, incomingName, currentName) {
+  const incoming = stringValue(incomingName);
+  const current = stringValue(currentName);
+  if (incoming && !isPlaceholderName(incoming, userId)) return incoming;
+  if (current && !isPlaceholderName(current, userId)) return current;
+  return "";
 }
 
 function isPlaceholderName(value, userId) {
-  const text = String(value || "").trim();
-  return !text || text === String(userId || "") || /^U[a-z0-9]{8,}$/i.test(text) || /^用戶\s*[a-z0-9]{4,}$/i.test(text);
+  const text = stringValue(value);
+  return !text || text === stringValue(userId) || /^U[a-z0-9]{8,}$/i.test(text) || /^user\s*[a-z0-9]{4,}$/i.test(text) || /^用戶\s*[a-z0-9]{4,}$/i.test(text);
+}
+
+function isImportantText(text) {
+  return /客訴|投訴|負評|生氣|不滿|退貨|退款|詐騙|檢舉|違法|糾紛|爛|差評|抱怨|主管|媒體|消保|警察|法院/i.test(text);
+}
+
+function tokenize(text) {
+  return Array.from(new Set(stringValue(text).split(/[\s,，。！？!?、/\\\-_:：;；()[\]{}]+/).map((item) => item.trim()).filter((item) => item.length >= 2).slice(0, 20)));
+}
+
+function normalizeTags(value) {
+  if (Array.isArray(value)) return value.map(stringValue).filter(Boolean);
+  return stringValue(value).split(/[,，]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseJsonArray(value) {
+  if (Array.isArray(value)) return value.map(stringValue).filter(Boolean);
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.map(stringValue).filter(Boolean) : [];
+  } catch (_err) {
+    return normalizeTags(value);
+  }
+}
+
+function stringValue(value) {
+  return String(value === undefined || value === null ? "" : value).trim();
+}
+
+function numberValue(value) {
+  const number = Number(value);
+  if (Number.isFinite(number) && number > 0) return number;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function clampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(number, max));
+}
+
+function buildCorsHeaders(request, env) {
+  const requestOrigin = request.headers.get("Origin") || "";
+  const allowedOrigin = env.ALLOWED_ORIGIN || "";
+  const origin = allowedOrigin && requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    ...JSON_HEADERS,
+  };
+}
+
+function assertDashboardAuth(request, env) {
+  if (!env.DASHBOARD_API_TOKEN) throw httpError("DASHBOARD_API_TOKEN is not configured", 500);
+  const expectedToken = String(env.DASHBOARD_API_TOKEN || "").trim();
+  const auth = String(request.headers.get("Authorization") || "").trim();
+  const directToken = String(request.headers.get("X-Dashboard-Token") || "").trim();
+  const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
+  if (bearerToken !== expectedToken && directToken !== expectedToken) throw httpError("Unauthorized dashboard request", 401);
+}
+
+function httpError(message, status) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
 }
 
 async function safeJson(request) {

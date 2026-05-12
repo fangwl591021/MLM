@@ -2,6 +2,11 @@ name = "line-oa-ai-suggestion"
 main = "worker/worker.js"
 compatibility_date = "2026-05-06"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "mlm_line_oa"
+database_id = "319f701f-e60e-46f1-b62a-48e44102bf79"
+
 [vars]
 # Set real values in Cloudflare Dashboard secrets / variables.
 # GAS_URL = "https://script.google.com/macros/s/..."
