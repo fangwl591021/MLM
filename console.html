@@ -7,7 +7,7 @@
   <style>
     :root{--line:#06c755;--ink:#172033;--muted:#718096;--border:#dbe3ee;--soft:#f6f8fb;--blue:#315b9c;--orange:#ff9f1c;--red:#d92d20}
     *{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:var(--ink);font-family:"Noto Sans TC",Inter,system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}
-    .shell{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:24px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:28px}.logo{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:#fff;font-weight:800;box-shadow:0 14px 28px rgba(6,199,85,.18)}h1,h2,h3,p{margin:0}.brand h1{font-size:22px}.brand p,.muted{color:var(--muted);font-size:13px}.nav{display:grid;gap:8px;margin-top:22px}.nav a{display:flex;align-items:center;justify-content:space-between;border-radius:14px;padding:12px 14px;color:#263244;text-decoration:none;font-weight:700}.nav a.active,.nav a:hover{background:#effcf4;color:#067a35}.settings{display:grid;gap:8px;margin-top:26px}.settings label{font-size:12px;color:#5d6675;font-weight:700}.settings input{width:100%;height:40px;border:1px solid var(--border);border-radius:10px;padding:0 11px;outline:none}.settings input:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.sync{height:42px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800}
+    .shell{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:24px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:28px}.logo{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:#fff;font-weight:800;box-shadow:0 14px 28px rgba(6,199,85,.18)}h1,h2,h3,p{margin:0}.brand h1{font-size:22px}.brand p,.muted{color:var(--muted);font-size:13px}.nav{display:grid;gap:8px;margin-top:22px}.nav a{display:flex;align-items:center;justify-content:space-between;border-radius:14px;padding:12px 14px;color:#263244;text-decoration:none;font-weight:700}.nav a.active,.nav a:hover{background:#effcf4;color:#067a35}.settings{display:grid;gap:8px;margin-top:26px}.settingsToggle{height:40px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;font-weight:800}.settingsPanel{display:none;gap:8px}.settings.open .settingsPanel{display:grid}.settings label{font-size:12px;color:#5d6675;font-weight:700}.settings input{width:100%;height:40px;border:1px solid var(--border);border-radius:10px;padding:0 11px;outline:none}.settings input:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.sync{height:42px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800}
     main{padding:26px 30px}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}.top h2{font-size:30px}.status{border:1px solid #b6ecc8;border-radius:999px;background:#effcf4;color:#067a35;padding:8px 12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 12px 28px rgba(16,24,40,.04)}.metric{font-size:34px;font-weight:850;margin-top:10px}.metric.warn{color:var(--orange)}.metric.danger{color:var(--red)}.section{margin-top:18px}.sectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.sectionHead h3{font-size:18px}.floors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.floorTitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.badge{border-radius:999px;background:#eef2f7;color:#344054;padding:5px 10px;font-size:12px;font-weight:800}.badge.green{background:#e7f8ef;color:#067a35}.badge.red{background:#fff1f3;color:#c01048}.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.mini div{border-radius:12px;background:#f8fafc;padding:12px}.mini strong{display:block;font-size:22px}.latest{margin-top:14px;padding-top:14px;border-top:1px solid #edf1f5;color:#4b5563;line-height:1.5}.modules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.module{display:block;color:inherit;text-decoration:none}.module strong{display:block;margin-bottom:8px;font-size:16px}.table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:14px;background:#fff}.table th,.table td{border-bottom:1px solid #edf1f5;padding:12px;text-align:left}.table th{color:#5d6675;font-size:12px;background:#f8fafc}.error{margin-top:14px;border:1px solid #fecdd3;background:#fff1f3;color:#b42318;border-radius:12px;padding:12px;font-weight:700}.hide{display:none}@media(max-width:1100px){.shell{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--border)}.grid,.floors,.modules{grid-template-columns:1fr}.top{display:block}.status{display:inline-block;margin-top:12px}}
   </style>
 </head>
@@ -24,13 +24,16 @@
         <a href="#events">活動報名簽到 <span>規劃中</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
-      <section class="settings">
-        <label for="apiBase">Worker API URL</label>
-        <input id="apiBase" value="https://mlm.fangwl591021.workers.dev" />
-        <label for="apiToken">Dashboard Token</label>
-        <input id="apiToken" type="password" placeholder="輸入後同步資料" />
-        <button id="syncButton" class="sync">同步主控台</button>
-        <p class="muted">Token 只存在本機瀏覽器，不會寫到頁面。</p>
+      <section class="settings" id="settingsBox">
+        <button id="settingsToggle" class="settingsToggle" type="button">設定</button>
+        <div class="settingsPanel">
+          <label for="apiBase">Worker API URL</label>
+          <input id="apiBase" value="https://mlm.fangwl591021.workers.dev" />
+          <label for="apiToken">Dashboard Token</label>
+          <input id="apiToken" type="password" placeholder="輸入後同步資料" />
+          <button id="syncButton" class="sync">同步主控台</button>
+          <p class="muted">Token 只存在本機瀏覽器，不會寫到頁面。</p>
+        </div>
       </section>
     </aside>
     <main>
@@ -83,10 +86,25 @@
     const $ = (id) => document.getElementById(id);
     const apiBase = $("apiBase");
     const apiToken = $("apiToken");
+    const settingsBox = $("settingsBox");
     apiBase.value = localStorage.getItem("line_ai_api_base") || DEFAULT_API;
     apiToken.value = localStorage.getItem("line_ai_api_token") || "";
+    $("settingsToggle").onclick = unlockSettings;
     $("syncButton").onclick = sync;
     if (apiToken.value) sync();
+
+    function unlockSettings() {
+      if (settingsBox.classList.contains("open")) {
+        settingsBox.classList.remove("open");
+        return;
+      }
+      const password = window.prompt("請輸入設定密碼");
+      if (password === "1234") {
+        settingsBox.classList.add("open");
+      } else if (password !== null) {
+        showError("設定密碼錯誤。");
+      }
+    }
 
     async function sync() {
       localStorage.setItem("line_ai_api_base", cleanBase(apiBase.value));
