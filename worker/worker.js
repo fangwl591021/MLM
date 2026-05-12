@@ -13,6 +13,9 @@ const STATUS_IMPORTANT = "\u5f85\u8655\u7406";
 const STATUS_DONE = "\u8655\u7406\u5b8c\u7562";
 const ADMIN_ROLE = "admin";
 const USER_ROLE = "user";
+const FLOOR_MAIN = "main";
+const FLOOR_ADMIN = "admin";
+const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN]);
 
 export default {
   async fetch(request, env, ctx) {
@@ -34,6 +37,8 @@ export default {
             GAS_SHARED_SECRET: Boolean(env.GAS_SHARED_SECRET),
             LINE_CHANNEL_SECRET: Boolean(env.LINE_CHANNEL_SECRET),
             LINE_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
+            LINE_ADMIN_CHANNEL_SECRET: Boolean(env.LINE_ADMIN_CHANNEL_SECRET),
+            LINE_ADMIN_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN),
             DASHBOARD_API_TOKEN: Boolean(env.DASHBOARD_API_TOKEN),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
@@ -41,11 +46,14 @@ export default {
         }, 200, corsHeaders);
       }
 
+      const floor = resolveFloor(request);
+      const provider = getProvider(env, floor);
+
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        const data = await fetchDashboardData(env);
-        if (env.DB && env.LINE_CHANNEL_ACCESS_TOKEN) {
-          ctx.waitUntil(backfillProfiles(env, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
+        const data = await fetchDashboardData(env, floor);
+        if (env.DB && provider.accessToken) {
+          ctx.waitUntil(backfillProfiles(env, floor, provider, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
         }
         return jsonResponse(data, 200, corsHeaders);
       }
@@ -53,13 +61,13 @@ export default {
       if (url.pathname === "/api/migrate-gas-to-d1" && request.method === "POST") {
         assertDashboardAuth(request, env);
         if (!env.DB) return jsonResponse({ status: "error", message: "DB is not configured" }, 500, corsHeaders);
-        const result = await migrateGasToD1(env);
+        const result = await migrateGasToD1(env, floor);
         return jsonResponse(result, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/line-oa/threads" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        const data = await fetchDashboardData(env);
+        const data = await fetchDashboardData(env, floor);
         return jsonResponse({ success: true, status: "success", data: data.data.threads || [] }, 200, corsHeaders);
       }
 
@@ -67,7 +75,7 @@ export default {
         assertDashboardAuth(request, env);
         const id = stringValue(url.searchParams.get("id"));
         if (!id) return jsonResponse({ success: false, status: "error", message: "id is required" }, 400, corsHeaders);
-        const thread = await fetchThread(env, id);
+        const thread = await fetchThread(env, floor, id);
         if (!thread) return jsonResponse({ success: false, status: "error", message: "thread not found" }, 404, corsHeaders);
         return jsonResponse({ success: true, status: "success", data: thread }, 200, corsHeaders);
       }
@@ -78,6 +86,7 @@ export default {
         const userId = stringValue(body.userId || body.id).replace(/^user:/, "");
         if (!userId) return jsonResponse({ success: false, status: "error", message: "userId or id is required" }, 400, corsHeaders);
         const meta = await updateConversationMeta(env, {
+          floor,
           userId,
           userName: stringValue(body.name || body.userName),
           pictureUrl: stringValue(body.pictureUrl),
@@ -93,8 +102,8 @@ export default {
         assertDashboardAuth(request, env);
         const userId = stringValue(url.searchParams.get("userId") || url.searchParams.get("uid"));
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
-        const stored = await getProfile(env, userId);
-        const direct = await fetchLineProfileWithDetail(env, userId);
+        const stored = await getProfile(env, floor, userId);
+        const direct = await fetchLineProfileWithDetail(provider, userId);
         return jsonResponse({
           status: "success",
           userId,
@@ -107,7 +116,7 @@ export default {
 
       if (url.pathname === "/api/line-bot-info" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        const info = await fetchLineBotInfo(env);
+        const info = await fetchLineBotInfo(provider);
         return jsonResponse({ status: info.ok ? "success" : "error", data: info }, info.ok ? 200 : 502, corsHeaders);
       }
 
@@ -115,7 +124,7 @@ export default {
         assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const limit = clampNumber(body.limit || 100, 1, 300);
-        const results = await backfillProfiles(env, limit, { force: true });
+        const results = await backfillProfiles(env, floor, provider, limit, { force: true });
         return jsonResponse({ status: "success", scanned: results.length, results }, 200, corsHeaders);
       }
 
@@ -123,7 +132,7 @@ export default {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
         if (!body.knowledge) return jsonResponse({ status: "error", message: "knowledge is required" }, 400, corsHeaders);
-        const result = await importKnowledge(env, body.knowledge, stringValue(body.fileName || "dashboard-upload.json"));
+        const result = await importKnowledge(env, floor, body.knowledge, stringValue(body.fileName || "dashboard-upload.json"));
         ctx.waitUntil(backupGas(env, {
           type: "IMPORT_KNOWLEDGE_BASE",
           data: { knowledge: body.knowledge, fileName: body.fileName || "dashboard-upload.json", source: "dashboard-upload" },
@@ -137,6 +146,7 @@ export default {
         const userId = stringValue(body.userId);
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
         const meta = await updateConversationMeta(env, {
+          floor,
           userId,
           userName: stringValue(body.userName),
           pictureUrl: stringValue(body.pictureUrl),
@@ -155,13 +165,13 @@ export default {
         const text = stringValue(body.text);
         if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
 
-        const lineResult = await pushLineMessage(env, userId, text);
+        const lineResult = await pushLineMessage(provider, userId, text);
         if (!lineResult.ok) {
           return jsonResponse({ status: "error", message: "LINE push failed", detail: lineResult.detail }, lineResult.status || 502, corsHeaders);
         }
 
         const now = Date.now();
-        await saveAdminMessage(env, { userId, text, createdAt: now, status: STATUS_DONE });
+        await saveAdminMessage(env, { floor, userId, text, createdAt: now, status: STATUS_DONE });
         ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
           data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u4eba\u5de5\u56de\u8986", status: STATUS_DONE },
@@ -177,7 +187,7 @@ export default {
         if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
 
         const now = Date.now();
-        await saveAdminMessage(env, { userId, text, createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
+        await saveAdminMessage(env, { floor, userId, text, createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
         ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
           data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u88dc\u8a18\u4e0d\u63a8\u9001", status: STATUS_DONE },
@@ -185,15 +195,17 @@ export default {
         return jsonResponse({ status: "success" }, 200, corsHeaders);
       }
 
-      if ((url.pathname === "/" || url.pathname === "/webhook/line") && request.method === "POST") {
+      if ((url.pathname === "/" || url.pathname === "/webhook/line" || url.pathname === "/webhook/line/main" || url.pathname === "/webhook/line/admin") && request.method === "POST") {
+        const webhookFloor = url.pathname.endsWith("/admin") ? FLOOR_ADMIN : FLOOR_MAIN;
+        const webhookProvider = getProvider(env, webhookFloor);
         const rawBody = await request.text();
         const signature = request.headers.get("x-line-signature") || "";
-        const validLine = await verifyLineSignature(rawBody, signature, env.LINE_CHANNEL_SECRET);
+        const validLine = await verifyLineSignature(rawBody, signature, webhookProvider.channelSecret);
         if (!validLine) return new Response("Invalid LINE signature", { status: 401, headers: corsHeaders });
 
         const payload = JSON.parse(rawBody);
         if (Array.isArray(payload.events) && payload.events.length > 0) {
-          ctx.waitUntil(processLineWebhook(env, payload));
+          ctx.waitUntil(processLineWebhook(env, webhookFloor, webhookProvider, payload));
         }
         return new Response("OK", { status: 200, headers: corsHeaders });
       }
@@ -201,7 +213,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/data", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line"],
+        routes: ["/health", "/api/data?floor=main", "/api/data?floor=admin", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -209,12 +221,41 @@ export default {
   },
 };
 
-async function fetchDashboardData(env) {
+function resolveFloor(request) {
+  const url = new URL(request.url);
+  const raw = stringValue(url.searchParams.get("floor") || request.headers.get("x-floor-id") || FLOOR_MAIN).toLowerCase();
+  return FLOOR_IDS.has(raw) ? raw : FLOOR_MAIN;
+}
+
+function getProvider(env, floor) {
+  if (floor === FLOOR_ADMIN) {
+    return {
+      floor,
+      id: FLOOR_ADMIN,
+      label: "\u884c\u653f\u5ba2\u670d",
+      channelSecret: env.LINE_ADMIN_CHANNEL_SECRET || "",
+      accessToken: env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN || "",
+    };
+  }
+  return {
+    floor: FLOOR_MAIN,
+    id: FLOOR_MAIN,
+    label: "LINE OA",
+    channelSecret: env.LINE_MAIN_CHANNEL_SECRET || env.LINE_CHANNEL_SECRET || "",
+    accessToken: env.LINE_MAIN_CHANNEL_ACCESS_TOKEN || env.LINE_CHANNEL_ACCESS_TOKEN || "",
+  };
+}
+
+function threadIdFor(floor, userId) {
+  return floor === FLOOR_MAIN ? `user:${userId}` : `${floor}:user:${userId}`;
+}
+
+async function fetchDashboardData(env, floor = FLOOR_MAIN) {
   if (!env.DB) return withThreadData(await callGas(env, { type: "FETCH_DASHBOARD_DATA" }));
   const [threads, aiLogs, knowledgeMeta] = await Promise.all([
-    fetchThreads(env, 120),
-    fetchAiLogs(env, 100),
-    getKnowledgeMeta(env),
+    fetchThreads(env, floor, 120),
+    fetchAiLogs(env, floor, 100),
+    getKnowledgeMeta(env, floor),
   ]);
   if (!threads.length && env.GAS_URL) {
     const gasData = await backupGas(env, { type: "FETCH_DASHBOARD_DATA" });
@@ -223,6 +264,7 @@ async function fetchDashboardData(env) {
   return {
     status: "success",
     data: {
+      floor,
       threads,
       chats: threads.flatMap((thread) => thread.messages.map((message) => message.raw)),
       aiLogs,
@@ -233,14 +275,15 @@ async function fetchDashboardData(env) {
   };
 }
 
-async function fetchThreads(env, limit = 120) {
+async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
   const { results } = await env.DB.prepare(`
     SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
+    WHERE t.floor_id = ?
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
-  `).bind(limit).all();
+  `).bind(floor, limit).all();
   if (!results.length) return [];
   const ids = results.map((row) => row.id);
   const placeholders = ids.map(() => "?").join(",");
@@ -253,21 +296,21 @@ async function fetchThreads(env, limit = 120) {
   return results.map((row) => threadFromD1(row, byThread.get(row.id) || []));
 }
 
-async function fetchThread(env, id) {
-  const lookup = id.startsWith("user:") ? id : `user:${id}`;
+async function fetchThread(env, floor, id) {
+  const lookup = id.includes(":user:") || id.startsWith("user:") ? id : threadIdFor(floor, id);
   const row = await env.DB.prepare(`
     SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id
-    WHERE t.id = ? OR t.user_id = ?
-  `).bind(lookup, id.replace(/^user:/, "")).first();
+    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
+    WHERE t.floor_id = ? AND (t.id = ? OR t.user_id = ?)
+  `).bind(floor, lookup, id.replace(/^(admin:)?user:/, "")).first();
   if (!row) return null;
   const messages = await env.DB.prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC").bind(row.id).all();
   return threadFromD1(row, messages.results || []);
 }
 
-async function fetchAiLogs(env, limit = 100) {
-  const { results } = await env.DB.prepare("SELECT * FROM ai_logs ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+async function fetchAiLogs(env, floor = FLOOR_MAIN, limit = 100) {
+  const { results } = await env.DB.prepare("SELECT * FROM ai_logs WHERE floor_id = ? ORDER BY created_at DESC LIMIT ?").bind(floor, limit).all();
   return (results || []).map((row) => ({
     "\u6642\u9593": row.created_at,
     "\u7528\u6236ID": row.user_id,
@@ -280,7 +323,7 @@ async function fetchAiLogs(env, limit = 100) {
   }));
 }
 
-async function migrateGasToD1(env) {
+async function migrateGasToD1(env, floor = FLOOR_MAIN) {
   const gas = await callGas(env, { type: "FETCH_DASHBOARD_DATA" });
   const data = gas.data || {};
   const chats = Array.isArray(data.chats) ? data.chats : [];
@@ -292,8 +335,9 @@ async function migrateGasToD1(env) {
 
   for (const thread of threads) {
     const now = Date.now();
-    const threadId = `user:${thread.userId}`;
+    const threadId = threadIdFor(floor, thread.userId);
     await upsertProfile(env, {
+      floor,
       userId: thread.userId,
       displayName: thread.hasRealName ? thread.name : "",
       pictureUrl: thread.pictureUrl,
@@ -302,8 +346,8 @@ async function migrateGasToD1(env) {
     profileCount += 1;
 
     await env.DB.prepare(`
-      INSERT INTO threads (id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO threads (id, floor_id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
         picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
@@ -316,6 +360,7 @@ async function migrateGasToD1(env) {
         updated_at = excluded.updated_at
     `).bind(
       threadId,
+      floor,
       thread.userId,
       thread.hasRealName ? thread.name : "",
       thread.pictureUrl || "",
@@ -333,10 +378,11 @@ async function migrateGasToD1(env) {
     for (const message of thread.messages || []) {
       const messageId = message.id || `${threadId}:${message.createdAt || now}:${crypto.randomUUID()}`;
       await env.DB.prepare(`
-        INSERT OR IGNORE INTO messages (id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO messages (id, floor_id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         messageId,
+        floor,
         threadId,
         thread.userId,
         message.senderRole === ADMIN_ROLE ? ADMIN_ROLE : USER_ROLE,
@@ -361,6 +407,7 @@ function threadFromD1(row, messages) {
   const name = stringValue(row.display_name) || row.user_id;
   return {
     id: row.id,
+    floor: row.floor_id || FLOOR_MAIN,
     userId: row.user_id,
     name,
     displayName: name,
@@ -385,6 +432,7 @@ function messageFromD1(thread, message) {
     "\u6642\u9593": message.created_at,
     "\u8eab\u4efd": message.sender_role === ADMIN_ROLE ? "admin" : "user",
     "\u7528\u6236ID": message.user_id,
+    "floor": thread.floor_id || FLOOR_MAIN,
     "\u5167\u5bb9": message.text,
     "\u985e\u5225": message.category,
     "AI\u5efa\u8b70": JSON.stringify(suggestions),
@@ -409,30 +457,31 @@ function messageFromD1(thread, message) {
   };
 }
 
-async function processLineWebhook(env, payload) {
-  await attachLineProfiles(payload, env);
+async function processLineWebhook(env, floor, provider, payload) {
+  await attachLineProfiles(payload, provider);
   for (const event of payload.events || []) {
     if (!event || event.type !== "message" || !event.message || event.message.type !== "text") continue;
     const userId = event.source && event.source.userId ? event.source.userId : "";
     const text = stringValue(event.message.text);
     if (!userId || !text) continue;
-    await saveIncomingMessage(env, event, userId, text);
+    await saveIncomingMessage(env, floor, provider, event, userId, text);
   }
-  await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
+  if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
 }
 
-async function saveIncomingMessage(env, event, userId, text) {
+async function saveIncomingMessage(env, floor, provider, event, userId, text) {
   const now = Number(event.timestamp || Date.now());
   const sourceType = stringValue(event.source && event.source.type) || "user";
   const sourceId = stringValue((event.source && (event.source.groupId || event.source.roomId)) || userId);
-  const threadId = `user:${userId}`;
-  const profile = await resolveProfile(env, userId, event.source || {}, event.userProfile || null);
-  const analysis = await analyzeMessage(env, text, userId, profile.displayName || userId);
+  const threadId = threadIdFor(floor, userId);
+  const profile = await resolveProfile(env, floor, provider, userId, event.source || {}, event.userProfile || null);
+  const analysis = await analyzeMessage(env, floor, text, userId, profile.displayName || userId);
   const status = analysis.isImportant ? STATUS_IMPORTANT : STATUS_PENDING;
   const risk = analysis.isImportant ? "high" : "low";
   const messageId = stringValue(event.message.id) || `${threadId}:${now}:${crypto.randomUUID()}`;
 
   await upsertProfile(env, {
+    floor,
     userId,
     displayName: profile.displayName,
     pictureUrl: profile.pictureUrl,
@@ -443,10 +492,10 @@ async function saveIncomingMessage(env, event, userId, text) {
     now,
   });
 
-  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ?").bind(threadId).first();
+  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ? AND floor_id = ?").bind(threadId, floor).first();
   await env.DB.prepare(`
-    INSERT INTO threads (id, user_id, source_type, source_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO threads (id, floor_id, user_id, source_type, source_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
       picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
@@ -459,6 +508,7 @@ async function saveIncomingMessage(env, event, userId, text) {
       updated_at = excluded.updated_at
   `).bind(
     threadId,
+    floor,
     userId,
     sourceType,
     sourceId,
@@ -475,10 +525,11 @@ async function saveIncomingMessage(env, event, userId, text) {
   ).run();
 
   await env.DB.prepare(`
-    INSERT OR IGNORE INTO messages (id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO messages (id, floor_id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     messageId,
+    floor,
     threadId,
     userId,
     USER_ROLE,
@@ -494,10 +545,11 @@ async function saveIncomingMessage(env, event, userId, text) {
 
   if (analysis.isImportant) {
     await env.DB.prepare(`
-      INSERT OR IGNORE INTO ai_logs (id, thread_id, user_id, text, category, sentiment, report_reason, status, telegram_status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO ai_logs (id, floor_id, thread_id, user_id, text, category, sentiment, report_reason, status, telegram_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       `ai:${messageId}`,
+      floor,
       threadId,
       userId,
       text,
@@ -512,36 +564,38 @@ async function saveIncomingMessage(env, event, userId, text) {
 }
 
 async function saveAdminMessage(env, input) {
+  const floor = input.floor || FLOOR_MAIN;
   const userId = stringValue(input.userId);
   const text = stringValue(input.text);
   const now = Number(input.createdAt || Date.now());
-  const threadId = `user:${userId}`;
-  const profile = await getProfile(env, userId);
+  const threadId = threadIdFor(floor, userId);
+  const profile = await getProfile(env, floor, userId);
   const name = profile && profile.display_name ? profile.display_name : "";
   const pictureUrl = profile && profile.picture_url ? profile.picture_url : "";
-  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ?").bind(threadId).first();
+  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ? AND floor_id = ?").bind(threadId, floor).first();
 
   await env.DB.prepare(`
-    INSERT INTO threads (id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO threads (id, floor_id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       summary = excluded.summary,
       status = excluded.status,
       last_message_at = excluded.last_message_at,
       updated_at = excluded.updated_at
-  `).bind(threadId, userId, name, pictureUrl, text, input.status || STATUS_DONE, "low", current ? current.tags : "[]", current ? current.note : "", now, now, now).run();
+  `).bind(threadId, floor, userId, name, pictureUrl, text, input.status || STATUS_DONE, "low", current ? current.tags : "[]", current ? current.note : "", now, now, now).run();
 
   await env.DB.prepare(`
-    INSERT INTO messages (id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(`admin:${threadId}:${now}:${crypto.randomUUID()}`, threadId, userId, ADMIN_ROLE, "text", text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", "{}", now).run();
+    INSERT INTO messages (id, floor_id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(`admin:${threadId}:${now}:${crypto.randomUUID()}`, floor, threadId, userId, ADMIN_ROLE, "text", text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", "{}", now).run();
 }
 
 async function updateConversationMeta(env, input) {
+  const floor = input.floor || FLOOR_MAIN;
   const userId = stringValue(input.userId);
   const now = Date.now();
-  const threadId = `user:${userId}`;
-  const existing = await env.DB.prepare("SELECT * FROM threads WHERE id = ?").bind(threadId).first();
+  const threadId = threadIdFor(floor, userId);
+  const existing = await env.DB.prepare("SELECT * FROM threads WHERE id = ? AND floor_id = ?").bind(threadId, floor).first();
   const currentTags = existing ? parseJsonArray(existing.tags) : [];
   const tags = input.tags === undefined ? currentTags : normalizeTags(input.tags);
   const displayName = chooseStableName(userId, input.userName, existing && existing.display_name);
@@ -550,8 +604,8 @@ async function updateConversationMeta(env, input) {
   const note = input.note !== undefined ? String(input.note || "") : (existing && existing.note) || "";
 
   await env.DB.prepare(`
-    INSERT INTO threads (id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO threads (id, floor_id, user_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
       picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
@@ -559,13 +613,14 @@ async function updateConversationMeta(env, input) {
       tags = excluded.tags,
       note = excluded.note,
       updated_at = excluded.updated_at
-  `).bind(threadId, userId, displayName, pictureUrl, existing ? existing.summary : "", status, existing ? existing.risk : "low", JSON.stringify(tags), note, existing ? existing.last_message_at : 0, existing ? existing.created_at : now, now).run();
+  `).bind(threadId, floor, userId, displayName, pictureUrl, existing ? existing.summary : "", status, existing ? existing.risk : "low", JSON.stringify(tags), note, existing ? existing.last_message_at : 0, existing ? existing.created_at : now, now).run();
 
   if (displayName || pictureUrl) {
-    await upsertProfile(env, { userId, displayName, pictureUrl, now });
+    await upsertProfile(env, { floor, userId, displayName, pictureUrl, now });
   }
 
   return {
+    floor,
     userId,
     userName: displayName,
     pictureUrl,
@@ -576,7 +631,7 @@ async function updateConversationMeta(env, input) {
   };
 }
 
-async function backfillProfiles(env, limit, options = {}) {
+async function backfillProfiles(env, floor, provider, limit, options = {}) {
   const force = Boolean(options.force);
   const staleBefore = Date.now() - Number(options.staleMs || 0);
   const staleClause = force ? "" : "AND (p.profile_status IS NULL OR p.last_profile_sync IS NULL OR p.last_profile_sync < ?)";
@@ -584,20 +639,21 @@ async function backfillProfiles(env, limit, options = {}) {
   const { results } = await env.DB.prepare(`
     SELECT t.user_id, t.source_type, t.source_id, t.display_name, t.picture_url
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id
-    WHERE (t.display_name = '' OR t.display_name = t.user_id OR t.picture_url = '')
+    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
+    WHERE t.floor_id = ? AND (t.display_name = '' OR t.display_name = t.user_id OR t.picture_url = '')
       ${staleClause}
     ORDER BY t.updated_at DESC
     LIMIT ?
-  `).bind(...bindings).all();
+  `).bind(floor, ...bindings).all();
   const output = [];
   for (const row of results || []) {
     const source = sourceFromD1(row);
-    const profile = await fetchLineProfileWithDetail(env, row.user_id, source);
+    const profile = await fetchLineProfileWithDetail(provider, row.user_id, source);
     const result = { userId: row.user_id, profileStatus: profile.status, updated: false };
     if (profile.ok && profile.data && (profile.data.displayName || profile.data.pictureUrl)) {
       const now = Date.now();
       await upsertProfile(env, {
+        floor,
         userId: row.user_id,
         displayName: profile.data.displayName,
         pictureUrl: profile.data.pictureUrl,
@@ -607,6 +663,7 @@ async function backfillProfiles(env, limit, options = {}) {
         now,
       });
       await updateConversationMeta(env, {
+        floor,
         userId: row.user_id,
         userName: profile.data.displayName || row.display_name,
         pictureUrl: profile.data.pictureUrl || row.picture_url,
@@ -617,6 +674,7 @@ async function backfillProfiles(env, limit, options = {}) {
     } else {
       result.error = profile.detail || profile.error || "LINE profile unavailable";
       await upsertProfile(env, {
+        floor,
         userId: row.user_id,
         displayName: "",
         pictureUrl: "",
@@ -632,8 +690,8 @@ async function backfillProfiles(env, limit, options = {}) {
   return output;
 }
 
-async function resolveProfile(env, userId, source, webhookProfile) {
-  const stored = await getProfile(env, userId);
+async function resolveProfile(env, floor, provider, userId, source, webhookProfile) {
+  const stored = await getProfile(env, floor, userId);
   const incomingName = webhookProfile && webhookProfile.displayName ? webhookProfile.displayName : "";
   const incomingPicture = webhookProfile && webhookProfile.pictureUrl ? webhookProfile.pictureUrl : "";
   if (incomingName || incomingPicture) {
@@ -647,7 +705,7 @@ async function resolveProfile(env, userId, source, webhookProfile) {
 
   const shouldRefresh = !stored || !stored.display_name || !stored.picture_url || Date.now() - Number(stored.last_profile_sync || 0) > 86400000;
   if (shouldRefresh) {
-    const fetched = await fetchLineProfileWithDetail(env, userId, source);
+    const fetched = await fetchLineProfileWithDetail(provider, userId, source);
     if (fetched.ok && fetched.data) {
       return {
         displayName: chooseStableName(userId, fetched.data.displayName, stored && stored.display_name),
@@ -672,9 +730,9 @@ async function resolveProfile(env, userId, source, webhookProfile) {
   };
 }
 
-async function getProfile(env, userId) {
+async function getProfile(env, floor, userId) {
   if (!env.DB) return null;
-  return await env.DB.prepare("SELECT * FROM profiles WHERE user_id = ?").bind(userId).first();
+  return await env.DB.prepare("SELECT * FROM profiles WHERE user_id = ? AND floor_id = ?").bind(userId, floor || FLOOR_MAIN).first();
 }
 
 async function upsertProfile(env, input) {
@@ -683,8 +741,8 @@ async function upsertProfile(env, input) {
   const displayName = stringValue(input.displayName);
   const pictureUrl = stringValue(input.pictureUrl);
   await env.DB.prepare(`
-    INSERT INTO profiles (user_id, display_name, picture_url, source_type, source_id, profile_status, profile_error, last_profile_sync, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO profiles (user_id, floor_id, display_name, picture_url, source_type, source_id, profile_status, profile_error, last_profile_sync, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE profiles.display_name END,
       picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE profiles.picture_url END,
@@ -694,11 +752,11 @@ async function upsertProfile(env, input) {
       profile_error = excluded.profile_error,
       last_profile_sync = excluded.last_profile_sync,
       updated_at = excluded.updated_at
-  `).bind(input.userId, displayName, pictureUrl, stringValue(input.sourceType || "user"), stringValue(input.sourceId), input.profileStatus || null, stringValue(input.profileError), now, now, now).run();
+  `).bind(input.userId, input.floor || FLOOR_MAIN, displayName, pictureUrl, stringValue(input.sourceType || "user"), stringValue(input.sourceId), input.profileStatus || null, stringValue(input.profileError), now, now, now).run();
 }
 
-async function analyzeMessage(env, text, userId, userName) {
-  const local = await localKnowledgeSuggestion(env, text);
+async function analyzeMessage(env, floor, text, userId, userName) {
+  const local = await localKnowledgeSuggestion(env, floor, text);
   const important = isImportantText(text);
   const fallback = {
     isImportant: important,
@@ -732,9 +790,9 @@ async function analyzeMessage(env, text, userId, userName) {
   }
 }
 
-async function localKnowledgeSuggestion(env, text) {
+async function localKnowledgeSuggestion(env, floor, text) {
   if (!env.DB) return { matches: [], suggestions: [] };
-  const { results } = await env.DB.prepare("SELECT category, question, answer FROM knowledge_items ORDER BY id ASC LIMIT 1000").all();
+  const { results } = await env.DB.prepare("SELECT category, question, answer FROM knowledge_items WHERE floor_id = ? OR floor_id = 'main' ORDER BY CASE WHEN floor_id = ? THEN 0 ELSE 1 END, id ASC LIMIT 1000").bind(floor || FLOOR_MAIN, floor || FLOOR_MAIN).all();
   const terms = tokenize(text);
   const matches = (results || []).map((item) => {
     const haystack = `${item.category} ${item.question} ${item.answer}`;
@@ -778,23 +836,23 @@ function extractOpenAIText(body) {
   throw new Error("OpenAI returned empty content");
 }
 
-async function importKnowledge(env, payload, fileName) {
+async function importKnowledge(env, floor, payload, fileName) {
   const normalized = normalizeKnowledgePayload(typeof payload === "string" ? JSON.parse(payload) : payload);
   const now = Date.now();
-  await env.DB.prepare("DELETE FROM knowledge_items").run();
-  const statements = normalized.items.map((item) => env.DB.prepare("INSERT INTO knowledge_items (category, question, answer, source, created_at) VALUES (?, ?, ?, ?, ?)").bind(item.category, item.question, item.answer, fileName, now));
+  await env.DB.prepare("DELETE FROM knowledge_items WHERE floor_id = ?").bind(floor || FLOOR_MAIN).run();
+  const statements = normalized.items.map((item) => env.DB.prepare("INSERT INTO knowledge_items (floor_id, category, question, answer, source, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(floor || FLOOR_MAIN, item.category, item.question, item.answer, fileName, now));
   if (statements.length) await env.DB.batch(statements);
   const meta = { title: normalized.title, version: normalized.version, source: fileName, count: normalized.items.length, updatedAt: new Date(now).toISOString() };
-  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind("knowledge_meta", JSON.stringify(meta), now).run();
+  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(`knowledge_meta:${floor || FLOOR_MAIN}`, JSON.stringify(meta), now).run();
   return { status: "success", count: normalized.items.length, meta };
 }
 
-async function getKnowledgeMeta(env) {
-  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind("knowledge_meta").first();
+async function getKnowledgeMeta(env, floor = FLOOR_MAIN) {
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(`knowledge_meta:${floor}`).first();
   if (row && row.value) {
     try { return JSON.parse(row.value); } catch (_err) { /* ignore */ }
   }
-  const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM knowledge_items").first();
+  const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM knowledge_items WHERE floor_id = ?").bind(floor).first();
   return { count: Number((count && count.count) || 0), source: "D1", updatedAt: "" };
 }
 
@@ -814,40 +872,40 @@ function normalizeKnowledgePayload(payload) {
   };
 }
 
-async function pushLineMessage(env, userId, text) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
+async function pushLineMessage(provider, userId, text) {
+  if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.accessToken}` },
     body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
   });
   const detail = await response.text();
   return { ok: response.ok, status: response.status, detail };
 }
 
-async function attachLineProfiles(payload, env) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !Array.isArray(payload.events)) return;
+async function attachLineProfiles(payload, provider) {
+  if (!provider.accessToken || !Array.isArray(payload.events)) return;
   const cache = new Map();
   await Promise.all(payload.events.map(async (event) => {
     const userId = event && event.source && event.source.userId;
     if (!userId) return;
     const cacheKey = `${event.source.type || "user"}:${event.source.groupId || event.source.roomId || ""}:${userId}`;
-    if (!cache.has(cacheKey)) cache.set(cacheKey, fetchLineProfile(env, userId, event.source));
+    if (!cache.has(cacheKey)) cache.set(cacheKey, fetchLineProfile(provider, userId, event.source));
     const profile = await cache.get(cacheKey);
     if (profile) event.userProfile = profile;
   }));
 }
 
-async function fetchLineProfile(env, userId, source = {}) {
-  const result = await fetchLineProfileWithDetail(env, userId, source);
+async function fetchLineProfile(provider, userId, source = {}) {
+  const result = await fetchLineProfileWithDetail(provider, userId, source);
   return result.ok ? result.data : null;
 }
 
-async function fetchLineBotInfo(env) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
+async function fetchLineBotInfo(provider) {
+  if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
   try {
     const response = await fetch("https://api.line.me/v2/bot/info", {
-      headers: { Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+      headers: { Authorization: `Bearer ${provider.accessToken}` },
     });
     const text = await response.text();
     let data = null;
@@ -858,8 +916,8 @@ async function fetchLineBotInfo(env) {
   }
 }
 
-async function fetchLineProfileWithDetail(env, userId, source = {}) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
+async function fetchLineProfileWithDetail(provider, userId, source = {}) {
+  if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
   const endpoints = [];
   if (source && source.type === "group" && source.groupId) endpoints.push({ kind: "groupMember", url: `https://api.line.me/v2/bot/group/${encodeURIComponent(source.groupId)}/member/${encodeURIComponent(userId)}` });
   if (source && source.type === "room" && source.roomId) endpoints.push({ kind: "roomMember", url: `https://api.line.me/v2/bot/room/${encodeURIComponent(source.roomId)}/member/${encodeURIComponent(userId)}` });
@@ -868,7 +926,7 @@ async function fetchLineProfileWithDetail(env, userId, source = {}) {
   const attempts = [];
   try {
     for (const endpoint of endpoints) {
-      const response = await fetch(endpoint.url, { headers: { Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` } });
+      const response = await fetch(endpoint.url, { headers: { Authorization: `Bearer ${provider.accessToken}` } });
       const text = await response.text();
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
