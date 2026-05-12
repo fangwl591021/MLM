@@ -240,7 +240,7 @@ function getProvider(env, floor) {
   return {
     floor: FLOOR_MAIN,
     id: FLOOR_MAIN,
-    label: "LINE OA",
+    label: "\u7522\u54c1\u5ba2\u670d",
     channelSecret: env.LINE_MAIN_CHANNEL_SECRET || env.LINE_CHANNEL_SECRET || "",
     accessToken: env.LINE_MAIN_CHANNEL_ACCESS_TOKEN || env.LINE_CHANNEL_ACCESS_TOKEN || "",
   };
