@@ -43,7 +43,11 @@ export default {
 
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        return jsonResponse(await fetchDashboardData(env), 200, corsHeaders);
+        const data = await fetchDashboardData(env);
+        if (env.DB && env.LINE_CHANNEL_ACCESS_TOKEN) {
+          ctx.waitUntil(backfillProfiles(env, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
+        }
+        return jsonResponse(data, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/migrate-gas-to-d1" && request.method === "POST") {
@@ -105,7 +109,7 @@ export default {
         assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const limit = clampNumber(body.limit || 100, 1, 300);
-        const results = await backfillProfiles(env, limit);
+        const results = await backfillProfiles(env, limit, { force: true });
         return jsonResponse({ status: "success", scanned: results.length, results }, 200, corsHeaders);
       }
 
@@ -426,6 +430,8 @@ async function saveIncomingMessage(env, event, userId, text) {
     ON CONFLICT(id) DO UPDATE SET
       display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
       picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
+      source_type = CASE WHEN excluded.source_type != '' THEN excluded.source_type ELSE threads.source_type END,
+      source_id = CASE WHEN excluded.source_id != '' THEN excluded.source_id ELSE threads.source_id END,
       summary = excluded.summary,
       status = excluded.status,
       risk = excluded.risk,
@@ -550,14 +556,20 @@ async function updateConversationMeta(env, input) {
   };
 }
 
-async function backfillProfiles(env, limit) {
+async function backfillProfiles(env, limit, options = {}) {
+  const force = Boolean(options.force);
+  const staleBefore = Date.now() - Number(options.staleMs || 0);
+  const staleClause = force ? "" : "AND (p.last_profile_sync IS NULL OR p.last_profile_sync < ?)";
+  const bindings = force ? [limit] : [staleBefore, limit];
   const { results } = await env.DB.prepare(`
-    SELECT user_id, source_type, source_id, display_name, picture_url
-    FROM threads
-    WHERE display_name = '' OR display_name = user_id OR picture_url = ''
-    ORDER BY updated_at DESC
+    SELECT t.user_id, t.source_type, t.source_id, t.display_name, t.picture_url
+    FROM threads t
+    LEFT JOIN profiles p ON p.user_id = t.user_id
+    WHERE (t.display_name = '' OR t.display_name = t.user_id OR t.picture_url = '')
+      ${staleClause}
+    ORDER BY t.updated_at DESC
     LIMIT ?
-  `).bind(limit).all();
+  `).bind(...bindings).all();
   const output = [];
   for (const row of results || []) {
     const source = sourceFromD1(row);
@@ -584,6 +596,16 @@ async function backfillProfiles(env, limit) {
       result.pictureUrl = profile.data.pictureUrl || "";
     } else {
       result.error = profile.detail || profile.error || "LINE profile unavailable";
+      await upsertProfile(env, {
+        userId: row.user_id,
+        displayName: "",
+        pictureUrl: "",
+        sourceType: row.source_type,
+        sourceId: row.source_id,
+        profileStatus: profile.status || 0,
+        profileError: result.error,
+        now: Date.now(),
+      });
     }
     output.push(result);
   }
