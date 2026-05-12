@@ -8,7 +8,7 @@
     :root{--line:#06c755;--ink:#172033;--muted:#718096;--border:#dbe3ee;--soft:#f6f8fb;--blue:#315b9c;--orange:#ff9f1c;--red:#d92d20}
     *{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:var(--ink);font-family:"Noto Sans TC",Inter,system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}
     .shell{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:24px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:28px}.logo{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:#fff;font-weight:800;box-shadow:0 14px 28px rgba(6,199,85,.18)}h1,h2,h3,p{margin:0}.brand h1{font-size:22px}.brand p,.muted{color:var(--muted);font-size:13px}.nav{display:grid;gap:8px;margin-top:22px}.nav a{display:flex;align-items:center;justify-content:space-between;border-radius:14px;padding:12px 14px;color:#263244;text-decoration:none;font-weight:700}.nav a.active,.nav a:hover{background:#effcf4;color:#067a35}.settings{display:grid;gap:8px;margin-top:26px}.settingsToggle{height:40px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;font-weight:800}.settingsPanel{display:none;gap:8px}.settings.open .settingsPanel{display:grid}.settings label{font-size:12px;color:#5d6675;font-weight:700}.settings input{width:100%;height:40px;border:1px solid var(--border);border-radius:10px;padding:0 11px;outline:none}.settings input:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.sync{height:42px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800}
-    main{padding:26px 30px}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}.top h2{font-size:30px}.status{border:1px solid #b6ecc8;border-radius:999px;background:#effcf4;color:#067a35;padding:8px 12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 12px 28px rgba(16,24,40,.04)}.metric{font-size:34px;font-weight:850;margin-top:10px}.metric.warn{color:var(--orange)}.metric.danger{color:var(--red)}.section{margin-top:18px}.sectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.sectionHead h3{font-size:18px}.floors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.floorTitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.badge{border-radius:999px;background:#eef2f7;color:#344054;padding:5px 10px;font-size:12px;font-weight:800}.badge.green{background:#e7f8ef;color:#067a35}.badge.red{background:#fff1f3;color:#c01048}.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.mini div{border-radius:12px;background:#f8fafc;padding:12px}.mini strong{display:block;font-size:22px}.latest{margin-top:14px;padding-top:14px;border-top:1px solid #edf1f5;color:#4b5563;line-height:1.5}.modules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.module{display:block;color:inherit;text-decoration:none}.module strong{display:block;margin-bottom:8px;font-size:16px}.table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:14px;background:#fff}.table th,.table td{border-bottom:1px solid #edf1f5;padding:12px;text-align:left}.table th{color:#5d6675;font-size:12px;background:#f8fafc}.error{margin-top:14px;border:1px solid #fecdd3;background:#fff1f3;color:#b42318;border-radius:12px;padding:12px;font-weight:700}.hide{display:none}@media(max-width:1100px){.shell{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--border)}.grid,.floors,.modules{grid-template-columns:1fr}.top{display:block}.status{display:inline-block;margin-top:12px}}
+    main{padding:26px 30px}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}.top h2{font-size:30px}.status{border:1px solid #b6ecc8;border-radius:999px;background:#effcf4;color:#067a35;padding:8px 12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 12px 28px rgba(16,24,40,.04)}.metric{font-size:34px;font-weight:850;margin-top:10px}.metric.warn{color:var(--orange)}.metric.danger{color:var(--red)}.section{margin-top:18px}.sectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.sectionHead h3{font-size:18px}.chartGrid{display:grid;grid-template-columns:1.25fr .75fr;gap:14px}.chartCard{min-height:270px}.bars{display:grid;gap:14px;margin-top:18px}.barRow{display:grid;grid-template-columns:108px minmax(0,1fr) 52px;gap:12px;align-items:center}.barLabel{font-weight:800}.barTrack{height:18px;border-radius:999px;background:#edf2f7;overflow:hidden}.barFill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#06c755,#38d995);transition:width .35s ease}.barFill.blue{background:linear-gradient(90deg,#315b9c,#76a9ff)}.barFill.orange{background:linear-gradient(90deg,#ff9f1c,#ffd166)}.barFill.red{background:linear-gradient(90deg,#d92d20,#ff7a70)}.barValue{text-align:right;color:#344054;font-weight:800}.donutWrap{display:grid;grid-template-columns:150px minmax(0,1fr);gap:18px;align-items:center;margin-top:12px}.donut{width:150px;height:150px;border-radius:50%;background:conic-gradient(#06c755 0deg,#06c755 var(--doneDeg,0deg),#ff9f1c var(--doneDeg,0deg),#ff9f1c var(--pendingDeg,0deg),#d92d20 var(--pendingDeg,0deg),#d92d20 360deg);position:relative}.donut::after{content:"";position:absolute;inset:28px;border-radius:50%;background:#fff}.donutCenter{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-weight:850;z-index:1}.legend{display:grid;gap:10px}.legendItem{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#4b5563}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}.dot.green{background:#06c755}.dot.orange{background:#ff9f1c}.dot.red{background:#d92d20}.insight{margin-top:14px;border-radius:14px;background:#f8fafc;padding:12px;color:#4b5563;line-height:1.5}.floors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.floorTitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.badge{border-radius:999px;background:#eef2f7;color:#344054;padding:5px 10px;font-size:12px;font-weight:800}.badge.green{background:#e7f8ef;color:#067a35}.badge.red{background:#fff1f3;color:#c01048}.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.mini div{border-radius:12px;background:#f8fafc;padding:12px}.mini strong{display:block;font-size:22px}.latest{margin-top:14px;padding-top:14px;border-top:1px solid #edf1f5;color:#4b5563;line-height:1.5}.modules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.module{display:block;color:inherit;text-decoration:none}.module strong{display:block;margin-bottom:8px;font-size:16px}.table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:14px;background:#fff}.table th,.table td{border-bottom:1px solid #edf1f5;padding:12px;text-align:left}.table th{color:#5d6675;font-size:12px;background:#f8fafc}.error{margin-top:14px;border:1px solid #fecdd3;background:#fff1f3;color:#b42318;border-radius:12px;padding:12px;font-weight:700}.hide{display:none}@media(max-width:1100px){.shell{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--border)}.grid,.floors,.modules,.chartGrid{grid-template-columns:1fr}.donutWrap{grid-template-columns:1fr}.top{display:block}.status{display:inline-block;margin-top:12px}}
   </style>
 </head>
 <body>
@@ -47,6 +47,29 @@
         <article class="card"><p class="muted">待回覆 / 待處理</p><div class="metric warn" id="pendingThreads">0</div></article>
         <article class="card"><p class="muted">今日新訊息</p><div class="metric" id="todayMessages">0</div></article>
         <article class="card"><p class="muted">高風險 / AI 通報</p><div class="metric danger" id="riskAlerts">0</div></article>
+      </section>
+
+      <section class="section">
+        <div class="sectionHead"><h3>視覺總覽</h3><span class="muted">用圖表快速判斷流量、處理量與風險</span></div>
+        <div class="chartGrid">
+          <article class="card chartCard">
+            <div class="sectionHead"><h3>樓層流量比較</h3><span class="muted">今日訊息 / 待回覆 / 風險</span></div>
+            <div class="bars" id="trafficChart"></div>
+            <div class="insight" id="trafficInsight">同步後顯示客服樓層流量。</div>
+          </article>
+          <article class="card chartCard">
+            <div class="sectionHead"><h3>處理狀態比例</h3><span class="muted">全樓層</span></div>
+            <div class="donutWrap">
+              <div class="donut" id="statusDonut"><div class="donutCenter" id="statusRate">0%</div></div>
+              <div class="legend">
+                <div class="legendItem"><span><i class="dot green"></i>處理完成</span><strong id="doneLegend">0</strong></div>
+                <div class="legendItem"><span><i class="dot orange"></i>待回覆</span><strong id="pendingLegend">0</strong></div>
+                <div class="legendItem"><span><i class="dot red"></i>高風險</span><strong id="riskLegend">0</strong></div>
+              </div>
+            </div>
+            <div class="insight" id="statusInsight">同步後顯示處理完成率。</div>
+          </article>
+        </div>
       </section>
 
       <section class="section">
@@ -91,6 +114,7 @@
     apiToken.value = localStorage.getItem("line_ai_api_token") || "";
     $("settingsToggle").onclick = unlockSettings;
     $("syncButton").onclick = sync;
+    render(defaultSummary());
     if (apiToken.value) sync();
 
     function unlockSettings() {
@@ -136,6 +160,7 @@
       $("calendarToday").textContent = data.calendar && data.calendar.today || 0;
       $("eventRegistrations").textContent = data.events && data.events.registrationsToday || 0;
       $("eventCheckins").textContent = data.events && data.events.checkinsToday || 0;
+      renderCharts(data);
       $("floorCards").innerHTML = (data.floors || []).map((floor) => `
         <article class="card">
           <div class="floorTitle"><h3>${esc(floor.name)}</h3><span class="badge green">${esc(floor.id)}</span></div>
@@ -148,6 +173,50 @@
           <div class="latest">${floor.latestThread ? `最新：${esc(floor.latestThread.name)}，${esc(floor.latestThread.summary || "尚無摘要")}<br><span class="muted">${fmt(floor.latestThread.at)}</span>` : "目前沒有對話資料。"}</div>
         </article>
       `).join("");
+    }
+
+    function defaultSummary() {
+      return {
+        generatedAt: 0,
+        totals: { threads: 0, pending: 0, done: 0, highRisk: 0, todayMessages: 0, todayReplies: 0, aiAlerts: 0 },
+        floors: [
+          { id: "main", name: "產品客服", threads: 0, pending: 0, done: 0, highRisk: 0, todayMessages: 0, todayReplies: 0, aiAlerts: 0, latestThread: null },
+          { id: "admin", name: "行政客服", threads: 0, pending: 0, done: 0, highRisk: 0, todayMessages: 0, todayReplies: 0, aiAlerts: 0, latestThread: null },
+        ],
+        calendar: { today: 0 },
+        events: { upcoming: 0, registrationsToday: 0, checkinsToday: 0 },
+      };
+    }
+
+    function renderCharts(data) {
+      const floors = data.floors || [];
+      const maxValue = Math.max(1, ...floors.flatMap((floor) => [floor.todayMessages || 0, floor.pending || 0, floor.highRisk || 0]));
+      $("trafficChart").innerHTML = floors.length ? floors.map((floor) => `
+        <div class="barRow"><div class="barLabel">${esc(floor.name)}</div><div class="barTrack"><div class="barFill" style="width:${pct(floor.todayMessages || 0, maxValue)}%"></div></div><div class="barValue">${floor.todayMessages || 0}</div></div>
+        <div class="barRow"><div class="barLabel muted">待回覆</div><div class="barTrack"><div class="barFill orange" style="width:${pct(floor.pending || 0, maxValue)}%"></div></div><div class="barValue">${floor.pending || 0}</div></div>
+        <div class="barRow"><div class="barLabel muted">風險</div><div class="barTrack"><div class="barFill red" style="width:${pct(floor.highRisk || 0, maxValue)}%"></div></div><div class="barValue">${floor.highRisk || 0}</div></div>
+      `).join("") : '<div class="muted">目前沒有樓層資料。</div>';
+
+      const totals = data.totals || {};
+      const done = totals.done || 0;
+      const pending = totals.pending || 0;
+      const risk = totals.highRisk || 0;
+      const base = Math.max(1, done + pending + risk);
+      const doneDeg = Math.round((done / base) * 360);
+      const pendingDeg = doneDeg + Math.round((pending / base) * 360);
+      $("statusDonut").style.setProperty("--doneDeg", `${doneDeg}deg`);
+      $("statusDonut").style.setProperty("--pendingDeg", `${pendingDeg}deg`);
+      $("statusRate").textContent = `${Math.round((done / Math.max(1, totals.threads || 0)) * 100)}%`;
+      $("doneLegend").textContent = done;
+      $("pendingLegend").textContent = pending;
+      $("riskLegend").textContent = risk;
+      const busiest = floors.slice().sort((a, b) => (b.todayMessages || 0) - (a.todayMessages || 0))[0];
+      $("trafficInsight").textContent = busiest ? `${busiest.name} 今日訊息最多，共 ${busiest.todayMessages || 0} 則；待回覆 ${busiest.pending || 0} 筆。` : "同步後顯示客服樓層流量。";
+      $("statusInsight").textContent = `目前完成 ${done} 筆、待回覆 ${pending} 筆、高風險 ${risk} 筆。`;
+    }
+
+    function pct(value, maxValue) {
+      return Math.max(4, Math.round((Number(value || 0) / Math.max(1, maxValue)) * 100));
     }
 
     function setStatus(text, bad) {
