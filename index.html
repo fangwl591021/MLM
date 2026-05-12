@@ -344,6 +344,8 @@
         },
         status: thread.status || "待回覆",
         risk: thread.risk || "low",
+        profileStatus: thread.profileStatus || null,
+        profileError: thread.profileError || "",
         tags,
         note: thread.note || "",
         hasRealName: thread.hasRealName !== false && !looksLikeUserId(displayName, thread.userId),
@@ -386,7 +388,8 @@
         const active = group.userId === state.activeUserId ? " active" : "";
         const avatar = group.avatarUrl ? `<img src="${esc(group.avatarUrl)}" alt="">` : esc(initialOf(group.displayName));
         const riskText = group.risk === "high" || hot ? "高風險" : "低風險";
-        return `<button class="item${active}" data-id="${esc(group.userId)}"><div class="avatar ${group.hasRealName ? "named" : ""}">${avatar}</div><div><div class="line"><span class="name">${esc(group.displayName)}</span><span class="time">${fmt(last["時間"])}</span></div><div class="uid">${esc(group.userId)}</div><div class="preview">${esc(last["內容"] || "")}</div><div class="tags"><span class="${statusClass(group.status)}">${esc(group.status)}</span><span class="label risk ${group.risk === "high" || hot ? "high" : "low"}">${riskText}</span><span class="label countBadge">${group.messages.length} 則</span>${!group.hasRealName ? '<span class="label nameWait">名稱待同步</span>' : ""}${group.tags.slice(0, 2).map((t) => `<span class="label">${esc(t)}</span>`).join("")}${hot ? '<span class="label hot">重要</span>' : ""}</div></div></button>`;
+        const profileLabel = !group.hasRealName ? (group.profileStatus ? `LINE ${group.profileStatus}` : "名稱待同步") : "";
+        return `<button class="item${active}" data-id="${esc(group.userId)}"><div class="avatar ${group.hasRealName ? "named" : ""}">${avatar}</div><div><div class="line"><span class="name">${esc(group.displayName)}</span><span class="time">${fmt(last["時間"])}</span></div><div class="uid">${esc(group.userId)}</div><div class="preview">${esc(last["內容"] || "")}</div><div class="tags"><span class="${statusClass(group.status)}">${esc(group.status)}</span><span class="label risk ${group.risk === "high" || hot ? "high" : "low"}">${riskText}</span><span class="label countBadge">${group.messages.length} 則</span>${profileLabel ? `<span class="label nameWait">${esc(profileLabel)}</span>` : ""}${group.tags.slice(0, 2).map((t) => `<span class="label">${esc(t)}</span>`).join("")}${hot ? '<span class="label hot">重要</span>' : ""}</div></div></button>`;
       }).join("");
       document.querySelectorAll(".item").forEach((btn) => { btn.onclick = () => { state.activeUserId = btn.dataset.id; render(); }; });
     }

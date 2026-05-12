@@ -105,6 +105,12 @@ export default {
         }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/line-bot-info" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const info = await fetchLineBotInfo(env);
+        return jsonResponse({ status: info.ok ? "success" : "error", data: info }, info.ok ? 200 : 502, corsHeaders);
+      }
+
       if (url.pathname === "/api/backfill-profiles" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
@@ -228,7 +234,13 @@ async function fetchDashboardData(env) {
 }
 
 async function fetchThreads(env, limit = 120) {
-  const { results } = await env.DB.prepare("SELECT * FROM threads ORDER BY last_message_at DESC, updated_at DESC LIMIT ?").bind(limit).all();
+  const { results } = await env.DB.prepare(`
+    SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
+    FROM threads t
+    LEFT JOIN profiles p ON p.user_id = t.user_id
+    ORDER BY t.last_message_at DESC, t.updated_at DESC
+    LIMIT ?
+  `).bind(limit).all();
   if (!results.length) return [];
   const ids = results.map((row) => row.id);
   const placeholders = ids.map(() => "?").join(",");
@@ -243,7 +255,12 @@ async function fetchThreads(env, limit = 120) {
 
 async function fetchThread(env, id) {
   const lookup = id.startsWith("user:") ? id : `user:${id}`;
-  const row = await env.DB.prepare("SELECT * FROM threads WHERE id = ? OR user_id = ?").bind(lookup, id.replace(/^user:/, "")).first();
+  const row = await env.DB.prepare(`
+    SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
+    FROM threads t
+    LEFT JOIN profiles p ON p.user_id = t.user_id
+    WHERE t.id = ? OR t.user_id = ?
+  `).bind(lookup, id.replace(/^user:/, "")).first();
   if (!row) return null;
   const messages = await env.DB.prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC").bind(row.id).all();
   return threadFromD1(row, messages.results || []);
@@ -351,6 +368,9 @@ function threadFromD1(row, messages) {
     summary: stringValue(row.summary),
     status: normalizeStatusForDisplay(row.status),
     risk: row.risk || "low",
+    profileStatus: row.profile_status || null,
+    profileError: stringValue(row.profile_error),
+    lastProfileSync: Number(row.last_profile_sync || 0),
     tags,
     note: stringValue(row.note),
     lastMessageAt: Number(row.last_message_at || 0),
@@ -821,6 +841,21 @@ async function attachLineProfiles(payload, env) {
 async function fetchLineProfile(env, userId, source = {}) {
   const result = await fetchLineProfileWithDetail(env, userId, source);
   return result.ok ? result.data : null;
+}
+
+async function fetchLineBotInfo(env) {
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return { ok: false, status: 500, detail: "LINE_CHANNEL_ACCESS_TOKEN is not configured" };
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/info", {
+      headers: { Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+    });
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_err) { data = text; }
+    return { ok: response.ok, status: response.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, detail: err && err.message ? err.message : String(err) };
+  }
 }
 
 async function fetchLineProfileWithDetail(env, userId, source = {}) {
