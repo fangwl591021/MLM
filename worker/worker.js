@@ -49,6 +49,12 @@ export default {
       const floor = resolveFloor(request);
       const provider = getProvider(env, floor);
 
+      if (url.pathname === "/api/console/summary" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const data = await fetchConsoleSummary(env);
+        return jsonResponse({ status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
         const data = await fetchDashboardData(env, floor);
@@ -213,7 +219,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/data?floor=main", "/api/data?floor=admin", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -248,6 +254,74 @@ function getProvider(env, floor) {
 
 function threadIdFor(floor, userId) {
   return floor === FLOOR_MAIN ? `user:${userId}` : `${floor}:user:${userId}`;
+}
+
+async function fetchConsoleSummary(env) {
+  const now = Date.now();
+  const todayStart = taipeiStartOfDay(now);
+  const floorNames = { [FLOOR_MAIN]: "\u7522\u54c1\u5ba2\u670d", [FLOOR_ADMIN]: "\u884c\u653f\u5ba2\u670d" };
+  const floors = [];
+
+  for (const floor of [FLOOR_MAIN, FLOOR_ADMIN]) {
+    const [threadStats, todayMessages, todayReplies, aiAlerts, latestThread] = await Promise.all([
+      env.DB.prepare(`
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done,
+          SUM(CASE WHEN risk = 'high' THEN 1 ELSE 0 END) AS high_risk
+        FROM threads
+        WHERE floor_id = ?
+      `).bind(STATUS_PENDING, STATUS_IMPORTANT, STATUS_DONE, floor).first(),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM messages WHERE floor_id = ? AND sender_role = ? AND created_at >= ?").bind(floor, USER_ROLE, todayStart).first(),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM messages WHERE floor_id = ? AND sender_role = ? AND created_at >= ?").bind(floor, ADMIN_ROLE, todayStart).first(),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM ai_logs WHERE floor_id = ? AND created_at >= ?").bind(floor, todayStart).first(),
+      env.DB.prepare("SELECT display_name, user_id, summary, last_message_at FROM threads WHERE floor_id = ? ORDER BY last_message_at DESC LIMIT 1").bind(floor).first(),
+    ]);
+
+    floors.push({
+      id: floor,
+      name: floorNames[floor] || floor,
+      threads: numberOrZero(threadStats && threadStats.total),
+      pending: numberOrZero(threadStats && threadStats.pending),
+      done: numberOrZero(threadStats && threadStats.done),
+      highRisk: numberOrZero(threadStats && threadStats.high_risk),
+      todayMessages: numberOrZero(todayMessages && todayMessages.count),
+      todayReplies: numberOrZero(todayReplies && todayReplies.count),
+      aiAlerts: numberOrZero(aiAlerts && aiAlerts.count),
+      latestThread: latestThread ? {
+        name: stringValue(latestThread.display_name) || stringValue(latestThread.user_id),
+        summary: stringValue(latestThread.summary),
+        at: numberOrZero(latestThread.last_message_at),
+      } : null,
+    });
+  }
+
+  const [calendarCount, upcomingEvents, registrations, checkins] = await Promise.all([
+    countIfTableExists(env, "calendar_events", "starts_at >= ? AND starts_at < ?", [todayStart, todayStart + 86400000]),
+    countIfTableExists(env, "events", "status != 'archived' AND (starts_at IS NULL OR starts_at >= ?)", [todayStart]),
+    countIfTableExists(env, "event_registrations", "registered_at >= ?", [todayStart]),
+    countIfTableExists(env, "event_checkins", "checked_in_at >= ?", [todayStart]),
+  ]);
+
+  const totals = floors.reduce((acc, item) => ({
+    threads: acc.threads + item.threads,
+    pending: acc.pending + item.pending,
+    done: acc.done + item.done,
+    highRisk: acc.highRisk + item.highRisk,
+    todayMessages: acc.todayMessages + item.todayMessages,
+    todayReplies: acc.todayReplies + item.todayReplies,
+    aiAlerts: acc.aiAlerts + item.aiAlerts,
+  }), { threads: 0, pending: 0, done: 0, highRisk: 0, todayMessages: 0, todayReplies: 0, aiAlerts: 0 });
+
+  return {
+    generatedAt: now,
+    todayStart,
+    totals,
+    floors,
+    calendar: { today: calendarCount },
+    events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins },
+  };
 }
 
 async function fetchDashboardData(env, floor = FLOOR_MAIN) {
@@ -1104,6 +1178,24 @@ function numberValue(value) {
   if (Number.isFinite(number) && number > 0) return number;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function numberOrZero(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function taipeiStartOfDay(now) {
+  const offset = 8 * 60 * 60 * 1000;
+  return Math.floor((Number(now) + offset) / 86400000) * 86400000 - offset;
+}
+
+async function countIfTableExists(env, tableName, whereClause, bindings = []) {
+  const table = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").bind(tableName).first();
+  if (!table) return 0;
+  const sql = `SELECT COUNT(*) AS count FROM ${tableName}${whereClause ? ` WHERE ${whereClause}` : ""}`;
+  const row = await env.DB.prepare(sql).bind(...bindings).first();
+  return numberOrZero(row && row.count);
 }
 
 function clampNumber(value, min, max) {
