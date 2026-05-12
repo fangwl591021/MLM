@@ -257,7 +257,7 @@ async function fetchDashboardData(env, floor = FLOOR_MAIN) {
     fetchAiLogs(env, floor, 100),
     getKnowledgeMeta(env, floor),
   ]);
-  if (!threads.length && env.GAS_URL) {
+  if (floor === FLOOR_MAIN && !threads.length && env.GAS_URL) {
     const gasData = await backupGas(env, { type: "FETCH_DASHBOARD_DATA" });
     if (gasData && gasData.status === "success") return withThreadData(gasData);
   }
