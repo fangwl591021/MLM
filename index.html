@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>客服管理後台</title>
+  <title>KLINK 客服系統</title>
   <style>
     :root{--line:#06c755;--line-dark:#00b14f;--ink:#111827;--sub:#667085;--border:#dfe5ec;--soft:#f6f8fb;--chat:#8fa9c4;--admin:#c9d7f4;--danger:#d92d20;--warn:#f79009;--dark:#111827}
     *{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;color:var(--ink);font-family:Inter,"Noto Sans TC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}
@@ -30,7 +30,7 @@
 <body>
   <div class="app">
     <aside class="left">
-      <header class="brand"><div class="oa">CS</div><div><h1>客服管理後台</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="console.html">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
+      <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="console.html">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
       <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">1F 產品客服</button><button type="button" class="floorTab" data-floor="admin">2F 行政客服</button></div>
       <section class="config">
         <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
@@ -46,7 +46,7 @@
 
     <main class="chat">
       <header class="head">
-        <div id="activeAvatar" class="activeAvatar">CS</div><div class="room"><h2 id="activeTitle">正在同步客服對話</h2><p id="activeSubtitle">不顯示模擬資料，只讀取正式客服訊息</p></div>
+        <div id="activeAvatar" class="activeAvatar">KL</div><div class="room"><h2 id="activeTitle">正在同步客服對話</h2><p id="activeSubtitle">不顯示模擬資料，只讀取正式客服訊息</p></div>
         <div class="roomActions">
           <button class="statusBtn" id="pendingButton">待處理</button>
           <button class="statusBtn" id="doneButton">處理完畢</button>
@@ -415,7 +415,7 @@
       if (!group) {
         els.activeTitle.textContent = state.loaded ? `${FLOORS[state.floor] || "客服"} 尚無正式對話` : `正在同步 ${FLOORS[state.floor] || "客服"}`;
         els.activeSubtitle.textContent = state.loaded ? "沒有任何模擬資料，等待正式訊息進入。" : "不顯示模擬資料，只讀取正式客服訊息";
-        els.activeAvatar.textContent = "CS";
+        els.activeAvatar.textContent = "KL";
         els.activeAvatar.className = "activeAvatar";
         els.manageBar.innerHTML = ""; els.manualBar.classList.remove("show");
         els.messages.innerHTML = `<div class="empty"><div><strong>${state.loaded ? "尚無訊息" : "同步中"}</strong><div>${state.loaded ? "請等待 LINE webhook 收到用戶訊息。" : "正在讀取 Google Sheet 與 AI 建議資料。"}</div></div></div>`;
