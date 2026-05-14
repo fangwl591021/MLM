@@ -16,6 +16,10 @@ const USER_ROLE = "user";
 const FLOOR_MAIN = "main";
 const FLOOR_ADMIN = "admin";
 const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN]);
+const POINT_OA1 = "oa1";
+const POINT_OA2 = "oa2";
+const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
+const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_MAIN, [POINT_OA2]: FLOOR_ADMIN };
 
 export default {
   async fetch(request, env, ctx) {
@@ -40,6 +44,11 @@ export default {
             LINE_ADMIN_CHANNEL_SECRET: Boolean(env.LINE_ADMIN_CHANNEL_SECRET),
             LINE_ADMIN_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN),
             DASHBOARD_API_TOKEN: Boolean(env.DASHBOARD_API_TOKEN),
+            ADMIN_TOKEN: Boolean(env.ADMIN_TOKEN),
+            CHANNEL_CONFIG_JSON: Boolean(env.CHANNEL_CONFIG_JSON),
+            POINT_API_KEY: Boolean(env.POINT_API_KEY),
+            WETW_MEMBERS_URL: Boolean(env.WETW_MEMBERS_URL),
+            WETW_POINTS_URL: Boolean(env.WETW_POINTS_URL),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
@@ -62,6 +71,68 @@ export default {
           ctx.waitUntil(backfillProfiles(env, floor, provider, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
         }
         return jsonResponse(data, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/crm" && request.method === "GET") {
+        return crmAdminToolHtml(corsHeaders);
+      }
+
+      if (url.pathname === "/admin/crm/members" && request.method === "GET") {
+        assertPointAdminAuth(request, env);
+        const data = await listCrmMembers(env, url);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/crm/sync-members" && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const result = await syncCrmMembers(env, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/crm/sync-points" && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const result = await syncCrmPoints(env, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/points/binding-codes" && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const result = await createBindingCode(request, env);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/points/observations" && request.method === "GET") {
+        assertPointAdminAuth(request, env);
+        const observations = await listPointObservations(env, url);
+        return jsonResponse({ success: true, status: "success", observations }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/points/member-links" && request.method === "GET") {
+        assertPointAdminAuth(request, env);
+        const links = await listPointMemberLinks(env, url);
+        return jsonResponse({ success: true, status: "success", links }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/points/balance" && request.method === "GET") {
+        assertPointAdminAuth(request, env);
+        const balances = await listPointBalances(env, url);
+        return jsonResponse({ success: true, status: "success", balances }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/admin/points/ledger" && request.method === "GET") {
+        assertPointAdminAuth(request, env);
+        const ledger = await listPointLedger(env, url);
+        return jsonResponse({ success: true, status: "success", ledger }, 200, corsHeaders);
+      }
+
+      if ((url.pathname === "/admin/points/grant" || url.pathname === "/admin/points/deduct" || url.pathname === "/admin/points/redeem") && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const action = url.pathname.endsWith("/grant") ? "grant" : url.pathname.endsWith("/deduct") ? "deduct" : "redeem";
+        const body = await safeJson(request);
+        const result = await pointMutation(env, body, action);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/migrate-gas-to-d1" && request.method === "POST") {
@@ -201,6 +272,14 @@ export default {
         return jsonResponse({ status: "success" }, 200, corsHeaders);
       }
 
+      const pointWebhookMatch = url.pathname.match(/^\/line-webhook\/([^/]+)$/);
+      if (pointWebhookMatch && request.method === "POST") {
+        const channelKey = pointWebhookMatch[1];
+        if (!POINT_CHANNELS.has(channelKey)) return jsonResponse({ success: false, status: "error", message: `Unknown LINE point channel: ${channelKey}` }, 404, corsHeaders);
+        const result = await handlePointWebhook(request, env, ctx, channelKey, corsHeaders);
+        return result;
+      }
+
       if ((url.pathname === "/" || url.pathname === "/webhook/line" || url.pathname === "/webhook/line/main" || url.pathname === "/webhook/line/admin") && request.method === "POST") {
         const webhookFloor = url.pathname.endsWith("/admin") ? FLOOR_ADMIN : FLOOR_MAIN;
         const webhookProvider = getProvider(env, webhookFloor);
@@ -219,7 +298,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -297,11 +376,14 @@ async function fetchConsoleSummary(env) {
     });
   }
 
-  const [calendarCount, upcomingEvents, registrations, checkins] = await Promise.all([
+  const [calendarCount, upcomingEvents, registrations, checkins, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
     countIfTableExists(env, "calendar_events", "starts_at >= ? AND starts_at < ?", [todayStart, todayStart + 86400000]),
     countIfTableExists(env, "events", "status != 'archived' AND (starts_at IS NULL OR starts_at >= ?)", [todayStart]),
     countIfTableExists(env, "event_registrations", "registered_at >= ?", [todayStart]),
     countIfTableExists(env, "event_checkins", "checked_in_at >= ?", [todayStart]),
+    countIfTableExists(env, "crm_members", "", []),
+    countIfTableExists(env, "point_accounts", "", []),
+    countIfTableExists(env, "point_ledger", "created_at >= datetime(?, 'unixepoch')", [Math.floor(todayStart / 1000)]),
   ]);
 
   const totals = floors.reduce((acc, item) => ({
@@ -321,7 +403,564 @@ async function fetchConsoleSummary(env) {
     floors,
     calendar: { today: calendarCount },
     events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins },
+    pointCrm: { members: crmMembers, pointAccounts, ledgerToday: pointLedgerToday },
   };
+}
+
+function getPointChannelConfig(env, channelKey) {
+  let channelConfig = {};
+  try {
+    channelConfig = JSON.parse(env.CHANNEL_CONFIG_JSON || "{}")[channelKey] || {};
+  } catch (_err) {
+    channelConfig = {};
+  }
+
+  const floor = FLOOR_IDS.has(channelConfig.floor) ? channelConfig.floor : POINT_CHANNEL_FLOORS[channelKey] || FLOOR_MAIN;
+  const provider = getProvider(env, floor);
+  return {
+    channelKey,
+    floor,
+    label: stringValue(channelConfig.label || (channelKey === POINT_OA2 ? "OA2 行政客服" : "OA1 產品客服")),
+    channelSecret: stringValue(channelConfig.channelSecret || provider.channelSecret),
+    accessToken: stringValue(channelConfig.channelAccessToken || provider.accessToken),
+    forwardUrl: stringValue(channelConfig.forwardUrl),
+  };
+}
+
+async function handlePointWebhook(request, env, ctx, channelKey, corsHeaders) {
+  const config = getPointChannelConfig(env, channelKey);
+  if (!config.channelSecret) {
+    return jsonResponse({ success: false, status: "error", message: `${channelKey} channelSecret is not configured` }, 500, corsHeaders);
+  }
+
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-line-signature") || "";
+  const validLine = await verifyLineSignature(rawBody, signature, config.channelSecret);
+  if (!validLine) return jsonResponse({ success: false, status: "error", message: "Invalid LINE signature" }, 401, corsHeaders);
+
+  const payload = JSON.parse(rawBody);
+  ctx.waitUntil(processPointWebhook(env, channelKey, config, payload, rawBody, signature).catch((error) => {
+    console.error("processPointWebhook failed", error && error.stack ? error.stack : error);
+  }));
+
+  return jsonResponse({
+    success: true,
+    status: "success",
+    channel_key: channelKey,
+    floor: config.floor,
+    queued_events: Array.isArray(payload.events) ? payload.events.length : 0,
+  }, 200, corsHeaders);
+}
+
+async function processPointWebhook(env, channelKey, config, payload, rawBody, signature) {
+  await upsertPointChannel(env, config);
+  let checkinEvents = 0;
+
+  for (const event of payload.events || []) {
+    await recordPointEvent(env, channelKey, event);
+    await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
+    const delta = detectCheckinPointDelta(channelKey, event.message && event.message.text);
+    if (event.source && event.source.userId && delta !== null) {
+      await applyPointMutation(env, {
+        channelKey,
+        lineUserId: event.source.userId,
+        pointType: "checkin_point",
+        pointDelta: delta,
+        action: "checkin",
+        source: "webhook",
+        sourceEventId: event.replyToken,
+        businessKey: `checkin:${channelKey}:${event.source.userId}:${taipeiDate()}`,
+      }).catch((error) => {
+        if (!String(error && error.message || error).includes("UNIQUE")) throw error;
+      });
+      checkinEvents += 1;
+    }
+  }
+
+  const provider = {
+    floor: config.floor,
+    id: config.floor,
+    label: config.label,
+    channelSecret: config.channelSecret,
+    accessToken: config.accessToken,
+  };
+  await processLineWebhook(env, config.floor, provider, payload);
+
+  let forwarded = null;
+  if (config.forwardUrl) {
+    const forwardResponse = await fetch(config.forwardUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-line-signature": signature || "",
+      },
+      body: rawBody,
+    });
+    forwarded = { url: config.forwardUrl, status: forwardResponse.status, ok: forwardResponse.ok };
+  }
+
+  return { checkinEvents, forwarded };
+}
+
+async function upsertPointChannel(env, config) {
+  await env.DB.prepare(`
+    INSERT INTO line_channels (channel_key, label, forward_url)
+    VALUES (?, ?, ?)
+    ON CONFLICT(channel_key) DO UPDATE SET
+      label = excluded.label,
+      forward_url = excluded.forward_url
+  `).bind(config.channelKey, config.label, config.forwardUrl || "").run();
+}
+
+async function recordPointEvent(env, channelKey, event) {
+  const lineUserId = stringValue(event && event.source && event.source.userId);
+  const message = event && event.message ? event.message : {};
+  const messageType = stringValue(message.type);
+  const messageText = messageType === "text" ? stringValue(message.text) : "";
+
+  await env.DB.prepare(`
+    INSERT INTO webhook_events (channel_key, line_user_id, event_type, message_type, message_text, reply_token, line_timestamp, raw_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    channelKey,
+    lineUserId || null,
+    stringValue(event && event.type) || null,
+    messageType || null,
+    messageText || null,
+    stringValue(event && event.replyToken) || null,
+    Number(event && event.timestamp) || null,
+    JSON.stringify(event || {}),
+  ).run();
+
+  if (lineUserId) {
+    await env.DB.prepare(`
+      INSERT INTO line_identity_observations (channel_key, line_user_id)
+      VALUES (?, ?)
+      ON CONFLICT(channel_key, line_user_id)
+      DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP, event_count = event_count + 1
+    `).bind(channelKey, lineUserId).run();
+  }
+}
+
+async function tryApplyBindingCode(env, channelKey, lineUserId, text) {
+  if (!lineUserId || !text) return null;
+  const match = String(text).trim().match(/^(\u7d81\u5b9a|bind)\s+([A-Za-z0-9_-]{4,32})$/i);
+  if (!match) return null;
+
+  const code = match[2];
+  const row = await env.DB.prepare(`
+    SELECT code, master_member_ref
+    FROM binding_codes
+    WHERE code = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+  `).bind(code).first();
+  if (!row) return null;
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO member_line_links (master_member_ref, channel_key, line_user_id, binding_code)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(master_member_ref, channel_key)
+      DO UPDATE SET line_user_id = excluded.line_user_id, binding_code = excluded.binding_code, linked_at = CURRENT_TIMESTAMP
+    `).bind(row.master_member_ref, channelKey, lineUserId, code),
+    env.DB.prepare("UPDATE binding_codes SET used_at = CURRENT_TIMESTAMP WHERE code = ?").bind(code),
+  ]);
+  return { code, masterMemberRef: row.master_member_ref };
+}
+
+function detectCheckinPointDelta(channelKey, text) {
+  if (!text) return null;
+  if (!/\u6703\u54e1\u6253\u5361|\u6253\u5361|\u7c3d\u5230|checkin/i.test(text)) return null;
+  return channelKey === POINT_OA2 ? 5 : 10;
+}
+
+function taipeiDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+async function createBindingCode(request, env) {
+  const body = await safeJson(request);
+  const masterMemberRef = stringValue(body.master_member_ref || body.memberRef || body.member_ref);
+  if (!masterMemberRef) throw httpError("master_member_ref is required", 400);
+  const code = stringValue(body.code) || crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+  const ttlMinutes = clampNumber(body.ttl_minutes || body.ttlMinutes || 60, 1, 10080);
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
+
+  await env.DB.prepare(`
+    INSERT OR REPLACE INTO binding_codes (code, master_member_ref, expires_at)
+    VALUES (?, ?, ?)
+  `).bind(code, masterMemberRef, expiresAt).run();
+
+  return {
+    code,
+    master_member_ref: masterMemberRef,
+    expires_at: expiresAt,
+    instructions: [`\u7d81\u5b9a ${code}`, `bind ${code}`],
+  };
+}
+
+async function listPointObservations(env, url) {
+  const channelKey = stringValue(url.searchParams.get("channel_key"));
+  const limit = clampNumber(url.searchParams.get("limit") || 50, 1, 200);
+  if (channelKey) {
+    const rows = await env.DB.prepare(`
+      SELECT channel_key, line_user_id, first_seen_at, last_seen_at, event_count
+      FROM line_identity_observations
+      WHERE channel_key = ?
+      ORDER BY last_seen_at DESC
+      LIMIT ?
+    `).bind(channelKey, limit).all();
+    return rows.results || [];
+  }
+  const rows = await env.DB.prepare(`
+    SELECT channel_key, line_user_id, first_seen_at, last_seen_at, event_count
+    FROM line_identity_observations
+    ORDER BY last_seen_at DESC
+    LIMIT ?
+  `).bind(limit).all();
+  return rows.results || [];
+}
+
+async function listPointMemberLinks(env, url) {
+  const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
+  const limit = clampNumber(url.searchParams.get("limit") || 50, 1, 200);
+  if (masterMemberRef) {
+    const rows = await env.DB.prepare(`
+      SELECT master_member_ref, channel_key, line_user_id, binding_code, linked_at
+      FROM member_line_links
+      WHERE master_member_ref = ?
+      ORDER BY linked_at DESC
+    `).bind(masterMemberRef).all();
+    return rows.results || [];
+  }
+  const rows = await env.DB.prepare(`
+    SELECT master_member_ref, channel_key, line_user_id, binding_code, linked_at
+    FROM member_line_links
+    ORDER BY linked_at DESC
+    LIMIT ?
+  `).bind(limit).all();
+  return rows.results || [];
+}
+
+async function pointMutation(env, body, action) {
+  const channelKey = stringValue(body.channel_key || body.channelKey);
+  const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
+  const points = Math.abs(Number(body.points || body.point_delta || body.pointDelta));
+  if (!channelKey || !lineUserId || !points) throw httpError("channel_key, line_user_id, and points are required", 400);
+  const delta = action === "grant" ? points : -points;
+  return applyPointMutation(env, {
+    channelKey,
+    lineUserId,
+    pointType: stringValue(body.point_type || body.pointType) || "manual_point",
+    pointDelta: delta,
+    action,
+    source: "admin",
+    businessKey: stringValue(body.business_key || body.businessKey),
+    note: stringValue(body.note),
+  });
+}
+
+async function applyPointMutation(env, input) {
+  const pointType = input.pointType || "system_point";
+  const accountKey = `${input.channelKey}:${input.lineUserId}:${pointType}`;
+  const businessKey = input.businessKey || `${input.source}:${input.action}:${crypto.randomUUID()}`;
+  const link = await env.DB.prepare(`
+    SELECT master_member_ref
+    FROM member_line_links
+    WHERE channel_key = ? AND line_user_id = ?
+  `).bind(input.channelKey, input.lineUserId).first();
+  const masterMemberRef = link && link.master_member_ref ? link.master_member_ref : null;
+
+  const existing = await env.DB.prepare("SELECT balance FROM point_accounts WHERE account_key = ?").bind(accountKey).first();
+  const balanceAfter = Number(existing && existing.balance || 0) + Number(input.pointDelta || 0);
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(account_key) DO UPDATE SET
+        master_member_ref = excluded.master_member_ref,
+        balance = excluded.balance,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, pointType, balanceAfter),
+    env.DB.prepare(`
+      INSERT INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, source_event_id, business_key, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, input.action, pointType, Number(input.pointDelta || 0), balanceAfter, input.source, input.sourceEventId || null, businessKey, input.note || null),
+  ]);
+
+  return { account_key: accountKey, master_member_ref: masterMemberRef, balance_after: balanceAfter };
+}
+
+async function listPointBalances(env, url) {
+  const channelKey = stringValue(url.searchParams.get("channel_key"));
+  const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
+  const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
+  const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
+
+  if (channelKey && lineUserId) {
+    const rows = await env.DB.prepare(`
+      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+      FROM point_accounts
+      WHERE channel_key = ? AND line_user_id = ?
+      ORDER BY point_type
+      LIMIT ?
+    `).bind(channelKey, lineUserId, limit).all();
+    return rows.results || [];
+  }
+  if (masterMemberRef) {
+    const rows = await env.DB.prepare(`
+      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+      FROM point_accounts
+      WHERE master_member_ref = ?
+      ORDER BY channel_key, point_type
+      LIMIT ?
+    `).bind(masterMemberRef, limit).all();
+    return rows.results || [];
+  }
+  if (channelKey) {
+    const rows = await env.DB.prepare(`
+      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+      FROM point_accounts
+      WHERE channel_key = ?
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).bind(channelKey, limit).all();
+    return rows.results || [];
+  }
+  const rows = await env.DB.prepare(`
+    SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+    FROM point_accounts
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `).bind(limit).all();
+  return rows.results || [];
+}
+
+async function listPointLedger(env, url) {
+  const channelKey = stringValue(url.searchParams.get("channel_key"));
+  const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
+  const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
+  const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
+
+  if (channelKey && lineUserId) {
+    const rows = await env.DB.prepare(`
+      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note, created_at
+      FROM point_ledger
+      WHERE channel_key = ? AND line_user_id = ?
+      ORDER BY id DESC
+      LIMIT ?
+    `).bind(channelKey, lineUserId, limit).all();
+    return rows.results || [];
+  }
+  if (masterMemberRef) {
+    const rows = await env.DB.prepare(`
+      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note, created_at
+      FROM point_ledger
+      WHERE master_member_ref = ?
+      ORDER BY id DESC
+      LIMIT ?
+    `).bind(masterMemberRef, limit).all();
+    return rows.results || [];
+  }
+  const rows = await env.DB.prepare(`
+    SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note, created_at
+    FROM point_ledger
+    ORDER BY id DESC
+    LIMIT ?
+  `).bind(limit).all();
+  return rows.results || [];
+}
+
+async function listCrmMembers(env, url) {
+  const channelKey = stringValue(url.searchParams.get("channel_key"));
+  const q = stringValue(url.searchParams.get("q")).toLowerCase();
+  const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
+  let sql = `
+    SELECT member_ref, name, phone, email, level, source, source_json, points_snapshot, updated_at
+    FROM crm_members
+  `;
+  const where = [];
+  const bindings = [];
+  if (q) {
+    where.push("(LOWER(member_ref) LIKE ? OR LOWER(name) LIKE ? OR LOWER(phone) LIKE ? OR LOWER(email) LIKE ?)");
+    bindings.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  if (where.length) sql += ` WHERE ${where.join(" AND ")}`;
+  sql += " ORDER BY updated_at DESC LIMIT ?";
+  bindings.push(limit);
+
+  const rows = await env.DB.prepare(sql).bind(...bindings).all();
+  const members = rows.results || [];
+  if (!channelKey) return members;
+
+  const links = await env.DB.prepare(`
+    SELECT master_member_ref, channel_key, line_user_id, linked_at
+    FROM member_line_links
+    WHERE channel_key = ?
+  `).bind(channelKey).all();
+  const linkMap = new Map((links.results || []).map((link) => [link.master_member_ref, link]));
+  return members.map((member) => ({ ...member, line_link: linkMap.get(member.member_ref) || null }));
+}
+
+async function syncCrmMembers(env, body) {
+  const members = Array.isArray(body.members) ? body.members : await fetchWetwArray(env, "members");
+  let count = 0;
+  for (const item of members) {
+    const member = normalizeCrmMember(item);
+    if (!member.memberRef) continue;
+    await env.DB.prepare(`
+      INSERT INTO crm_members (member_ref, name, phone, email, level, source, source_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(member_ref) DO UPDATE SET
+        name = excluded.name,
+        phone = excluded.phone,
+        email = excluded.email,
+        level = excluded.level,
+        source = excluded.source,
+        source_json = excluded.source_json,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(member.memberRef, member.name, member.phone, member.email, member.level, member.source, JSON.stringify(item || {})).run();
+    count += 1;
+  }
+  await writeCrmSyncLog(env, "members", count, "success", body.members ? "body" : "wetw");
+  return { count, source: body.members ? "body" : "wetw" };
+}
+
+async function syncCrmPoints(env, body) {
+  const rows = Array.isArray(body.points) ? body.points : await fetchWetwArray(env, "points");
+  let count = 0;
+  for (const item of rows) {
+    const channelKey = stringValue(item.channel_key || item.channelKey || item.oa || POINT_OA1);
+    const lineUserId = stringValue(item.line_user_id || item.lineUserId || item.userId);
+    const pointType = stringValue(item.point_type || item.pointType || "wetw_point");
+    const balance = Number(item.balance || item.points || 0);
+    if (!channelKey || !lineUserId || !Number.isFinite(balance)) continue;
+    const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
+    const masterMemberRef = stringValue(item.master_member_ref || item.member_ref || item.memberRef) || null;
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(account_key) DO UPDATE SET
+          master_member_ref = excluded.master_member_ref,
+          balance = excluded.balance,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(accountKey, masterMemberRef, channelKey, lineUserId, pointType, balance),
+      env.DB.prepare(`
+        INSERT OR IGNORE INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(accountKey, masterMemberRef, channelKey, lineUserId, "sync", pointType, 0, balance, "wetw", `sync:${accountKey}:${Date.now()}`, "WETW read-only sync"),
+    ]);
+    count += 1;
+  }
+  await writeCrmSyncLog(env, "points", count, "success", body.points ? "body" : "wetw");
+  return { count, source: body.points ? "body" : "wetw" };
+}
+
+async function fetchWetwArray(env, type) {
+  const url = type === "members" ? env.WETW_MEMBERS_URL : env.WETW_POINTS_URL;
+  if (!url) throw httpError(`${type === "members" ? "WETW_MEMBERS_URL" : "WETW_POINTS_URL"} is not configured. You can POST an array in the request body first.`, 400);
+  const headers = { "Accept": "application/json" };
+  if (env.POINT_API_KEY) headers.Authorization = `Bearer ${env.POINT_API_KEY}`;
+  const response = await fetch(url, { headers });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw httpError(`WETW ${type} sync failed: ${response.status}`, 502);
+  const direct = data[type];
+  if (Array.isArray(direct)) return direct;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.items)) return data.items;
+  return Array.isArray(data) ? data : [];
+}
+
+function normalizeCrmMember(item) {
+  return {
+    memberRef: stringValue(item.member_ref || item.memberRef || item.id || item.user_id || item.customer_id),
+    name: stringValue(item.name || item.display_name || item.customer_name),
+    phone: stringValue(item.phone || item.mobile || item.tel),
+    email: stringValue(item.email || item.mail),
+    level: stringValue(item.level || item.rank || item.member_level),
+    source: stringValue(item.source || "wetw"),
+  };
+}
+
+async function writeCrmSyncLog(env, syncType, rows, status, source) {
+  await env.DB.prepare(`
+    INSERT INTO crm_sync_logs (sync_type, source, rows_count, status, created_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).bind(syncType, source, rows, status).run();
+}
+
+function crmAdminToolHtml(headers) {
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KLINK CRM / 點數模組</title>
+  <style>
+    body{margin:0;background:#f6f8fb;color:#172033;font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:980px;margin:28px auto;padding:0 16px;display:grid;gap:16px}
+    section{background:#fff;border:1px solid #dbe3ee;border-radius:14px;padding:18px}
+    h1{font-size:24px;margin:0 0 6px}h2{font-size:16px;margin:0 0 12px}p{color:#667085;margin:0 0 12px}
+    label{display:block;font-size:13px;color:#5d6675;font-weight:700;margin:10px 0 6px}
+    input,select,textarea{width:100%;min-height:40px;border:1px solid #dbe3ee;border-radius:10px;padding:9px 11px;box-sizing:border-box}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    button{min-height:42px;border:0;border-radius:10px;background:#06c755;color:#fff;font-weight:800;padding:0 14px;margin:12px 8px 0 0;cursor:pointer}
+    button.secondary{background:#eff4fb;color:#172033;border:1px solid #dbe3ee}
+    pre{background:#101828;color:#e5e7eb;border-radius:12px;padding:14px;overflow:auto;min-height:180px}
+    @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <section><h1>KLINK CRM / LINE 點數模組</h1><p>此頁只呼叫 Worker API，不會把 Token 寫入 Git 或頁面。</p></section>
+  <section>
+    <h2>連線</h2>
+    <label>Admin Token 或 Dashboard Token</label>
+    <input id="token" type="password" placeholder="貼上 Token">
+  </section>
+  <section>
+    <h2>CRM</h2>
+    <button id="members">讀取會員</button>
+    <button id="syncMembers" class="secondary">同步會員</button>
+    <button id="syncPoints" class="secondary">同步點數</button>
+  </section>
+  <section>
+    <h2>手動點數</h2>
+    <div class="grid">
+      <div><label>OA</label><select id="channel"><option value="oa1">OA1 產品客服</option><option value="oa2">OA2 行政客服</option></select></div>
+      <div><label>LINE User ID</label><input id="lineUserId" placeholder="U..."></div>
+      <div><label>Point Type</label><input id="pointType" value="manual_point"></div>
+      <div><label>點數</label><input id="points" type="number" value="10"></div>
+    </div>
+    <label>備註</label><input id="note" placeholder="例如：活動補點 / 商品核銷">
+    <button id="grant">贈點</button>
+    <button id="deduct" class="secondary">扣點</button>
+    <button id="balance" class="secondary">查餘額</button>
+    <button id="ledger" class="secondary">查紀錄</button>
+  </section>
+  <section><h2>結果</h2><pre id="out">等待操作</pre></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+function headers(){return {"content-type":"application/json","authorization":"Bearer "+$("token").value.trim()};}
+function payload(){return {channel_key:$("channel").value,line_user_id:$("lineUserId").value.trim(),point_type:$("pointType").value.trim(),points:Number($("points").value),note:$("note").value};}
+async function call(path,opt={}){const res=await fetch(path,{headers:headers(),...opt});const text=await res.text();try{$("out").textContent=JSON.stringify(JSON.parse(text),null,2)}catch(_err){$("out").textContent=text}}
+$("members").onclick=()=>call("/admin/crm/members");
+$("syncMembers").onclick=()=>call("/admin/crm/sync-members",{method:"POST",body:"{}"});
+$("syncPoints").onclick=()=>call("/admin/crm/sync-points",{method:"POST",body:"{}"});
+$("grant").onclick=()=>call("/admin/points/grant",{method:"POST",body:JSON.stringify(payload())});
+$("deduct").onclick=()=>call("/admin/points/deduct",{method:"POST",body:JSON.stringify(payload())});
+$("balance").onclick=()=>call("/admin/points/balance?channel_key="+encodeURIComponent($("channel").value)+"&line_user_id="+encodeURIComponent($("lineUserId").value.trim()));
+$("ledger").onclick=()=>call("/admin/points/ledger?channel_key="+encodeURIComponent($("channel").value)+"&line_user_id="+encodeURIComponent($("lineUserId").value.trim()));
+</script>
+</body>
+</html>`, { headers: { ...headers, "Content-Type": "text/html; charset=utf-8" } });
 }
 
 async function fetchDashboardData(env, floor = FLOOR_MAIN) {
@@ -1224,6 +1863,15 @@ function assertDashboardAuth(request, env) {
   const directToken = String(request.headers.get("X-Dashboard-Token") || "").trim();
   const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
   if (bearerToken !== expectedToken && directToken !== expectedToken) throw httpError("Unauthorized dashboard request", 401);
+}
+
+function assertPointAdminAuth(request, env) {
+  const tokens = [env.ADMIN_TOKEN, env.DASHBOARD_API_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
+  if (!tokens.length) throw httpError("ADMIN_TOKEN or DASHBOARD_API_TOKEN is not configured", 500);
+  const auth = String(request.headers.get("Authorization") || "").trim();
+  const directToken = String(request.headers.get("X-Dashboard-Token") || request.headers.get("X-Admin-Token") || "").trim();
+  const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
+  if (!tokens.includes(bearerToken) && !tokens.includes(directToken)) throw httpError("Unauthorized dashboard request", 401);
 }
 
 function httpError(message, status) {

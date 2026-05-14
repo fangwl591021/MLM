@@ -1,0 +1,19 @@
+name = "mlm"
+main = "worker/worker.js"
+compatibility_date = "2026-05-06"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mlm_line_oa"
+database_id = "319f701f-e60e-46f1-b62a-48e44102bf79"
+
+[vars]
+# Production secrets should be set in Cloudflare Dashboard or with:
+# npx.cmd wrangler secret put ADMIN_TOKEN
+# npx.cmd wrangler secret put DASHBOARD_API_TOKEN
+# npx.cmd wrangler secret put POINT_API_KEY
+#
+# CHANNEL_CONFIG_JSON can be a variable or secret. Keep real LINE secrets out of Git.
+CHANNEL_CONFIG_JSON = "{}"
+# WETW_MEMBERS_URL = "https://example.com/api/members"
+# WETW_POINTS_URL = "https://example.com/api/points"
