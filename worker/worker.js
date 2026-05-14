@@ -664,16 +664,16 @@ async function pointMutation(env, body, action) {
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
   const sourceMeta = pointSourceMeta(channelKey);
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
-    throw httpError(`${sourceMeta.label} 來源只允許扣點，不允許贈點`, 400);
+    throw httpError(`${sourceMeta.label} 來源只允許扣K幣，不允許贈K幣`, 400);
   }
   const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName);
   const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId || operatorName);
-  if (!operatorName) throw httpError("請填寫贈扣點操作人", 400);
+  if (!operatorName) throw httpError("請填寫贈扣K幣操作人", 400);
   const delta = action === "grant" ? points : -points;
   const input = {
     channelKey,
     lineUserId,
-    pointType: stringValue(body.point_type || body.pointType) || "system_point",
+    pointType: stringValue(body.point_type || body.pointType) || "gift_money",
     pointDelta: delta,
     action,
     source: "admin",
@@ -707,7 +707,7 @@ async function insertWetwPointMutation(env, input, body = {}) {
     shop_id: shopId,
     event_name: eventName,
     event_content: eventContent,
-    point_type: input.pointType || "system_point",
+    point_type: input.pointType || "gift_money",
     get_point: Number(input.pointDelta || 0),
     shop_user_lineid: stringValue(body.shop_user_lineid || body.shopUserLineId || input.operatorId),
     child_shop_name: stringValue(body.child_shop_name || body.childShopName),
@@ -730,7 +730,7 @@ async function insertWetwPointMutation(env, input, body = {}) {
 }
 
 async function applyPointMutation(env, input) {
-  const pointType = input.pointType || "system_point";
+  const pointType = input.pointType || "gift_money";
   const accountKey = `${input.channelKey}:${input.lineUserId}:${pointType}`;
   const businessKey = input.businessKey || `${input.source}:${input.action}:${crypto.randomUUID()}`;
   const link = await env.DB.prepare(`
@@ -1204,7 +1204,7 @@ function crmAdminToolHtml(headers) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KLINK CRM / 點數模組</title>
+  <title>KLINK CRM / K幣模組</title>
   <style>
     :root{--line:#06c755;--ink:#172033;--muted:#667085;--border:#dbe3ee;--soft:#f6f8fb;--navy:#071833;--orange:#ff8a00;--red:#d92d20}
     *{box-sizing:border-box}body{margin:0;background:var(--soft);color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -1224,7 +1224,7 @@ function crmAdminToolHtml(headers) {
 <body>
 <div class="shell">
   <aside>
-    <div class="brand"><div class="logo">KL</div><div><h1>KLINK CRM</h1><p>LINE 會員與點數模組</p></div></div>
+    <div class="brand"><div class="logo">KL</div><div><h1>KLINK CRM</h1><p>LINE 會員與K幣模組</p></div></div>
     <section class="panel">
       <h2>連線設定</h2>
       <label>Admin Token 或 Dashboard Token</label>
@@ -1238,19 +1238,19 @@ function crmAdminToolHtml(headers) {
     <section class="panel">
       <h2>同步</h2>
       <button id="syncMembers">同步 WETW 會員</button>
-      <button id="syncPoints" class="secondary" style="margin-top:10px">同步 WETW 點數</button>
-      <p style="margin-top:10px">會員 API 已支援 WETW POST JSON 格式。點數 API 等文件確認後再正式校正。</p>
+      <button id="syncPoints" class="secondary" style="margin-top:10px">同步 WETW K幣</button>
+      <p style="margin-top:10px">會員 API 已支援 WETW POST JSON 格式。K幣以 gift_money 為正式餘額。</p>
     </section>
     <section class="panel">
-      <h2>手動點數</h2>
+      <h2>手動K幣</h2>
       <label>OA</label><select id="channel"><option value="oa1">OA1 產品客服</option><option value="oa2">OA2 行政客服</option></select>
       <label>LINE User ID</label><input id="lineUserId" placeholder="U...">
       <label>Point Type</label><input id="pointType" value="manual_point">
-      <label>點數</label><input id="points" type="number" value="10">
+      <label>K幣</label><input id="points" type="number" value="10">
       <label>備註</label><input id="note" placeholder="例如：活動補點 / 商品核銷">
       <div class="row" style="margin-top:12px">
-        <button id="grant">贈點</button>
-        <button id="deduct" class="warn">扣點</button>
+        <button id="grant">贈K幣</button>
+        <button id="deduct" class="warn">扣K幣</button>
         <button id="balance" class="secondary">查餘額</button>
       </div>
     </section>
