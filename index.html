@@ -115,7 +115,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage")
     };
-    const state = { floor: localStorage.getItem("line_ai_floor") || "main", chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointBalances: [] };
+    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointBalances: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -127,6 +127,7 @@
       button.addEventListener("click", () => {
         state.floor = button.dataset.floor || "main";
         localStorage.setItem("line_ai_floor", state.floor);
+        writeFloorToUrl(state.floor);
         state.activeUserId = "";
         state.loaded = false;
         document.querySelectorAll("[data-floor]").forEach((item) => item.classList.toggle("active", item === button));
@@ -191,6 +192,21 @@
       document.querySelector(".left").classList.toggle("config-open", Boolean(open));
       els.settingsButton.classList.toggle("active", Boolean(open));
       els.settingsButton.textContent = open ? "關閉" : "設定";
+    }
+
+    function initialFloor() {
+      const requested = new URLSearchParams(window.location.search).get("floor");
+      if (requested && FLOORS[requested]) {
+        localStorage.setItem("line_ai_floor", requested);
+        return requested;
+      }
+      return localStorage.getItem("line_ai_floor") || "main";
+    }
+
+    function writeFloorToUrl(floor) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("floor", floor || "main");
+      window.history.replaceState(null, "", url.toString());
     }
 
     async function sync() {
