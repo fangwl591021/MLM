@@ -20,6 +20,10 @@ const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
 const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_MAIN, [POINT_OA2]: FLOOR_ADMIN };
+const POINT_SOURCE_META = {
+  [POINT_OA1]: { label: "康立智能", shopId: 1086, loginUrl: "https://k-link.cc/index.php/line_login/1086/", canGrant: true },
+  [POINT_OA2]: { label: "康立全球", shopId: 1584, loginUrl: "https://k-link.cc/index.php/line_login/1584/", canGrant: false, deductPriority: true },
+};
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 
@@ -655,6 +659,11 @@ async function pointMutation(env, body, action) {
   const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
   const points = Math.abs(Number(body.points || body.point_delta || body.pointDelta));
   if (!channelKey || !lineUserId || !points) throw httpError("channel_key, line_user_id, and points are required", 400);
+  if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
+  const sourceMeta = pointSourceMeta(channelKey);
+  if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
+    throw httpError(`${sourceMeta.label} 來源只允許扣點，不允許贈點`, 400);
+  }
   const delta = action === "grant" ? points : -points;
   const input = {
     channelKey,
@@ -678,7 +687,9 @@ async function pointMutation(env, body, action) {
 
 async function insertWetwPointMutation(env, input, body = {}) {
   if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
-  const shopId = wetwShopId(env);
+  const sourceMeta = pointSourceMeta(input.channelKey);
+  const shopId = Number(body.shop_id || body.shopId || (sourceMeta && sourceMeta.shopId) || wetwShopId(env));
+  if (!Number.isFinite(shopId) || shopId <= 0) throw httpError("Point source shop_id must be a positive integer", 400);
   const url = stringValue(env.WETW_POINT_INSERT_URL) || DEFAULT_WETW_POINT_INSERT_URL;
   const eventName = stringValue(body.event_name || body.eventName) || (input.pointDelta >= 0 ? "\u5ba2\u670d\u8d08\u9ede" : "\u5ba2\u670d\u6263\u9ede");
   const eventContent = stringValue(body.event_content || body.eventContent) || input.note || "\u7531 KLINK \u5ba2\u670d\u7cfb\u7d71\u64cd\u4f5c";
@@ -756,7 +767,17 @@ async function listPointBalances(env, url) {
       ORDER BY point_type
       LIMIT ?
     `).bind(channelKey, lineUserId, limit).all();
-    return rows.results || [];
+    return decoratePointBalances(rows.results || []);
+  }
+  if (lineUserId) {
+    const rows = await env.DB.prepare(`
+      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+      FROM point_accounts
+      WHERE line_user_id = ?
+      ORDER BY channel_key, point_type
+      LIMIT ?
+    `).bind(lineUserId, limit).all();
+    return decoratePointBalances(rows.results || []);
   }
   if (masterMemberRef) {
     const rows = await env.DB.prepare(`
@@ -766,7 +787,7 @@ async function listPointBalances(env, url) {
       ORDER BY channel_key, point_type
       LIMIT ?
     `).bind(masterMemberRef, limit).all();
-    return rows.results || [];
+    return decoratePointBalances(rows.results || []);
   }
   if (channelKey) {
     const rows = await env.DB.prepare(`
@@ -776,7 +797,7 @@ async function listPointBalances(env, url) {
       ORDER BY updated_at DESC
       LIMIT ?
     `).bind(channelKey, limit).all();
-    return rows.results || [];
+    return decoratePointBalances(rows.results || []);
   }
   const rows = await env.DB.prepare(`
     SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
@@ -784,7 +805,25 @@ async function listPointBalances(env, url) {
     ORDER BY updated_at DESC
     LIMIT ?
   `).bind(limit).all();
-  return rows.results || [];
+  return decoratePointBalances(rows.results || []);
+}
+
+function pointSourceMeta(channelKey) {
+  return POINT_SOURCE_META[channelKey] || null;
+}
+
+function decoratePointBalances(rows) {
+  return (rows || []).map((row) => {
+    const meta = pointSourceMeta(row.channel_key) || {};
+    return {
+      ...row,
+      source_label: meta.label || row.channel_key,
+      source_shop_id: meta.shopId || "",
+      source_login_url: meta.loginUrl || "",
+      can_grant: meta.canGrant !== false,
+      deduct_priority: Boolean(meta.deductPriority),
+    };
+  });
 }
 
 async function listPointLedger(env, url) {
@@ -878,7 +917,7 @@ async function syncCrmMembers(env, body) {
 }
 
 async function syncCrmPoints(env, body) {
-  const rows = Array.isArray(body.points) ? body.points : await fetchWetwArray(env, "points", body);
+  const rows = await resolvePointSyncRows(env, body || {});
   let count = 0;
   for (const item of rows) {
     const channelKey = stringValue(item.channel_key || item.channelKey || item.oa || body.channel_key || POINT_OA1);
@@ -908,6 +947,31 @@ async function syncCrmPoints(env, body) {
   }
   await writeCrmSyncLog(env, "points", count, "success", body.points ? "body" : "wetw");
   return { count, source: body.points ? "body" : "wetw" };
+}
+
+async function resolvePointSyncRows(env, body) {
+  if (Array.isArray(body.points)) return body.points;
+  const explicitChannel = stringValue(body.channel_key || body.channelKey);
+  const explicitShop = stringValue(body.shop_id || body.shopId);
+  if (explicitChannel || explicitShop) {
+    const rows = await fetchWetwArray(env, "points", body);
+    return rows.map((item) => ({
+      ...item,
+      channel_key: stringValue(item.channel_key || item.channelKey || item.oa || explicitChannel || sourceKeyFromShopId(explicitShop) || POINT_OA1),
+    }));
+  }
+
+  const all = [];
+  for (const [channelKey, meta] of Object.entries(POINT_SOURCE_META)) {
+    const rows = await fetchWetwArray(env, "points", { ...body, shop_id: meta.shopId, channel_key: channelKey });
+    rows.forEach((item) => all.push({ ...item, channel_key: channelKey, source_label: meta.label }));
+  }
+  return all;
+}
+
+function sourceKeyFromShopId(shopId) {
+  const normalized = String(shopId || "").trim();
+  return Object.entries(POINT_SOURCE_META).find(([, meta]) => String(meta.shopId) === normalized)?.[0] || "";
 }
 
 async function fetchWetwArray(env, type, options = {}) {
