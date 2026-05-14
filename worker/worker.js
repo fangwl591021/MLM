@@ -666,9 +666,9 @@ async function pointMutation(env, body, action) {
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
     throw httpError(`${sourceMeta.label} 來源只允許扣K幣，不允許贈K幣`, 400);
   }
-  const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName);
-  const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId || operatorName);
-  if (!operatorName) throw httpError("請填寫贈扣K幣操作人", 400);
+  const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId);
+  const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName) || operatorId;
+  if (!operatorId) throw httpError("請填寫操作人UID", 400);
   const delta = action === "grant" ? points : -points;
   const input = {
     channelKey,
@@ -712,7 +712,7 @@ async function insertWetwPointMutation(env, input, body = {}) {
     shop_user_lineid: stringValue(body.shop_user_lineid || body.shopUserLineId || input.operatorId),
     child_shop_name: stringValue(body.child_shop_name || body.childShopName),
     child_shop_renew: Number(body.child_shop_renew || body.childShopRenew || 0),
-    shop_remark: stringValue(body.shop_remark || body.shopRemark || `操作人：${input.operatorName}${input.note ? `；${input.note}` : ""}`),
+    shop_remark: stringValue(body.shop_remark || body.shopRemark || `操作人UID：${input.operatorId}${input.operatorName && input.operatorName !== input.operatorId ? `；操作人：${input.operatorName}` : ""}${input.note ? `；${input.note}` : ""}`),
   };
 
   const response = await fetch(url, {
@@ -957,6 +957,16 @@ async function listPointLedger(env, url) {
       ORDER BY id DESC
       LIMIT ?
     `).bind(channelKey, lineUserId, limit).all();
+    return rows.results || [];
+  }
+  if (lineUserId) {
+    const rows = await env.DB.prepare(`
+      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
+      FROM point_ledger
+      WHERE line_user_id = ?
+      ORDER BY id DESC
+      LIMIT ?
+    `).bind(lineUserId, limit).all();
     return rows.results || [];
   }
   if (masterMemberRef) {
