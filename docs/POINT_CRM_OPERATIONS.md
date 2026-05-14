@@ -15,6 +15,7 @@ Worker 已有路由，D1 已有表，GitHub 已推送。
 - `POINT_API_KEY`
 - `WETW_MEMBERS_URL`
 - `WETW_POINTS_URL`
+- `WETW_SHOP_ID`
 
 `ADMIN_TOKEN` 不是必填，因為管理 API 會 fallback 使用既有 `DASHBOARD_API_TOKEN`。
 
@@ -42,6 +43,24 @@ npx.cmd wrangler secret put POINT_API_KEY --name mlm
 
 ```powershell
 npx.cmd wrangler secret put WETW_MEMBERS_URL --name mlm
+```
+
+貼入：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw/v1/query-line-user-list
+```
+
+設定店家 ID：
+
+```powershell
+npx.cmd wrangler secret put WETW_SHOP_ID --name mlm
+```
+
+貼入：
+
+```text
+216
 ```
 
 設定母站點數 API：
@@ -164,3 +183,18 @@ Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/points/balanc
 ## 注意
 
 目前 `/admin/crm/sync-points` 是讀母站並寫入本系統 D1 快取，不會回寫母站。等 `grant / deduct` 小額測試完成後，再接母站寫回 API。
+
+## WETW 會員 API 格式
+
+母站會員 API 使用 `POST JSON`，不是 `GET + Bearer Token`。
+
+Worker 會送出：
+
+```json
+{
+  "api_key": "POINT_API_KEY",
+  "shop_id": 216
+}
+```
+
+如果要查單一 LINE uid，後續可再加 `LINE_user_id` 查詢參數。

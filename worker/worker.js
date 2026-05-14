@@ -49,6 +49,7 @@ export default {
             POINT_API_KEY: Boolean(env.POINT_API_KEY),
             WETW_MEMBERS_URL: Boolean(env.WETW_MEMBERS_URL),
             WETW_POINTS_URL: Boolean(env.WETW_POINTS_URL),
+            WETW_SHOP_ID: Boolean(env.WETW_SHOP_ID),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
@@ -865,6 +866,8 @@ async function syncCrmPoints(env, body) {
 async function fetchWetwArray(env, type) {
   const url = type === "members" ? env.WETW_MEMBERS_URL : env.WETW_POINTS_URL;
   if (!url) throw httpError(`${type === "members" ? "WETW_MEMBERS_URL" : "WETW_POINTS_URL"} is not configured. You can POST an array in the request body first.`, 400);
+  if (type === "members") return fetchWetwMembersFromWordPress(env, url);
+
   const headers = { "Accept": "application/json" };
   if (env.POINT_API_KEY) headers.Authorization = `Bearer ${env.POINT_API_KEY}`;
   const response = await fetch(url, { headers });
@@ -877,13 +880,42 @@ async function fetchWetwArray(env, type) {
   return Array.isArray(data) ? data : [];
 }
 
+async function fetchWetwMembersFromWordPress(env, url) {
+  if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
+  const shopId = Number(env.WETW_SHOP_ID || 216);
+  if (!Number.isFinite(shopId) || shopId <= 0) throw httpError("WETW_SHOP_ID must be a positive integer", 400);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      api_key: env.POINT_API_KEY,
+      shop_id: shopId,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code = stringValue(data.code);
+    const message = stringValue(data.message);
+    throw httpError(`WETW members sync failed: ${response.status}${code ? ` ${code}` : ""}${message ? ` - ${message}` : ""}`, 502);
+  }
+  const list = data && data.data && Array.isArray(data.data.list) ? data.data.list : [];
+  if (Array.isArray(data.members)) return data.members;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.items)) return data.items;
+  return list;
+}
+
 function normalizeCrmMember(item) {
   return {
-    memberRef: stringValue(item.member_ref || item.memberRef || item.id || item.user_id || item.customer_id),
-    name: stringValue(item.name || item.display_name || item.customer_name),
+    memberRef: stringValue(item.member_ref || item.memberRef || item.ID || item.id || item.user_login || item.LINE_user_id || item.user_id || item.customer_id),
+    name: stringValue(item.name || item.display_name || item.LINE_display_name || item.customer_name),
     phone: stringValue(item.phone || item.mobile || item.tel),
     email: stringValue(item.email || item.mail),
-    level: stringValue(item.level || item.rank || item.member_level),
+    level: stringValue(item.level || item.rank || item.member_level || item.shop_id),
     source: stringValue(item.source || "wetw"),
   };
 }

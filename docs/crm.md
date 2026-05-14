@@ -33,6 +33,28 @@
 - `POINT_API_KEY`
 - `WETW_MEMBERS_URL`
 - `WETW_POINTS_URL`
+- `WETW_SHOP_ID`
+
+`WETW_MEMBERS_URL`：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw/v1/query-line-user-list
+```
+
+`WETW_SHOP_ID`：
+
+```text
+216
+```
+
+會員 API 使用 `POST JSON`，`api_key` 放在 body：
+
+```json
+{
+  "api_key": "POINT_API_KEY",
+  "shop_id": 216
+}
+```
 
 `CHANNEL_CONFIG_JSON` 範例：
 
