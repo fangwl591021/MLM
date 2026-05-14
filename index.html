@@ -90,6 +90,7 @@
           <label>來源<select id="pointSource"></select></label>
           <label>點數類型<select id="pointType"><option value="system_point">system_point 點數</option><option value="gift_money">gift_money 購物金</option></select></label>
           <label>點數<input id="pointAmount" type="number" value="1" min="0.01" step="0.01" /></label>
+          <label>操作人<input id="pointOperator" placeholder="例如：黃慧君" /></label>
           <label>備註<input id="pointNote" placeholder="例如：KLINK API +1 測試" /></label>
         </div>
         <div class="pointActions"><button id="pointGrant" class="pointGrant" type="button">贈點</button><button id="pointDeduct" class="pointDeduct" type="button">扣點</button><button id="pointRefresh" class="pointRefresh" type="button">重新整理</button><span id="pointMessage" class="pointMessage"></span></div>
@@ -113,7 +114,7 @@
       pendingButton: $("pendingButton"), doneButton: $("doneButton"), searchButton: $("searchButton"), searchBottomButton: $("searchBottomButton"), activeTitle: $("activeTitle"), activeSubtitle: $("activeSubtitle"), activeAvatar: $("activeAvatar"),
       syncStatus: $("syncStatus"), alertList: $("alertList"), alertCount: $("alertCount"), errorBox: $("errorBox"), manageBar: $("manageBar"), manualBar: $("manualBar"), manualEndButton: $("manualEndButton"),
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
-      pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage")
+      pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage")
     };
     const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointBalances: [] };
 
@@ -164,6 +165,7 @@
     els.pointClose.addEventListener("click", closePointModal);
     els.pointModal.addEventListener("click", (e) => { if (e.target === els.pointModal) closePointModal(); });
     els.pointSource.addEventListener("change", updatePointActionState);
+    els.pointOperator.addEventListener("change", () => localStorage.setItem("line_ai_operator_name", els.pointOperator.value.trim()));
     els.pointGrant.addEventListener("click", () => submitPointMutation("grant"));
     els.pointDeduct.addEventListener("click", () => submitPointMutation("deduct"));
     els.pointRefresh.addEventListener("click", () => loadPointBalances());
@@ -527,6 +529,7 @@
       els.pointSubtitle.textContent = `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣點`;
       els.pointMessage.textContent = "";
       els.pointAmount.value = "1";
+      els.pointOperator.value = localStorage.getItem("line_ai_operator_name") || "";
       els.pointNote.value = "";
       els.pointModal.classList.add("show");
       loadPointBalances();
@@ -587,15 +590,20 @@
     async function submitPointMutation(action) {
       const source = POINT_SOURCES.find((item) => item.key === els.pointSource.value) || POINT_SOURCES[0];
       const amount = Math.abs(Number(els.pointAmount.value || 0));
+      const operatorName = els.pointOperator.value.trim();
       if (!state.pointUserId) { els.pointMessage.textContent = "尚未選擇用戶。"; return; }
       if (!amount) { els.pointMessage.textContent = "請輸入點數。"; return; }
+      if (!operatorName) { els.pointMessage.textContent = "請填寫操作人，log 才能追蹤誰贈扣點。"; els.pointOperator.focus(); return; }
       if (action === "grant" && source.canGrant === false) { els.pointMessage.textContent = "康立全球只能扣點，不能贈點。"; return; }
       const note = els.pointNote.value.trim();
+      localStorage.setItem("line_ai_operator_name", operatorName);
       const payload = {
         channel_key: source.key,
         line_user_id: state.pointUserId,
         point_type: els.pointType.value || "system_point",
         points: amount,
+        operator_name: operatorName,
+        operator_id: operatorName,
         note,
         event_name: `${source.name}${action === "grant" ? "贈點" : "扣點"}`,
         event_content: note || "由 KLINK 客服系統操作",

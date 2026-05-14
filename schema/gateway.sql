@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS point_ledger (
   source TEXT NOT NULL,
   source_event_id TEXT,
   business_key TEXT NOT NULL UNIQUE,
+  operator_id TEXT NOT NULL DEFAULT '',
+  operator_name TEXT NOT NULL DEFAULT '',
   note TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(account_key) REFERENCES point_accounts(account_key)

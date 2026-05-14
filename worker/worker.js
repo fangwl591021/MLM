@@ -664,6 +664,9 @@ async function pointMutation(env, body, action) {
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
     throw httpError(`${sourceMeta.label} 來源只允許扣點，不允許贈點`, 400);
   }
+  const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName);
+  const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId || operatorName);
+  if (!operatorName) throw httpError("請填寫贈扣點操作人", 400);
   const delta = action === "grant" ? points : -points;
   const input = {
     channelKey,
@@ -674,6 +677,8 @@ async function pointMutation(env, body, action) {
     source: "admin",
     businessKey: stringValue(body.business_key || body.businessKey),
     note: stringValue(body.note),
+    operatorId,
+    operatorName,
   };
   const wetw = await insertWetwPointMutation(env, input, body);
   const local = await applyPointMutation(env, {
@@ -681,6 +686,8 @@ async function pointMutation(env, body, action) {
     source: "wetw",
     businessKey: input.businessKey || (wetw && wetw.data && wetw.data.insert_id ? `wetw:${wetw.data.insert_id}` : ""),
     note: input.note || (wetw && wetw.message) || "",
+    operatorId: input.operatorId,
+    operatorName: input.operatorName,
   });
   return { ...local, wetw };
 }
@@ -700,10 +707,10 @@ async function insertWetwPointMutation(env, input, body = {}) {
     event_content: eventContent,
     point_type: input.pointType || "system_point",
     get_point: Number(input.pointDelta || 0),
-    shop_user_lineid: stringValue(body.shop_user_lineid || body.shopUserLineId),
+    shop_user_lineid: stringValue(body.shop_user_lineid || body.shopUserLineId || input.operatorId),
     child_shop_name: stringValue(body.child_shop_name || body.childShopName),
     child_shop_renew: Number(body.child_shop_renew || body.childShopRenew || 0),
-    shop_remark: stringValue(body.shop_remark || body.shopRemark || input.note),
+    shop_remark: stringValue(body.shop_remark || body.shopRemark || `操作人：${input.operatorName}${input.note ? `；${input.note}` : ""}`),
   };
 
   const response = await fetch(url, {
@@ -744,9 +751,9 @@ async function applyPointMutation(env, input) {
         updated_at = CURRENT_TIMESTAMP
     `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, pointType, balanceAfter),
     env.DB.prepare(`
-      INSERT INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, source_event_id, business_key, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, input.action, pointType, Number(input.pointDelta || 0), balanceAfter, input.source, input.sourceEventId || null, businessKey, input.note || null),
+      INSERT INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, source_event_id, business_key, operator_id, operator_name, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, input.action, pointType, Number(input.pointDelta || 0), balanceAfter, input.source, input.sourceEventId || null, businessKey, input.operatorId || "", input.operatorName || "", input.note || null),
   ]);
 
   return { account_key: accountKey, master_member_ref: masterMemberRef, balance_after: balanceAfter };
@@ -842,7 +849,7 @@ async function listPointLedger(env, url) {
 
   if (channelKey && lineUserId) {
     const rows = await env.DB.prepare(`
-      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note, created_at
+      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
       FROM point_ledger
       WHERE channel_key = ? AND line_user_id = ?
       ORDER BY id DESC
@@ -852,7 +859,7 @@ async function listPointLedger(env, url) {
   }
   if (masterMemberRef) {
     const rows = await env.DB.prepare(`
-      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note, created_at
+      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
       FROM point_ledger
       WHERE master_member_ref = ?
       ORDER BY id DESC
@@ -861,7 +868,7 @@ async function listPointLedger(env, url) {
     return rows.results || [];
   }
   const rows = await env.DB.prepare(`
-    SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note, created_at
+    SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
     FROM point_ledger
     ORDER BY id DESC
     LIMIT ?

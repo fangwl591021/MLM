@@ -30,6 +30,12 @@
 
 監看頁的點數彈窗會同時查詢兩個來源；扣點預設優先選康立全球，避免未來康立全球停止贈點後仍留有未處理餘額。
 
+人工贈扣點 log 會記錄操作人：
+
+- 前端送出 `operator_name` / `operator_id`
+- Worker 寫入 `point_ledger.operator_name` / `point_ledger.operator_id`
+- 舊的同步紀錄沒有操作人，欄位會是空白
+
 ## Cloudflare 變數與機密
 
 必要：

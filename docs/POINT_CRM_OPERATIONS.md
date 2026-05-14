@@ -213,6 +213,13 @@ Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/points/balanc
 
 目前 `/admin/points/grant`、`/admin/points/deduct`、`/admin/points/redeem` 會先呼叫 k-link.cc 的 `insert-user-point`，成功後才寫入本系統 D1 ledger。
 
+人工贈扣點必須傳入操作人：
+
+- `operator_name`：畫面顯示與 log 追蹤用，例如 `黃慧君`
+- `operator_id`：可填登入帳號、LINE UID 或同操作人姓名
+
+這兩個欄位會寫入 D1 `point_ledger.operator_name` / `point_ledger.operator_id`。舊同步資料沒有操作人，會保留空白。
+
 點數查詢列表可能很多頁，Worker 預設每次只同步 5 頁，避免 Cloudflare 單次請求超限。可在呼叫 `/admin/crm/sync-points` 時傳：
 
 ```json
