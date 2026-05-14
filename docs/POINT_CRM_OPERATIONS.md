@@ -69,6 +69,24 @@ npx.cmd wrangler secret put WETW_SHOP_ID --name mlm
 npx.cmd wrangler secret put WETW_POINTS_URL --name mlm
 ```
 
+貼入：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list
+```
+
+設定母站新增點數 API：
+
+```powershell
+npx.cmd wrangler secret put WETW_POINT_INSERT_URL --name mlm
+```
+
+貼入：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point
+```
+
 設定 OA1 / OA2 詳細設定：
 
 ```powershell
@@ -184,6 +202,28 @@ Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/points/balanc
 
 目前 `/admin/crm/sync-points` 是讀母站並寫入本系統 D1 快取，不會回寫母站。等 `grant / deduct` 小額測試完成後，再接母站寫回 API。
 
+目前 `/admin/points/grant`、`/admin/points/deduct`、`/admin/points/redeem` 會先呼叫 k-link.cc 的 `insert-user-point`，成功後才寫入本系統 D1 ledger。
+
+點數查詢列表可能很多頁，Worker 預設每次只同步 5 頁，避免 Cloudflare 單次請求超限。可在呼叫 `/admin/crm/sync-points` 時傳：
+
+```json
+{
+  "page": 1,
+  "per_page": 100,
+  "max_pages": 5
+}
+```
+
+下一批可改：
+
+```json
+{
+  "page": 6,
+  "per_page": 100,
+  "max_pages": 5
+}
+```
+
 ## WETW 會員 API 格式
 
 母站會員 API 使用 `POST JSON`，不是 `GET + Bearer Token`。
@@ -198,3 +238,44 @@ Worker 會送出：
 ```
 
 如果要查單一 LINE uid，後續可再加 `LINE_user_id` 查詢參數。
+
+## WETW 點數 API 格式
+
+點數查詢 API：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list
+```
+
+Worker 會送出：
+
+```json
+{
+  "api_key": "POINT_API_KEY",
+  "shop_id": 216,
+  "page": 1,
+  "per_page": 100
+}
+```
+
+新增點數 API：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point
+```
+
+Worker 會送出：
+
+```json
+{
+  "api_key": "POINT_API_KEY",
+  "LINE_user_id": "Uxxxxxxxx",
+  "shop_id": 216,
+  "event_name": "客服贈點",
+  "event_content": "由 KLINK 客服系統操作",
+  "point_type": "system_point",
+  "get_point": 100
+}
+```
+
+扣點時 `get_point` 會是負數。

@@ -6,7 +6,9 @@ export interface GatewayEnv {
   POINT_API_KEY?: string;
   WETW_MEMBERS_URL?: string;
   WETW_POINTS_URL?: string;
+  WETW_POINT_INSERT_URL?: string;
   WETW_SHOP_ID?: string;
+  WETW_POINTS_MAX_PAGES?: string;
 }
 
 export interface ChannelConfig {

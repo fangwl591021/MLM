@@ -33,6 +33,7 @@
 - `POINT_API_KEY`
 - `WETW_MEMBERS_URL`
 - `WETW_POINTS_URL`
+- `WETW_POINT_INSERT_URL`
 - `WETW_SHOP_ID`
 
 `WETW_MEMBERS_URL`：
@@ -55,6 +56,20 @@ https://k-link.cc/index.php/wp-json/wetw/v1/query-line-user-list
   "shop_id": 216
 }
 ```
+
+`WETW_POINTS_URL`：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list
+```
+
+`WETW_POINT_INSERT_URL`：
+
+```text
+https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point
+```
+
+點數 API 也使用 `POST JSON`，`api_key` 放在 body。所有正式網域均使用 `k-link.cc`。
 
 `CHANNEL_CONFIG_JSON` 範例：
 

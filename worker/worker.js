@@ -20,6 +20,8 @@ const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
 const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_MAIN, [POINT_OA2]: FLOOR_ADMIN };
+const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
+const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 
 export default {
   async fetch(request, env, ctx) {
@@ -49,6 +51,7 @@ export default {
             POINT_API_KEY: Boolean(env.POINT_API_KEY),
             WETW_MEMBERS_URL: Boolean(env.WETW_MEMBERS_URL),
             WETW_POINTS_URL: Boolean(env.WETW_POINTS_URL),
+            WETW_POINT_INSERT_URL: Boolean(env.WETW_POINT_INSERT_URL),
             WETW_SHOP_ID: Boolean(env.WETW_SHOP_ID),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
@@ -653,16 +656,58 @@ async function pointMutation(env, body, action) {
   const points = Math.abs(Number(body.points || body.point_delta || body.pointDelta));
   if (!channelKey || !lineUserId || !points) throw httpError("channel_key, line_user_id, and points are required", 400);
   const delta = action === "grant" ? points : -points;
-  return applyPointMutation(env, {
+  const input = {
     channelKey,
     lineUserId,
-    pointType: stringValue(body.point_type || body.pointType) || "manual_point",
+    pointType: stringValue(body.point_type || body.pointType) || "system_point",
     pointDelta: delta,
     action,
     source: "admin",
     businessKey: stringValue(body.business_key || body.businessKey),
     note: stringValue(body.note),
+  };
+  const wetw = await insertWetwPointMutation(env, input, body);
+  const local = await applyPointMutation(env, {
+    ...input,
+    source: "wetw",
+    businessKey: input.businessKey || (wetw && wetw.data && wetw.data.insert_id ? `wetw:${wetw.data.insert_id}` : ""),
+    note: input.note || (wetw && wetw.message) || "",
   });
+  return { ...local, wetw };
+}
+
+async function insertWetwPointMutation(env, input, body = {}) {
+  if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
+  const shopId = wetwShopId(env);
+  const url = stringValue(env.WETW_POINT_INSERT_URL) || DEFAULT_WETW_POINT_INSERT_URL;
+  const eventName = stringValue(body.event_name || body.eventName) || (input.pointDelta >= 0 ? "\u5ba2\u670d\u8d08\u9ede" : "\u5ba2\u670d\u6263\u9ede");
+  const eventContent = stringValue(body.event_content || body.eventContent) || input.note || "\u7531 KLINK \u5ba2\u670d\u7cfb\u7d71\u64cd\u4f5c";
+  const payload = {
+    api_key: env.POINT_API_KEY,
+    LINE_user_id: input.lineUserId,
+    shop_id: shopId,
+    event_name: eventName,
+    event_content: eventContent,
+    point_type: input.pointType || "system_point",
+    get_point: Number(input.pointDelta || 0),
+    shop_user_lineid: stringValue(body.shop_user_lineid || body.shopUserLineId),
+    child_shop_name: stringValue(body.child_shop_name || body.childShopName),
+    child_shop_renew: Number(body.child_shop_renew || body.childShopRenew || 0),
+    shop_remark: stringValue(body.shop_remark || body.shopRemark || input.note),
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success === false) {
+    const code = stringValue(data.code);
+    const message = stringValue(data.message);
+    throw httpError(`WETW point insert failed: ${response.status}${code ? ` ${code}` : ""}${message ? ` - ${message}` : ""}`, response.ok ? 502 : response.status);
+  }
+  return data;
 }
 
 async function applyPointMutation(env, input) {
@@ -833,16 +878,18 @@ async function syncCrmMembers(env, body) {
 }
 
 async function syncCrmPoints(env, body) {
-  const rows = Array.isArray(body.points) ? body.points : await fetchWetwArray(env, "points");
+  const rows = Array.isArray(body.points) ? body.points : await fetchWetwArray(env, "points", body);
   let count = 0;
   for (const item of rows) {
-    const channelKey = stringValue(item.channel_key || item.channelKey || item.oa || POINT_OA1);
-    const lineUserId = stringValue(item.line_user_id || item.lineUserId || item.userId);
+    const channelKey = stringValue(item.channel_key || item.channelKey || item.oa || body.channel_key || POINT_OA1);
+    const lineUserId = stringValue(item.line_user_id || item.lineUserId || item.LINE_user_id || item.userId);
     const pointType = stringValue(item.point_type || item.pointType || "wetw_point");
-    const balance = Number(item.balance || item.points || 0);
+    const balance = Number(item.point_balance ?? item.balance ?? item.points ?? item.get_point ?? 0);
     if (!channelKey || !lineUserId || !Number.isFinite(balance)) continue;
     const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
-    const masterMemberRef = stringValue(item.master_member_ref || item.member_ref || item.memberRef) || null;
+    const masterMemberRef = stringValue(item.master_member_ref || item.member_ref || item.memberRef || item.user_id) || null;
+    const wetwPointId = stringValue(item.id || item.point_id || item.ledger_id);
+    const businessKey = wetwPointId ? `wetw-point:${wetwPointId}` : `wetw-sync:${accountKey}:${pointType}:${lineUserId}`;
     await env.DB.batch([
       env.DB.prepare(`
         INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
@@ -855,7 +902,7 @@ async function syncCrmPoints(env, body) {
       env.DB.prepare(`
         INSERT OR IGNORE INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(accountKey, masterMemberRef, channelKey, lineUserId, "sync", pointType, 0, balance, "wetw", `sync:${accountKey}:${Date.now()}`, "WETW read-only sync"),
+      `).bind(accountKey, masterMemberRef, channelKey, lineUserId, "sync", pointType, Number(item.get_point || 0), balance, "wetw", businessKey, "WETW read-only sync"),
     ]);
     count += 1;
   }
@@ -863,27 +910,16 @@ async function syncCrmPoints(env, body) {
   return { count, source: body.points ? "body" : "wetw" };
 }
 
-async function fetchWetwArray(env, type) {
-  const url = type === "members" ? env.WETW_MEMBERS_URL : env.WETW_POINTS_URL;
+async function fetchWetwArray(env, type, options = {}) {
+  const url = type === "members" ? env.WETW_MEMBERS_URL : (env.WETW_POINTS_URL || DEFAULT_WETW_POINT_QUERY_URL);
   if (!url) throw httpError(`${type === "members" ? "WETW_MEMBERS_URL" : "WETW_POINTS_URL"} is not configured. You can POST an array in the request body first.`, 400);
   if (type === "members") return fetchWetwMembersFromWordPress(env, url);
-
-  const headers = { "Accept": "application/json" };
-  if (env.POINT_API_KEY) headers.Authorization = `Bearer ${env.POINT_API_KEY}`;
-  const response = await fetch(url, { headers });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw httpError(`WETW ${type} sync failed: ${response.status}`, 502);
-  const direct = data[type];
-  if (Array.isArray(direct)) return direct;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data.items)) return data.items;
-  return Array.isArray(data) ? data : [];
+  return fetchWetwPointListFromWordPress(env, url, options);
 }
 
 async function fetchWetwMembersFromWordPress(env, url) {
   if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
-  const shopId = Number(env.WETW_SHOP_ID || 216);
-  if (!Number.isFinite(shopId) || shopId <= 0) throw httpError("WETW_SHOP_ID must be a positive integer", 400);
+  const shopId = wetwShopId(env);
 
   const response = await fetch(url, {
     method: "POST",
@@ -907,6 +943,60 @@ async function fetchWetwMembersFromWordPress(env, url) {
   if (Array.isArray(data.data)) return data.data;
   if (Array.isArray(data.items)) return data.items;
   return list;
+}
+
+async function fetchWetwPointListFromWordPress(env, url, options = {}) {
+  if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
+  const shopId = Number(options.shop_id || options.shopId || env.WETW_SHOP_ID || 216);
+  if (!Number.isFinite(shopId) || shopId <= 0) throw httpError("WETW_SHOP_ID must be a positive integer", 400);
+  const basePayload = {
+    api_key: env.POINT_API_KEY,
+    shop_id: shopId,
+    LINE_user_id: stringValue(options.LINE_user_id || options.line_user_id || options.lineUserId),
+    point_type: stringValue(options.point_type || options.pointType),
+    date_start: stringValue(options.date_start || options.dateStart),
+    date_end: stringValue(options.date_end || options.dateEnd),
+  };
+  const perPage = clampNumber(options.per_page || options.perPage || 100, 1, 100);
+  const firstPage = clampNumber(options.page || 1, 1, 100000);
+  const maxPages = clampNumber(options.max_pages || options.maxPages || env.WETW_POINTS_MAX_PAGES || 5, 1, 20);
+  const all = [];
+  let totalPages = firstPage;
+  const lastAllowedPage = firstPage + maxPages - 1;
+
+  for (let page = firstPage; page <= totalPages && page <= lastAllowedPage; page += 1) {
+    const payload = compactObject({ ...basePayload, page, per_page: perPage });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false) {
+      const code = stringValue(data.code);
+      const message = stringValue(data.message);
+      throw httpError(`WETW points sync failed: ${response.status}${code ? ` ${code}` : ""}${message ? ` - ${message}` : ""}`, response.ok ? 502 : response.status);
+    }
+    const list = data && data.data && Array.isArray(data.data.list) ? data.data.list : [];
+    all.push(...list);
+    totalPages = Number(data && data.data && data.data.pagination && data.data.pagination.total_pages) || page;
+    if (!list.length) break;
+  }
+  return all;
+}
+
+function wetwShopId(env) {
+  const shopId = Number(env.WETW_SHOP_ID || 216);
+  if (!Number.isFinite(shopId) || shopId <= 0) throw httpError("WETW_SHOP_ID must be a positive integer", 400);
+  return shopId;
+}
+
+function compactObject(input) {
+  const output = {};
+  Object.entries(input).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") output[key] = value;
+  });
+  return output;
 }
 
 function normalizeCrmMember(item) {
