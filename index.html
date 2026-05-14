@@ -116,7 +116,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage")
     };
-    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointBalances: [] };
+    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointResolved: null, pointBalances: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -524,6 +524,8 @@
       const group = allGroups().find((item) => item.userId === userId) || currentGroup();
       state.pointUserId = userId || (group && group.userId) || "";
       state.pointUserName = group ? group.displayName : state.pointUserId;
+      state.pointMutationUserId = state.pointUserId;
+      state.pointResolved = null;
       state.pointBalances = [];
       els.pointTitle.textContent = `${state.pointUserName || "會員"} 點數`;
       els.pointSubtitle.textContent = `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣點`;
@@ -541,13 +543,20 @@
       if (!state.pointUserId) return;
       els.pointSources.innerHTML = '<div class="muted">正在讀取兩個來源的點數...</div>';
       try {
-        const res = await fetch(apiUrl(`/admin/points/balance?line_user_id=${encodeURIComponent(state.pointUserId)}&limit=200`), { headers: authJsonHeaders() });
+        const query = `/admin/points/balance?line_user_id=${encodeURIComponent(state.pointUserId)}&user_name=${encodeURIComponent(state.pointUserName || "")}&limit=200`;
+        const res = await fetch(apiUrl(query), { headers: authJsonHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "點數讀取失敗");
         state.pointBalances = Array.isArray(json.balances) ? json.balances : [];
+        state.pointResolved = json.resolved || null;
+        state.pointMutationUserId = state.pointResolved && state.pointResolved.point_line_user_id ? state.pointResolved.point_line_user_id : (state.pointBalances[0] && state.pointBalances[0].line_user_id) || state.pointUserId;
+        els.pointSubtitle.textContent = state.pointMutationUserId && state.pointMutationUserId !== state.pointUserId
+          ? `聊天室ID ${state.pointUserId} · 點數ID ${state.pointMutationUserId}`
+          : `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣點`;
         renderPointSources();
         const priority = POINT_SOURCES.find((source) => source.deductPriority && pointSourceTotal(source.key) > 0);
-        els.pointSource.value = priority ? priority.key : (els.pointSource.value || POINT_SOURCES[0].key);
+        const funded = POINT_SOURCES.find((source) => pointSourceTotal(source.key) > 0);
+        els.pointSource.value = priority ? priority.key : (funded ? funded.key : (els.pointSource.value || POINT_SOURCES[0].key));
         updatePointActionState();
       } catch (err) {
         els.pointSources.innerHTML = `<div class="muted">${esc(err.message || String(err))}</div>`;
@@ -599,7 +608,8 @@
       localStorage.setItem("line_ai_operator_name", operatorName);
       const payload = {
         channel_key: source.key,
-        line_user_id: state.pointUserId,
+        line_user_id: state.pointMutationUserId || state.pointUserId,
+        chat_line_user_id: state.pointUserId,
         point_type: els.pointType.value || "system_point",
         points: amount,
         operator_name: operatorName,

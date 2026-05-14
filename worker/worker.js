@@ -125,8 +125,10 @@ export default {
 
       if (url.pathname === "/admin/points/balance" && request.method === "GET") {
         assertPointAdminAuth(request, env);
-        const balances = await listPointBalances(env, url);
-        return jsonResponse({ success: true, status: "success", balances }, 200, corsHeaders);
+        const result = await listPointBalances(env, url);
+        const balances = Array.isArray(result) ? result : result.balances;
+        const resolved = Array.isArray(result) ? null : result.resolved;
+        return jsonResponse({ success: true, status: "success", balances, resolved }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/ledger" && request.method === "GET") {
@@ -762,6 +764,7 @@ async function applyPointMutation(env, input) {
 async function listPointBalances(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
+  const userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
@@ -783,7 +786,35 @@ async function listPointBalances(env, url) {
       ORDER BY channel_key, point_type
       LIMIT ?
     `).bind(lineUserId, limit).all();
-    return decoratePointBalances(rows.results || []);
+    if (rows.results && rows.results.length) {
+      return { balances: decoratePointBalances(rows.results), resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact" } };
+    }
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    if (resolved && resolved.pointLineUserId) {
+      const resolvedRows = await env.DB.prepare(`
+        SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+        FROM point_accounts
+        WHERE line_user_id = ?
+        ORDER BY channel_key, point_type
+        LIMIT ?
+      `).bind(resolved.pointLineUserId, limit).all();
+      return {
+        balances: decoratePointBalances(resolvedRows.results || []).map((row) => ({
+          ...row,
+          chat_line_user_id: lineUserId,
+          resolved_from_name: resolved.name,
+          resolved_member_ref: resolved.memberRef,
+        })),
+        resolved: {
+          chat_line_user_id: lineUserId,
+          point_line_user_id: resolved.pointLineUserId,
+          member_ref: resolved.memberRef,
+          name: resolved.name,
+          source: resolved.source,
+        },
+      };
+    }
+    return { balances: [], resolved: { chat_line_user_id: lineUserId, point_line_user_id: "", source: "not_found" } };
   }
   if (masterMemberRef) {
     const rows = await env.DB.prepare(`
@@ -816,6 +847,64 @@ async function listPointBalances(env, url) {
 
 function pointSourceMeta(channelKey) {
   return POINT_SOURCE_META[channelKey] || null;
+}
+
+async function resolvePointIdentity(env, input) {
+  const chatLineUserId = stringValue(input.chatLineUserId);
+  const userName = stringValue(input.userName).trim();
+  if (!env.DB) return null;
+
+  if (chatLineUserId) {
+    const linked = await env.DB.prepare(`
+      SELECT master_member_ref, line_user_id
+      FROM member_line_links
+      WHERE line_user_id = ?
+      LIMIT 1
+    `).bind(chatLineUserId).first();
+    if (linked && linked.master_member_ref) {
+      const member = await env.DB.prepare(`
+        SELECT member_ref, name, source_json
+        FROM crm_members
+        WHERE member_ref = ?
+        LIMIT 1
+      `).bind(linked.master_member_ref).first();
+      const pointLineUserId = crmLineUserId(member);
+      if (pointLineUserId) return { pointLineUserId, memberRef: member.member_ref, name: member.name, source: "member_link" };
+    }
+  }
+
+  if (!userName) return null;
+  const like = `%${userName}%`;
+  const rows = await env.DB.prepare(`
+    SELECT member_ref, name, source_json
+    FROM crm_members
+    WHERE name LIKE ? OR source_json LIKE ?
+    ORDER BY
+      CASE
+        WHEN name = ? THEN 0
+        WHEN name LIKE ? THEN 1
+        ELSE 2
+      END,
+      updated_at DESC
+    LIMIT 10
+  `).bind(like, like, userName, like).all();
+  for (const member of rows.results || []) {
+    const pointLineUserId = crmLineUserId(member);
+    if (pointLineUserId && pointLineUserId !== chatLineUserId) {
+      return { pointLineUserId, memberRef: member.member_ref, name: member.name, source: "crm_name" };
+    }
+  }
+  return null;
+}
+
+function crmLineUserId(member) {
+  if (!member) return "";
+  try {
+    const raw = JSON.parse(member.source_json || "{}");
+    return stringValue(raw.LINE_user_id || raw.user_login || raw.line_user_id || raw.lineUserId);
+  } catch (_err) {
+    return "";
+  }
 }
 
 function decoratePointBalances(rows) {
