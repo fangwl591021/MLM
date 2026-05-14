@@ -26,6 +26,8 @@
 - `oa1`：康立智能，來源網址 `https://k-link.cc/index.php/line_login/1086/`，可贈點與扣點。
 - `oa2`：康立全球，來源網址 `https://k-link.cc/index.php/line_login/1584/`，只允許扣點。
 
+`1086` / `1584` 是 LINE login 來源標示，不等於目前 WETW API 查詢用的 `shop_id`。目前 WETW 會員與點數 API 使用 `WETW_SHOP_ID=216` 才有資料；若母站之後提供分來源的點數 `shop_id`，再設定 `WETW_POINT_SHOP_ID_OA1` / `WETW_POINT_SHOP_ID_OA2`。
+
 監看頁的點數彈窗會同時查詢兩個來源；扣點預設優先選康立全球，避免未來康立全球停止贈點後仍留有未處理餘額。
 
 ## Cloudflare 變數與機密

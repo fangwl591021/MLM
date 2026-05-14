@@ -205,6 +205,8 @@ Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/points/balanc
 - `oa1`：康立智能，來源網址 `https://k-link.cc/index.php/line_login/1086/`，可贈點也可扣點。
 - `oa2`：康立全球，來源網址 `https://k-link.cc/index.php/line_login/1584/`，只允許扣點，不允許贈點。
 
+注意：`1086` / `1584` 是前台 LINE login 來源標示，不等於目前 WETW 會員/點數 API 的 `shop_id`。目前母站 API 回傳資料使用 `WETW_SHOP_ID=216`；若之後母站提供兩個來源各自的點數 `shop_id`，再另外設定 `WETW_POINT_SHOP_ID_OA1`、`WETW_POINT_SHOP_ID_OA2`。
+
 後台點數彈窗會同時顯示兩個來源的餘額。扣點時優先選康立全球，目標是未來康立全球不再贈點前先把可扣點數處理完。
 
 目前 `/admin/crm/sync-points` 是讀母站並寫入本系統 D1 快取，不會回寫母站。等 `grant / deduct` 小額測試完成後，再接母站寫回 API。

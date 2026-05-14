@@ -688,8 +688,7 @@ async function pointMutation(env, body, action) {
 async function insertWetwPointMutation(env, input, body = {}) {
   if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
   const sourceMeta = pointSourceMeta(input.channelKey);
-  const shopId = Number(body.shop_id || body.shopId || (sourceMeta && sourceMeta.shopId) || wetwShopId(env));
-  if (!Number.isFinite(shopId) || shopId <= 0) throw httpError("Point source shop_id must be a positive integer", 400);
+  const shopId = pointApiShopId(env, input.channelKey, body.shop_id || body.shopId);
   const url = stringValue(env.WETW_POINT_INSERT_URL) || DEFAULT_WETW_POINT_INSERT_URL;
   const eventName = stringValue(body.event_name || body.eventName) || (input.pointDelta >= 0 ? "\u5ba2\u670d\u8d08\u9ede" : "\u5ba2\u670d\u6263\u9ede");
   const eventContent = stringValue(body.event_content || body.eventContent) || input.note || "\u7531 KLINK \u5ba2\u670d\u7cfb\u7d71\u64cd\u4f5c";
@@ -824,6 +823,15 @@ function decoratePointBalances(rows) {
       deduct_priority: Boolean(meta.deductPriority),
     };
   });
+}
+
+function pointApiShopId(env, channelKey, override) {
+  const explicit = Number(override || 0);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const sourceEnv = channelKey === POINT_OA2 ? env.WETW_POINT_SHOP_ID_OA2 : env.WETW_POINT_SHOP_ID_OA1;
+  const configured = Number(sourceEnv || 0);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return wetwShopId(env);
 }
 
 async function listPointLedger(env, url) {
@@ -961,12 +969,12 @@ async function resolvePointSyncRows(env, body) {
     }));
   }
 
-  const all = [];
-  for (const [channelKey, meta] of Object.entries(POINT_SOURCE_META)) {
-    const rows = await fetchWetwArray(env, "points", { ...body, shop_id: meta.shopId, channel_key: channelKey });
-    rows.forEach((item) => all.push({ ...item, channel_key: channelKey, source_label: meta.label }));
-  }
-  return all;
+  const defaultChannel = stringValue(body.default_channel_key || body.defaultChannelKey) || POINT_OA1;
+  const rows = await fetchWetwArray(env, "points", { ...body, shop_id: pointApiShopId(env, defaultChannel), channel_key: defaultChannel });
+  return rows.map((item) => ({
+    ...item,
+    channel_key: stringValue(item.channel_key || item.channelKey || item.oa || defaultChannel),
+  }));
 }
 
 function sourceKeyFromShopId(shopId) {
