@@ -935,61 +935,141 @@ function crmAdminToolHtml(headers) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KLINK CRM / 點數模組</title>
   <style>
-    body{margin:0;background:#f6f8fb;color:#172033;font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
-    main{max-width:980px;margin:28px auto;padding:0 16px;display:grid;gap:16px}
-    section{background:#fff;border:1px solid #dbe3ee;border-radius:14px;padding:18px}
-    h1{font-size:24px;margin:0 0 6px}h2{font-size:16px;margin:0 0 12px}p{color:#667085;margin:0 0 12px}
-    label{display:block;font-size:13px;color:#5d6675;font-weight:700;margin:10px 0 6px}
-    input,select,textarea{width:100%;min-height:40px;border:1px solid #dbe3ee;border-radius:10px;padding:9px 11px;box-sizing:border-box}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    button{min-height:42px;border:0;border-radius:10px;background:#06c755;color:#fff;font-weight:800;padding:0 14px;margin:12px 8px 0 0;cursor:pointer}
-    button.secondary{background:#eff4fb;color:#172033;border:1px solid #dbe3ee}
-    pre{background:#101828;color:#e5e7eb;border-radius:12px;padding:14px;overflow:auto;min-height:180px}
-    @media(max-width:760px){.grid{grid-template-columns:1fr}}
+    :root{--line:#06c755;--ink:#172033;--muted:#667085;--border:#dbe3ee;--soft:#f6f8fb;--navy:#071833;--orange:#ff8a00;--red:#d92d20}
+    *{box-sizing:border-box}body{margin:0;background:var(--soft);color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    .shell{min-height:100vh;display:grid;grid-template-columns:320px minmax(0,1fr)}
+    aside{background:#fff;border-right:1px solid var(--border);padding:24px;display:flex;flex-direction:column;gap:18px}
+    main{padding:24px;display:grid;gap:16px;align-content:start}
+    h1,h2,h3,p{margin:0}.brand{display:flex;align-items:center;gap:12px}.logo{width:52px;height:52px;border-radius:16px;background:var(--line);color:#fff;display:grid;place-items:center;font-weight:900}.brand h1{font-size:24px}.muted,p{color:var(--muted);font-size:14px;line-height:1.5}
+    .panel,.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 10px 26px rgba(16,24,40,.04)}
+    .panel h2,.card h2{font-size:17px;margin-bottom:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.kpi{background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px}.kpi strong{display:block;font-size:30px;margin-top:8px}
+    label{display:block;font-size:13px;color:#4b5563;font-weight:800;margin:10px 0 6px}
+    input,select{width:100%;min-height:42px;border:1px solid var(--border);border-radius:12px;padding:9px 12px;background:#fff;outline:none}input:focus,select:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}
+    button{min-height:42px;border:0;border-radius:12px;background:var(--line);color:#fff;font-weight:850;padding:0 16px;cursor:pointer}button.secondary{background:#eff4fb;color:var(--ink);border:1px solid var(--border)}button.dark{background:var(--navy)}button.warn{background:var(--orange)}button:disabled{opacity:.55;cursor:not-allowed}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:end}.tableWrap{overflow:auto;border:1px solid var(--border);border-radius:16px;background:#fff}.table{width:100%;border-collapse:collapse;min-width:760px}.table th,.table td{padding:12px;border-bottom:1px solid #edf1f5;text-align:left;vertical-align:top}.table th{font-size:12px;color:#667085;background:#f8fafc}.pill{display:inline-flex;border-radius:999px;background:#effcf4;color:#067a35;font-weight:850;padding:5px 10px;font-size:12px}.pill.gray{background:#eef2f7;color:#344054}.pill.orange{background:#fff3e0;color:#b54708}.status{min-height:24px;color:#667085;font-size:13px}.output{white-space:pre-wrap;background:#101828;color:#e5e7eb;border-radius:14px;padding:14px;min-height:112px;overflow:auto;font-size:13px}.hide{display:none}
+    @media(max-width:980px){.shell{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--border)}.kpis,.grid,.toolbar{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-<main>
-  <section><h1>KLINK CRM / LINE 點數模組</h1><p>此頁只呼叫 Worker API，不會把 Token 寫入 Git 或頁面。</p></section>
-  <section>
-    <h2>連線</h2>
-    <label>Admin Token 或 Dashboard Token</label>
-    <input id="token" type="password" placeholder="貼上 Token">
-  </section>
-  <section>
-    <h2>CRM</h2>
-    <button id="members">讀取會員</button>
-    <button id="syncMembers" class="secondary">同步會員</button>
-    <button id="syncPoints" class="secondary">同步點數</button>
-  </section>
-  <section>
-    <h2>手動點數</h2>
-    <div class="grid">
-      <div><label>OA</label><select id="channel"><option value="oa1">OA1 產品客服</option><option value="oa2">OA2 行政客服</option></select></div>
-      <div><label>LINE User ID</label><input id="lineUserId" placeholder="U..."></div>
-      <div><label>Point Type</label><input id="pointType" value="manual_point"></div>
-      <div><label>點數</label><input id="points" type="number" value="10"></div>
-    </div>
-    <label>備註</label><input id="note" placeholder="例如：活動補點 / 商品核銷">
-    <button id="grant">贈點</button>
-    <button id="deduct" class="secondary">扣點</button>
-    <button id="balance" class="secondary">查餘額</button>
-    <button id="ledger" class="secondary">查紀錄</button>
-  </section>
-  <section><h2>結果</h2><pre id="out">等待操作</pre></section>
-</main>
+<div class="shell">
+  <aside>
+    <div class="brand"><div class="logo">KL</div><div><h1>KLINK CRM</h1><p>LINE 會員與點數模組</p></div></div>
+    <section class="panel">
+      <h2>連線設定</h2>
+      <label>Admin Token 或 Dashboard Token</label>
+      <input id="token" type="password" placeholder="貼上 Token">
+      <div class="row" style="margin-top:12px">
+        <button id="saveToken" class="dark">儲存本機</button>
+        <button id="clearToken" class="secondary">清除</button>
+      </div>
+      <p style="margin-top:10px">Token 只存在這台瀏覽器的 localStorage，不會寫入 Git。</p>
+    </section>
+    <section class="panel">
+      <h2>同步</h2>
+      <button id="syncMembers">同步 WETW 會員</button>
+      <button id="syncPoints" class="secondary" style="margin-top:10px">同步 WETW 點數</button>
+      <p style="margin-top:10px">會員 API 已支援 WETW POST JSON 格式。點數 API 等文件確認後再正式校正。</p>
+    </section>
+    <section class="panel">
+      <h2>手動點數</h2>
+      <label>OA</label><select id="channel"><option value="oa1">OA1 產品客服</option><option value="oa2">OA2 行政客服</option></select>
+      <label>LINE User ID</label><input id="lineUserId" placeholder="U...">
+      <label>Point Type</label><input id="pointType" value="manual_point">
+      <label>點數</label><input id="points" type="number" value="10">
+      <label>備註</label><input id="note" placeholder="例如：活動補點 / 商品核銷">
+      <div class="row" style="margin-top:12px">
+        <button id="grant">贈點</button>
+        <button id="deduct" class="warn">扣點</button>
+        <button id="balance" class="secondary">查餘額</button>
+      </div>
+    </section>
+  </aside>
+  <main>
+    <section class="kpis">
+      <div class="kpi"><p>會員快取</p><strong id="memberCount">0</strong></div>
+      <div class="kpi"><p>目前列表</p><strong id="visibleCount">0</strong></div>
+      <div class="kpi"><p>狀態</p><strong id="statusText" style="font-size:20px">待同步</strong></div>
+    </section>
+    <section class="card">
+      <div class="toolbar">
+        <div><label>搜尋會員</label><input id="search" placeholder="姓名、電話、LINE uid、會員 ID"></div>
+        <button id="members">讀取會員</button>
+        <button id="searchButton" class="secondary">搜尋</button>
+      </div>
+      <div class="status" id="statusLine" style="margin-top:12px">等待操作</div>
+    </section>
+    <section class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div><h2>會員列表</h2><p>資料來源：WETW WordPress API → D1 crm_members</p></div>
+        <span class="pill" id="sourcePill">wetw</span>
+      </div>
+      <div class="tableWrap">
+        <table class="table">
+          <thead><tr><th>會員 ID</th><th>姓名</th><th>電話</th><th>店家/等級</th><th>LINE uid</th><th>更新時間</th></tr></thead>
+          <tbody id="memberRows"><tr><td colspan="6">尚未讀取資料</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card">
+      <h2>API 回應</h2>
+      <pre class="output" id="out">等待操作</pre>
+    </section>
+  </main>
+</div>
 <script>
 const $ = (id) => document.getElementById(id);
+const savedToken = localStorage.getItem("klink_crm_token") || localStorage.getItem("line_ai_api_token") || "";
+$("token").value = savedToken;
+function esc(value){return String(value == null ? "" : value).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c];});}
 function headers(){return {"content-type":"application/json","authorization":"Bearer "+$("token").value.trim()};}
 function payload(){return {channel_key:$("channel").value,line_user_id:$("lineUserId").value.trim(),point_type:$("pointType").value.trim(),points:Number($("points").value),note:$("note").value};}
-async function call(path,opt={}){const res=await fetch(path,{headers:headers(),...opt});const text=await res.text();try{$("out").textContent=JSON.stringify(JSON.parse(text),null,2)}catch(_err){$("out").textContent=text}}
-$("members").onclick=()=>call("/admin/crm/members");
-$("syncMembers").onclick=()=>call("/admin/crm/sync-members",{method:"POST",body:"{}"});
-$("syncPoints").onclick=()=>call("/admin/crm/sync-points",{method:"POST",body:"{}"});
-$("grant").onclick=()=>call("/admin/points/grant",{method:"POST",body:JSON.stringify(payload())});
-$("deduct").onclick=()=>call("/admin/points/deduct",{method:"POST",body:JSON.stringify(payload())});
-$("balance").onclick=()=>call("/admin/points/balance?channel_key="+encodeURIComponent($("channel").value)+"&line_user_id="+encodeURIComponent($("lineUserId").value.trim()));
-$("ledger").onclick=()=>call("/admin/points/ledger?channel_key="+encodeURIComponent($("channel").value)+"&line_user_id="+encodeURIComponent($("lineUserId").value.trim()));
+function setStatus(text){$("statusLine").textContent=text;$("statusText").textContent=text.length > 8 ? text.slice(0,8) : text;}
+function show(data){$("out").textContent=JSON.stringify(data,null,2);}
+async function call(path,opt){
+  setStatus("處理中");
+  const res=await fetch(path,{headers:headers(),...(opt||{})});
+  const text=await res.text();
+  let data;
+  try{data=JSON.parse(text);}catch(_err){data={raw:text};}
+  show(data);
+  if(!res.ok || data.status==="error" || data.success===false){setStatus("失敗");throw new Error(data.message||"request failed");}
+  setStatus("完成");
+  return data;
+}
+function renderMembers(data){
+  const rows=(data.data||data.members||[]);
+  $("visibleCount").textContent=rows.length;
+  if(!rows.length){$("memberRows").innerHTML='<tr><td colspan="6">沒有資料</td></tr>';return;}
+  $("memberRows").innerHTML=rows.map(function(row){
+    let raw={};
+    try{raw=JSON.parse(row.source_json||"{}");}catch(_err){}
+    const lineUid=raw.LINE_user_id||raw.user_login||"";
+    return '<tr>'+
+      '<td><span class="pill gray">'+esc(row.member_ref)+'</span></td>'+
+      '<td><strong>'+esc(row.name||raw.LINE_display_name||raw.display_name)+'</strong></td>'+
+      '<td>'+esc(row.phone||raw.phone)+'</td>'+
+      '<td><span class="pill orange">'+esc(row.level||raw.shop_id||"")+'</span></td>'+
+      '<td style="font-size:12px;color:#667085">'+esc(lineUid)+'</td>'+
+      '<td style="font-size:12px;color:#667085">'+esc(row.updated_at||"")+'</td>'+
+    '</tr>';
+  }).join("");
+}
+async function loadMembers(){
+  const q=$("search").value.trim();
+  const data=await call("/admin/crm/members?limit=500"+(q?"&q="+encodeURIComponent(q):""));
+  renderMembers(data);
+}
+$("saveToken").onclick=function(){localStorage.setItem("klink_crm_token",$("token").value.trim());setStatus("已儲存");};
+$("clearToken").onclick=function(){localStorage.removeItem("klink_crm_token");$("token").value="";setStatus("已清除");};
+$("members").onclick=loadMembers;
+$("searchButton").onclick=loadMembers;
+$("search").addEventListener("keydown",function(event){if(event.key==="Enter")loadMembers();});
+$("syncMembers").onclick=async function(){const data=await call("/admin/crm/sync-members",{method:"POST",body:"{}"});$("memberCount").textContent=data.count||0;await loadMembers();};
+$("syncPoints").onclick=function(){return call("/admin/crm/sync-points",{method:"POST",body:"{}"});};
+$("grant").onclick=function(){return call("/admin/points/grant",{method:"POST",body:JSON.stringify(payload())});};
+$("deduct").onclick=function(){return call("/admin/points/deduct",{method:"POST",body:JSON.stringify(payload())});};
+$("balance").onclick=function(){return call("/admin/points/balance?channel_key="+encodeURIComponent($("channel").value)+"&line_user_id="+encodeURIComponent($("lineUserId").value.trim()));};
+if(savedToken) loadMembers().catch(function(error){setStatus(error.message);});
 </script>
 </body>
 </html>`, { headers: { ...headers, "Content-Type": "text/html; charset=utf-8" } });
