@@ -868,8 +868,8 @@ async function resolvePointIdentity(env, input) {
         WHERE member_ref = ?
         LIMIT 1
       `).bind(linked.master_member_ref).first();
-      const pointLineUserId = crmLineUserId(member);
-      if (pointLineUserId) return { pointLineUserId, memberRef: member.member_ref, name: member.name, source: "member_link" };
+      const pointLineUserId = crmLineUserId(member) || await pointLineUserIdForMember(env, linked.master_member_ref);
+      if (pointLineUserId) return { pointLineUserId, memberRef: linked.master_member_ref, name: member && member.name ? member.name : "", source: "member_link" };
     }
   }
 
@@ -905,6 +905,19 @@ function crmLineUserId(member) {
   } catch (_err) {
     return "";
   }
+}
+
+async function pointLineUserIdForMember(env, memberRef) {
+  const ref = stringValue(memberRef);
+  if (!ref) return "";
+  const row = await env.DB.prepare(`
+    SELECT line_user_id
+    FROM point_accounts
+    WHERE master_member_ref = ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(ref).first();
+  return row ? stringValue(row.line_user_id) : "";
 }
 
 function decoratePointBalances(rows) {
