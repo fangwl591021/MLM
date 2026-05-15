@@ -2,178 +2,145 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>康立智能 QR 贈K點</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>康立智能 NFC 贈K點</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    :root{--line:#06c755;--ink:#101828;--sub:#667085;--border:#d8e0eb;--soft:#f7fafc;--danger:#d92d20}
+    :root{--line:#06c755;--ink:#111827;--muted:#667085;--red:#e11d48;--soft:#f7fafc}
     *{box-sizing:border-box}
-    body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#f9fffb,#eef6f8);color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
-    main{width:min(420px,100%);min-height:100vh;display:grid;align-content:center;padding:28px}
-    .card{border:1px solid var(--border);border-radius:22px;background:#fff;padding:28px;box-shadow:0 24px 70px rgba(16,24,40,.12)}
-    .mark{width:66px;height:66px;border-radius:20px;background:var(--line);display:grid;place-items:center;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 28px rgba(6,199,85,.22)}
-    h1{margin:18px 0 8px;font-size:28px;line-height:1.2}
-    p{margin:0;color:var(--sub);line-height:1.7}
-    .status{margin-top:20px;border:1px solid #d7f5e2;border-radius:16px;background:#f2fff7;padding:16px;color:#067a35;font-weight:900;line-height:1.6}
-    .status.error{border-color:#ffd2d2;background:#fff5f5;color:var(--danger)}
-    .profile{display:flex;align-items:center;gap:12px;margin-top:18px}
-    .avatar{width:44px;height:44px;border-radius:50%;background:#e7eef7;display:grid;place-items:center;overflow:hidden;font-weight:900}
-    .avatar img{width:100%;height:100%;object-fit:cover}
-    button{width:100%;height:48px;margin-top:18px;border:0;border-radius:14px;background:var(--line);color:#fff;font-size:16px;font-weight:900}
-    button.secondary{background:#172033}
-    small{display:block;margin-top:14px;color:#8a95a6;line-height:1.6}
+    html,body{margin:0;min-height:100%;background:#fff;color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    body{display:grid;place-items:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+    main{width:min(320px,100%);text-align:center}
+    .mark{width:64px;height:64px;margin:0 auto 18px;border-radius:18px;background:var(--line);display:grid;place-items:center;color:#fff;font-size:24px;font-weight:900;box-shadow:0 16px 38px rgba(6,199,85,.22)}
+    .spinner{width:36px;height:36px;margin:0 auto 16px;border:4px solid #dff7e9;border-top-color:var(--line);border-radius:50%;animation:spin .8s linear infinite}
+    h1{margin:0;font-size:22px;line-height:1.35;font-weight:900}
+    p{margin:10px 0 0;color:var(--muted);font-size:15px;line-height:1.6}
+    .packet{width:96px;height:116px;margin:0 auto 18px;border-radius:18px 18px 26px 26px;background:linear-gradient(180deg,#ff3b30,#c1121f);position:relative;box-shadow:0 18px 42px rgba(225,29,72,.25)}
+    .packet:before{content:"";position:absolute;left:50%;top:42px;width:42px;height:42px;border-radius:50%;background:#ffd166;transform:translateX(-50%)}
+    .packet:after{content:"5";position:absolute;left:50%;top:46px;transform:translateX(-50%);font-weight:900;font-size:24px;color:#8a1c13}
+    .hidden{display:none}
+    .error .mark{background:var(--red);box-shadow:0 16px 38px rgba(225,29,72,.18)}
+    .error h1{color:var(--red)}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
-  <main>
-    <section class="card">
-      <div class="mark">KL</div>
-      <h1 id="pageTitle">康立智能<br>QR 贈K點</h1>
-      <p>使用 LINE 掃碼後，系統會將 <strong id="pointsText">1 K點</strong> 發送到您的康立智能會員帳號。</p>
-      <div id="eventBox" class="status" hidden></div>
-      <div id="profile" class="profile" hidden><div id="avatar" class="avatar"></div><div><strong id="name">LINE 會員</strong><p id="uid"></p></div></div>
-      <div id="status" class="status">正在啟動 LINE 授權...</div>
-      <button id="retry" type="button" hidden>重新領取</button>
-      <button id="close" class="secondary" type="button" hidden>關閉</button>
-      <small id="campaignText"></small>
-    </section>
+  <main id="app">
+    <div id="loadingIcon" class="spinner"></div>
+    <div id="successIcon" class="packet hidden"></div>
+    <div id="plainIcon" class="mark hidden">KL</div>
+    <h1 id="title">請稍後，系統處理中</h1>
+    <p id="message">正在確認課程時間與會員資料</p>
   </main>
+
   <script>
     const API_BASE = "https://mlm.fangwl591021.workers.dev";
     const LIFF_ID = "2007221311-WjM9sZPz";
+    const CLOSE_DELAY_MS = 2600;
     const qs = new URLSearchParams(location.search);
     const nested = new URLSearchParams(qs.get("liff.state") || "");
-    const campaign = nested.get("campaign") || qs.get("campaign") || "smart_202605";
-    const entry = nested.get("entry") || qs.get("entry") || "qr";
-    const statusEl = document.getElementById("status");
-    const retryEl = document.getElementById("retry");
-    const closeEl = document.getElementById("close");
-    const profileEl = document.getElementById("profile");
-    const avatarEl = document.getElementById("avatar");
-    const nameEl = document.getElementById("name");
-    const uidEl = document.getElementById("uid");
-    const pointsTextEl = document.getElementById("pointsText");
-    const pageTitleEl = document.getElementById("pageTitle");
-    const eventBoxEl = document.getElementById("eventBox");
-    const calendarMode = campaign === "calendar_auto";
-    document.getElementById("campaignText").textContent = `活動代碼：${campaign}`;
-    retryEl.addEventListener("click", claim);
-    closeEl.addEventListener("click", () => {
-      if (window.liff && liff.isInClient()) liff.closeWindow();
-    });
+    const campaign = nested.get("campaign") || qs.get("campaign") || "calendar_auto";
+    const entry = nested.get("entry") || qs.get("entry") || "nfc";
+
+    const appEl = document.getElementById("app");
+    const titleEl = document.getElementById("title");
+    const messageEl = document.getElementById("message");
+    const loadingIconEl = document.getElementById("loadingIcon");
+    const successIconEl = document.getElementById("successIcon");
+    const plainIconEl = document.getElementById("plainIcon");
 
     boot();
 
     async function boot() {
       try {
         await liff.init({ liffId: LIFF_ID });
-        await loadRewardConfig();
         if (!liff.isLoggedIn()) {
           liff.login({ redirectUri: location.href });
           return;
         }
-        const profile = await liff.getProfile().catch(() => null);
-        if (profile) renderProfile(profile);
         await claim();
       } catch (error) {
-        showError(error.message || String(error));
-      }
-    }
-
-    async function loadRewardConfig() {
-      const response = await fetch(`${API_BASE}/api/reward/config?campaign=${encodeURIComponent(campaign)}`);
-      const data = await response.json().catch(() => ({}));
-      if (response.ok && data.status === "success") {
-        pointsTextEl.textContent = `${formatPoint(data.points)} K點`;
-      }
-      if (calendarMode) {
-        pageTitleEl.innerHTML = "康立智能<br>日曆定位贈K點";
-        await loadActiveEvents();
-      }
-    }
-
-    async function loadActiveEvents() {
-      try {
-        const response = await fetch(`${API_BASE}/api/reward/calendar-events`);
-        const data = await response.json();
-        const active = Array.isArray(data.events) ? data.events.filter((event) => event.active) : [];
-        eventBoxEl.hidden = false;
-        eventBoxEl.textContent = active.length
-          ? `目前有效活動：${active[0].title}，地點：${active[0].location || "未填寫"}`
-          : "目前 Google 日曆沒有進行中的贈點活動。";
-      } catch (_err) {
-        eventBoxEl.hidden = false;
-        eventBoxEl.textContent = "正在等待 Google 日曆活動資料。";
+        renderClosed("目前非課程時間，請查看行事曆", "", true);
       }
     }
 
     async function claim() {
-      try {
-        retryEl.hidden = true;
-        statusEl.classList.remove("error");
-        statusEl.textContent = calendarMode ? "請允許定位，系統將依 Google 日曆活動地點判定..." : "正在確認會員資料並發送 K點...";
-        const idToken = liff.getIDToken();
-        if (!idToken) throw new Error("無法取得 LINE 授權，請用 LINE 重新開啟。");
-        const position = calendarMode ? await getCurrentPosition() : null;
-        const response = await fetch(`${API_BASE}/api/reward/claim`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            campaign,
-            entry,
-            idToken,
-            lat: position && position.coords.latitude,
-            lng: position && position.coords.longitude,
-            accuracy: position && position.coords.accuracy,
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok || data.status !== "success") throw new Error(data.message || "領取失敗");
-        statusEl.textContent = data.duplicate
-          ? `您已領取過本活動 K點，目前餘額 ${formatPoint(data.balance_after)} K點。`
-          : `領取成功，已增加 ${formatPoint(data.points)} K點，目前餘額 ${formatPoint(data.balance_after)} K點。`;
-        if (data.event) {
-          eventBoxEl.hidden = false;
-          eventBoxEl.textContent = `${data.event.title} · ${data.event.location || ""}${data.event.distanceMeters !== null ? ` · 距離約 ${data.event.distanceMeters} 公尺` : ""}`;
+      renderLoading();
+      const idToken = liff.getIDToken();
+      if (!idToken) throw new Error("missing token");
+      const position = await getCurrentPosition();
+      const response = await fetch(`${API_BASE}/api/reward/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign,
+          entry,
+          idToken,
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.status !== "success") {
+        const message = data.message || "";
+        if (message.includes("有效活動") || message.includes("日曆") || message.includes("距離") || message.includes("定位")) {
+          renderClosed("目前非課程時間，請查看行事曆", "", true);
+          return;
         }
-        closeEl.hidden = !(window.liff && liff.isInClient());
-      } catch (error) {
-        showError(error.message || String(error));
+        throw new Error(message || "claim failed");
       }
+      renderSuccess(data.duplicate ? "已領取過本課程紅包" : "紅包已送出", data.duplicate ? "本課程已完成領取" : "已發送 5 K點");
+    }
+
+    function renderLoading() {
+      appEl.classList.remove("error");
+      loadingIconEl.classList.remove("hidden");
+      successIconEl.classList.add("hidden");
+      plainIconEl.classList.add("hidden");
+      titleEl.textContent = "請稍後，系統處理中";
+      messageEl.textContent = "正在確認課程時間與會員資料";
+    }
+
+    function renderSuccess(title, message) {
+      appEl.classList.remove("error");
+      loadingIconEl.classList.add("hidden");
+      successIconEl.classList.remove("hidden");
+      plainIconEl.classList.add("hidden");
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      closeSoon();
+    }
+
+    function renderClosed(title, message, isError) {
+      appEl.classList.toggle("error", Boolean(isError));
+      loadingIconEl.classList.add("hidden");
+      successIconEl.classList.add("hidden");
+      plainIconEl.classList.remove("hidden");
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      closeSoon();
+    }
+
+    function closeSoon() {
+      setTimeout(() => {
+        if (window.liff && liff.isInClient()) {
+          liff.closeWindow();
+          return;
+        }
+        window.close();
+      }, CLOSE_DELAY_MS);
     }
 
     function getCurrentPosition() {
-      if (!navigator.geolocation) return Promise.reject(new Error("此手機瀏覽器不支援定位。"));
+      if (!navigator.geolocation) return Promise.reject(new Error("no geolocation"));
       return new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error("定位失敗，請允許位置權限後重新領取。")), {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
-          timeout: 15000,
+          timeout: 12000,
           maximumAge: 0,
         });
       });
-    }
-
-    function renderProfile(profile) {
-      profileEl.hidden = false;
-      nameEl.textContent = profile.displayName || "LINE 會員";
-      uidEl.textContent = profile.userId || "";
-      avatarEl.innerHTML = profile.pictureUrl ? `<img src="${escapeAttr(profile.pictureUrl)}" alt="">` : (profile.displayName || "L").slice(0, 1);
-    }
-
-    function showError(message) {
-      statusEl.classList.add("error");
-      statusEl.textContent = message;
-      retryEl.hidden = false;
-      closeEl.hidden = !(window.liff && liff.isInClient());
-    }
-
-    function formatPoint(value) {
-      const number = Number(value || 0);
-      return Number.isInteger(number) ? String(number) : number.toFixed(2);
-    }
-
-    function escapeAttr(value) {
-      return String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     }
   </script>
 </body>

@@ -947,7 +947,7 @@ async function resolveCalendarRewardContext(env, body) {
   }
   const now = Date.now();
   const events = (await fetchRewardCalendarEvents(env)).filter((event) => event.startsAt <= now && event.endsAt >= now);
-  if (!events.length) throw httpError("目前沒有 Google 日曆中的有效活動", 400);
+  if (!events.length) throw httpError("目前非課程時間，請查看行事曆", 400);
 
   const radius = rewardGeofenceMeters(env);
   const checked = [];
