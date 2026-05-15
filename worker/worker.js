@@ -32,6 +32,10 @@ const REWARD_CAMPAIGN_POINTS = {
   smart_202605: 1,
   smart_202605_5: 5,
 };
+const REWARD_CALENDAR_AUTO = "calendar_auto";
+const DEFAULT_REWARD_CALENDAR_ID = "e60890fdb27ca97452f32e6484c312ed029faef62a6ddd4fbbe753fa557bcde5@group.calendar.google.com";
+const DEFAULT_REWARD_GEOFENCE_METERS = 300;
+const DEFAULT_REWARD_CALENDAR_POINTS = 5;
 
 export default {
   async fetch(request, env, ctx) {
@@ -85,8 +89,19 @@ export default {
           status: "success",
           liffId: stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID,
           campaign,
-          points: rewardPointsForCampaign(campaign),
+          points: campaign === REWARD_CALENDAR_AUTO ? calendarDefaultPoints(env) : rewardPointsForCampaign(campaign),
           source: POINT_SOURCE_META[POINT_OA1].label,
+          calendarMode: campaign === REWARD_CALENDAR_AUTO,
+        }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/reward/calendar-events" && request.method === "GET") {
+        const events = await fetchRewardCalendarEvents(env);
+        const now = Date.now();
+        return jsonResponse({
+          success: true,
+          status: "success",
+          events: events.map((event) => publicCalendarEvent(event, now)),
         }, 200, corsHeaders);
       }
 
@@ -720,7 +735,7 @@ async function pointMutation(env, body, action) {
 
 async function claimQrReward(env, body) {
   if (!env.DB) throw httpError("DB is not configured", 500);
-  const campaign = normalizeCampaign(body.campaign || "smart_202605");
+  let campaign = normalizeCampaign(body.campaign || "smart_202605");
   const idToken = stringValue(body.idToken || body.id_token);
   if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟 QR 頁面", 400);
 
@@ -728,7 +743,9 @@ async function claimQrReward(env, body) {
   const lineUserId = stringValue(lineProfile.sub || lineProfile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
 
-  const points = rewardPointsForCampaign(campaign);
+  const calendarContext = campaign === REWARD_CALENDAR_AUTO ? await resolveCalendarRewardContext(env, body) : null;
+  if (calendarContext) campaign = calendarContext.campaign;
+  const points = calendarContext ? calendarContext.points : rewardPointsForCampaign(campaign);
   const existing = await env.DB.prepare(`
     SELECT id, status, points, created_at
     FROM reward_claims
@@ -744,16 +761,32 @@ async function claimQrReward(env, body) {
       points: Number(existing.points || points),
       balance_after: balance,
       message: "這個 QR 活動已經領取過",
+      event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now()) : null,
     };
   }
 
   const insert = await env.DB.prepare(`
-    INSERT INTO reward_claims (campaign, line_user_id, channel_key, points, status, created_at)
-    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-  `).bind(campaign, lineUserId, POINT_OA1, points, "pending").run();
+    INSERT INTO reward_claims (campaign, line_user_id, channel_key, points, status, event_uid, event_title, location_name, user_lat, user_lng, distance_meters, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).bind(
+    campaign,
+    lineUserId,
+    POINT_OA1,
+    points,
+    "pending",
+    calendarContext ? calendarContext.event.uid : "",
+    calendarContext ? calendarContext.event.summary : "",
+    calendarContext ? calendarContext.event.location : "",
+    calendarContext ? calendarContext.userLat : null,
+    calendarContext ? calendarContext.userLng : null,
+    calendarContext ? calendarContext.distanceMeters : null,
+  ).run();
   const claimId = insert && insert.meta && insert.meta.last_row_id ? insert.meta.last_row_id : null;
 
   try {
+    const eventNote = calendarContext
+      ? `Google日曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location}；距離：${Math.round(calendarContext.distanceMeters)}m`
+      : `QR掃碼活動 ${campaign}`;
     const mutation = await pointMutation(env, {
       channel_key: POINT_OA1,
       line_user_id: lineUserId,
@@ -762,8 +795,8 @@ async function claimQrReward(env, body) {
       operator_id: `qr:${campaign}`,
       operator_name: "QR自動贈K點",
       event_name: `QR掃碼贈K點`,
-      event_content: `QR掃碼活動 ${campaign}`,
-      note: `QR掃碼活動 ${campaign}`,
+      event_content: eventNote,
+      note: eventNote,
       business_key: `qr-reward:${campaign}:${lineUserId}`,
     }, "grant");
     await env.DB.prepare(`
@@ -781,6 +814,7 @@ async function claimQrReward(env, body) {
       points,
       balance_after: mutation.balance_after,
       message: `已領取 ${points} K點`,
+      event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now(), calendarContext) : null,
     };
   } catch (error) {
     await env.DB.prepare(`
@@ -812,6 +846,221 @@ async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
   const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
   const row = await env.DB.prepare("SELECT balance FROM point_accounts WHERE account_key = ?").bind(accountKey).first();
   return Number(row && row.balance || 0);
+}
+
+async function resolveCalendarRewardContext(env, body) {
+  const userLat = Number(body.lat || body.latitude);
+  const userLng = Number(body.lng || body.longitude);
+  if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+    throw httpError("請允許定位，系統才能確認是否在活動地點", 400);
+  }
+  const now = Date.now();
+  const events = (await fetchRewardCalendarEvents(env)).filter((event) => event.startsAt <= now && event.endsAt >= now);
+  if (!events.length) throw httpError("目前沒有 Google 日曆中的有效活動", 400);
+
+  const radius = rewardGeofenceMeters(env);
+  const checked = [];
+  for (const event of events) {
+    const geo = await geocodeRewardLocation(env, event.location);
+    if (!geo) {
+      checked.push({ event, distanceMeters: Number.POSITIVE_INFINITY, geo: null });
+      continue;
+    }
+    const distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
+    checked.push({ event, distanceMeters, geo });
+  }
+  checked.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  const best = checked[0];
+  if (!best || !Number.isFinite(best.distanceMeters)) {
+    throw httpError("目前活動沒有可判定的地址，請確認 Google 日曆地點欄位", 400);
+  }
+  if (best.distanceMeters > radius) {
+    throw httpError(`您目前距離活動地點約 ${Math.round(best.distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
+  }
+  const points = rewardPointsFromEvent(env, best.event);
+  return {
+    campaign: `calendar_${shortHash(best.event.uid || `${best.event.summary}:${best.event.startsAt}`)}`,
+    event: best.event,
+    points,
+    userLat,
+    userLng,
+    userAccuracy: Number(body.accuracy || 0) || null,
+    distanceMeters: best.distanceMeters,
+    eventLat: best.geo.lat,
+    eventLng: best.geo.lng,
+  };
+}
+
+async function fetchRewardCalendarEvents(env) {
+  const calendarId = stringValue(env.REWARD_GOOGLE_CALENDAR_ID) || DEFAULT_REWARD_CALENDAR_ID;
+  const icsUrl = stringValue(env.REWARD_GOOGLE_CALENDAR_ICS_URL)
+    || `https://calendar.google.com/calendar/ical/${encodeURIComponent(calendarId)}/public/basic.ics`;
+  const response = await fetch(icsUrl, {
+    headers: { "Accept": "text/calendar,text/plain,*/*" },
+  });
+  if (!response.ok) throw httpError(`Google 日曆讀取失敗：${response.status}`, 502);
+  const text = await response.text();
+  return parseIcsEvents(text)
+    .filter((event) => event.startsAt && event.endsAt)
+    .sort((a, b) => a.startsAt - b.startsAt);
+}
+
+function parseIcsEvents(text) {
+  const lines = unfoldIcsLines(text);
+  const events = [];
+  let current = null;
+  for (const line of lines) {
+    if (line === "BEGIN:VEVENT") {
+      current = {};
+      continue;
+    }
+    if (line === "END:VEVENT") {
+      if (current) {
+        const startsAt = current.DTSTART ? parseIcsDate(current.DTSTART.value, current.DTSTART.params) : 0;
+        const endsAt = current.DTEND ? parseIcsDate(current.DTEND.value, current.DTEND.params) : startsAt + 2 * 60 * 60 * 1000;
+        events.push({
+          uid: unescapeIcs(current.UID && current.UID.value),
+          summary: unescapeIcs(current.SUMMARY && current.SUMMARY.value) || "未命名活動",
+          description: unescapeIcs(current.DESCRIPTION && current.DESCRIPTION.value),
+          location: unescapeIcs(current.LOCATION && current.LOCATION.value),
+          startsAt,
+          endsAt,
+        });
+      }
+      current = null;
+      continue;
+    }
+    if (!current) continue;
+    const parsed = parseIcsProperty(line);
+    if (parsed && !current[parsed.name]) current[parsed.name] = parsed;
+  }
+  return events;
+}
+
+function unfoldIcsLines(text) {
+  const raw = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const lines = [];
+  for (const line of raw) {
+    if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length) {
+      lines[lines.length - 1] += line.slice(1);
+    } else if (line) {
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
+function parseIcsProperty(line) {
+  const index = line.indexOf(":");
+  if (index < 0) return null;
+  const left = line.slice(0, index);
+  const value = line.slice(index + 1);
+  const parts = left.split(";");
+  const name = parts.shift().toUpperCase();
+  const params = {};
+  for (const part of parts) {
+    const eq = part.indexOf("=");
+    if (eq > 0) params[part.slice(0, eq).toUpperCase()] = part.slice(eq + 1);
+  }
+  return { name, params, value };
+}
+
+function parseIcsDate(value, params = {}) {
+  const text = stringValue(value);
+  if (/^\d{8}$/.test(text)) {
+    return Date.UTC(Number(text.slice(0, 4)), Number(text.slice(4, 6)) - 1, Number(text.slice(6, 8))) - 8 * 60 * 60 * 1000;
+  }
+  const match = text.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (!match) return Date.parse(text) || 0;
+  const [, y, mo, d, h, mi, s, z] = match;
+  const utc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s));
+  if (z === "Z") return utc;
+  const tz = stringValue(params.TZID);
+  return utc - (tz.includes("Taipei") || !tz ? 8 * 60 * 60 * 1000 : 0);
+}
+
+function unescapeIcs(value) {
+  return stringValue(value)
+    .replace(/\\n/gi, "\n")
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";")
+    .replace(/\\\\/g, "\\");
+}
+
+async function geocodeRewardLocation(env, location) {
+  const text = stringValue(location);
+  if (!text) return null;
+  const direct = parseLatLng(text);
+  if (direct) return direct;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tw&q=${encodeURIComponent(text)}`;
+  const response = await fetch(url, {
+    headers: {
+      "Accept": "application/json",
+      "User-Agent": "KLINK-reward-geofence/1.0",
+    },
+  });
+  if (!response.ok) return null;
+  const data = await response.json().catch(() => []);
+  const first = Array.isArray(data) ? data[0] : null;
+  if (!first) return null;
+  const lat = Number(first.lat);
+  const lng = Number(first.lon);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function parseLatLng(text) {
+  const match = stringValue(text).match(/(-?\d+(?:\.\d+)?)\s*[,，]\s*(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function rewardPointsFromEvent(env, event) {
+  const text = `${event.summary || ""}\n${event.description || ""}`;
+  const match = text.match(/(?:K點|點數|贈點|points?)\s*[:：]?\s*(\d+(?:\.\d+)?)/i) || text.match(/(\d+(?:\.\d+)?)\s*(?:K點|點)/i);
+  const points = match ? Number(match[1]) : calendarDefaultPoints(env);
+  return Number.isFinite(points) && points > 0 ? points : calendarDefaultPoints(env);
+}
+
+function calendarDefaultPoints(env) {
+  const points = Number(env.REWARD_CALENDAR_DEFAULT_POINTS || DEFAULT_REWARD_CALENDAR_POINTS);
+  return Number.isFinite(points) && points > 0 ? points : DEFAULT_REWARD_CALENDAR_POINTS;
+}
+
+function rewardGeofenceMeters(env) {
+  const meters = Number(env.REWARD_GEOFENCE_METERS || DEFAULT_REWARD_GEOFENCE_METERS);
+  return Number.isFinite(meters) && meters > 0 ? Math.round(meters) : DEFAULT_REWARD_GEOFENCE_METERS;
+}
+
+function publicCalendarEvent(event, now = Date.now(), context = null) {
+  return {
+    uid: event.uid,
+    title: event.summary,
+    location: event.location,
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+    active: event.startsAt <= now && event.endsAt >= now,
+    points: rewardPointsFromEvent({}, event),
+    distanceMeters: context && Number.isFinite(context.distanceMeters) ? Math.round(context.distanceMeters) : null,
+  };
+}
+
+function shortHash(value) {
+  let hash = 5381;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) + hash) ^ text.charCodeAt(i);
+  return (hash >>> 0).toString(36);
 }
 
 function normalizeCampaign(value) {

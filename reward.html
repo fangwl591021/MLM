@@ -28,8 +28,9 @@
   <main>
     <section class="card">
       <div class="mark">KL</div>
-      <h1>康立智能<br>QR 贈K點</h1>
+      <h1 id="pageTitle">康立智能<br>QR 贈K點</h1>
       <p>使用 LINE 掃碼後，系統會將 <strong id="pointsText">1 K點</strong> 發送到您的康立智能會員帳號。</p>
+      <div id="eventBox" class="status" hidden></div>
       <div id="profile" class="profile" hidden><div id="avatar" class="avatar"></div><div><strong id="name">LINE 會員</strong><p id="uid"></p></div></div>
       <div id="status" class="status">正在啟動 LINE 授權...</div>
       <button id="retry" type="button" hidden>重新領取</button>
@@ -51,6 +52,9 @@
     const nameEl = document.getElementById("name");
     const uidEl = document.getElementById("uid");
     const pointsTextEl = document.getElementById("pointsText");
+    const pageTitleEl = document.getElementById("pageTitle");
+    const eventBoxEl = document.getElementById("eventBox");
+    const calendarMode = campaign === "calendar_auto";
     document.getElementById("campaignText").textContent = `活動代碼：${campaign}`;
     retryEl.addEventListener("click", claim);
     closeEl.addEventListener("click", () => {
@@ -81,29 +85,70 @@
       if (response.ok && data.status === "success") {
         pointsTextEl.textContent = `${formatPoint(data.points)} K點`;
       }
+      if (calendarMode) {
+        pageTitleEl.innerHTML = "康立智能<br>日曆定位贈K點";
+        await loadActiveEvents();
+      }
+    }
+
+    async function loadActiveEvents() {
+      try {
+        const response = await fetch(`${API_BASE}/api/reward/calendar-events`);
+        const data = await response.json();
+        const active = Array.isArray(data.events) ? data.events.filter((event) => event.active) : [];
+        eventBoxEl.hidden = false;
+        eventBoxEl.textContent = active.length
+          ? `目前有效活動：${active[0].title}，地點：${active[0].location || "未填寫"}`
+          : "目前 Google 日曆沒有進行中的贈點活動。";
+      } catch (_err) {
+        eventBoxEl.hidden = false;
+        eventBoxEl.textContent = "正在等待 Google 日曆活動資料。";
+      }
     }
 
     async function claim() {
       try {
         retryEl.hidden = true;
         statusEl.classList.remove("error");
-        statusEl.textContent = "正在確認會員資料並發送 K點...";
+        statusEl.textContent = calendarMode ? "請允許定位，系統將依 Google 日曆活動地點判定..." : "正在確認會員資料並發送 K點...";
         const idToken = liff.getIDToken();
         if (!idToken) throw new Error("無法取得 LINE 授權，請用 LINE 重新開啟。");
+        const position = calendarMode ? await getCurrentPosition() : null;
         const response = await fetch(`${API_BASE}/api/reward/claim`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ campaign, idToken }),
+          body: JSON.stringify({
+            campaign,
+            idToken,
+            lat: position && position.coords.latitude,
+            lng: position && position.coords.longitude,
+            accuracy: position && position.coords.accuracy,
+          }),
         });
         const data = await response.json();
         if (!response.ok || data.status !== "success") throw new Error(data.message || "領取失敗");
         statusEl.textContent = data.duplicate
           ? `您已領取過本活動 K點，目前餘額 ${formatPoint(data.balance_after)} K點。`
           : `領取成功，已增加 ${formatPoint(data.points)} K點，目前餘額 ${formatPoint(data.balance_after)} K點。`;
+        if (data.event) {
+          eventBoxEl.hidden = false;
+          eventBoxEl.textContent = `${data.event.title} · ${data.event.location || ""}${data.event.distanceMeters !== null ? ` · 距離約 ${data.event.distanceMeters} 公尺` : ""}`;
+        }
         closeEl.hidden = !(window.liff && liff.isInClient());
       } catch (error) {
         showError(error.message || String(error));
       }
+    }
+
+    function getCurrentPosition() {
+      if (!navigator.geolocation) return Promise.reject(new Error("此手機瀏覽器不支援定位。"));
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error("定位失敗，請允許位置權限後重新領取。")), {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
     }
 
     function renderProfile(profile) {
