@@ -27,6 +27,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
+const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const DEFAULT_REWARD_POINTS = 1;
 const REWARD_CAMPAIGN_POINTS = {
   smart_202605: 1,
@@ -83,6 +84,10 @@ export default {
 
       if ((url.pathname === "/nfc" || url.pathname === "/reward-nfc") && (request.method === "GET" || request.method === "HEAD")) {
         return rewardNfcInstructionsHtml(request, env, corsHeaders);
+      }
+
+      if (url.pathname === "/liff/nfc" && (request.method === "GET" || request.method === "HEAD")) {
+        return rewardCompactNfcLiffHtml(env, corsHeaders);
       }
 
       const floor = resolveFloor(request);
@@ -845,10 +850,13 @@ function redirectToRewardLiff(env, campaign, entry) {
 }
 
 function buildRewardLiffUrl(env, campaign, entry) {
-  const liffId = stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID;
+  const normalizedEntry = normalizeRewardEntry(entry || "qr");
+  const liffId = normalizedEntry === "nfc"
+    ? (stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID)
+    : (stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID);
   const target = new URL(`https://liff.line.me/${encodeURIComponent(liffId)}`);
   target.searchParams.set("campaign", normalizeCampaign(campaign));
-  target.searchParams.set("entry", normalizeRewardEntry(entry || "qr"));
+  target.searchParams.set("entry", normalizedEntry);
   return target.toString();
 }
 
@@ -910,6 +918,97 @@ function rewardNfcInstructionsHtml(request, env, corsHeaders) {
       <div class="card warn"><h2>備用固定 5 K點入口</h2><p>如果某場活動暫時不使用日曆定位，可寫入固定活動入口。</p><code>${escapeHtml(fixedUrl)}</code></div>
     </section>
   </main>
+</body>
+</html>`, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+function rewardCompactNfcLiffHtml(env, corsHeaders) {
+  const liffId = stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID;
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>NFC 贈K點</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root{--line:#06c755;--ink:#111827;--muted:#667085;--red:#e11d48}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#fff;color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    body{display:grid;place-items:center;padding:22px;padding-top:calc(22px + env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+    main{width:min(300px,100%);text-align:center}.spinner{width:34px;height:34px;margin:0 auto 16px;border:4px solid #dff7e9;border-top-color:var(--line);border-radius:50%;animation:spin .8s linear infinite}
+    h1{margin:0;font-size:22px;line-height:1.35;font-weight:900}p{margin:10px 0 0;color:var(--muted);font-size:15px;line-height:1.6}
+    .packet{width:92px;height:112px;margin:0 auto 18px;border-radius:18px 18px 26px 26px;background:linear-gradient(180deg,#ff3b30,#c1121f);position:relative;box-shadow:0 18px 42px rgba(225,29,72,.25)}
+    .packet:before{content:"";position:absolute;left:50%;top:40px;width:42px;height:42px;border-radius:50%;background:#ffd166;transform:translateX(-50%)}.packet:after{content:"5";position:absolute;left:50%;top:44px;transform:translateX(-50%);font-weight:900;font-size:24px;color:#8a1c13}
+    .mark{width:62px;height:62px;margin:0 auto 18px;border-radius:18px;background:var(--red);display:grid;place-items:center;color:#fff;font-size:24px;font-weight:900;box-shadow:0 16px 38px rgba(225,29,72,.18)}
+    .hidden{display:none}.error h1{color:var(--red)}@keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <main id="app">
+    <div id="loadingIcon" class="spinner"></div>
+    <div id="successIcon" class="packet hidden"></div>
+    <div id="plainIcon" class="mark hidden">KL</div>
+    <h1 id="title">請稍後，系統處理中</h1>
+    <p id="message">正在確認課程時間</p>
+  </main>
+  <script>
+    const API_BASE = "https://mlm.fangwl591021.workers.dev";
+    const LIFF_ID = ${JSON.stringify(liffId)};
+    const CLOSE_DELAY_MS = 2400;
+    const campaign = "calendar_auto";
+    const entry = "nfc";
+    const appEl = document.getElementById("app");
+    const titleEl = document.getElementById("title");
+    const messageEl = document.getElementById("message");
+    const loadingIconEl = document.getElementById("loadingIcon");
+    const successIconEl = document.getElementById("successIcon");
+    const plainIconEl = document.getElementById("plainIcon");
+    boot();
+    async function boot(){
+      try{
+        await liff.init({ liffId: LIFF_ID });
+        if(!liff.isLoggedIn()){ liff.login({ redirectUri: location.href }); return; }
+        await claim();
+      }catch(_error){ showClosed(); }
+    }
+    async function claim(){
+      showLoading();
+      const idToken = liff.getIDToken();
+      if(!idToken) throw new Error("missing token");
+      const position = await getCurrentPosition();
+      const response = await fetch(API_BASE + "/api/reward/claim", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ campaign, entry, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
+      });
+      const data = await response.json().catch(() => ({}));
+      if(!response.ok || data.status !== "success"){ showClosed(); return; }
+      showSuccess(data.duplicate);
+    }
+    function showLoading(){
+      appEl.classList.remove("error");
+      loadingIconEl.classList.remove("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.add("hidden");
+      titleEl.textContent = "請稍後，系統處理中"; messageEl.textContent = "正在確認課程時間";
+    }
+    function showSuccess(duplicate){
+      appEl.classList.remove("error");
+      loadingIconEl.classList.add("hidden"); successIconEl.classList.remove("hidden"); plainIconEl.classList.add("hidden");
+      titleEl.textContent = duplicate ? "已領取過本課程紅包" : "紅包已送出"; messageEl.textContent = duplicate ? "本課程已完成領取" : "已發送 5 K點"; closeSoon();
+    }
+    function showClosed(){
+      appEl.classList.add("error");
+      loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
+      titleEl.textContent = "目前非課程時間，請查看行事曆"; messageEl.textContent = ""; closeSoon();
+    }
+    function closeSoon(){ setTimeout(() => { if(window.liff && liff.isInClient()) liff.closeWindow(); else window.close(); }, CLOSE_DELAY_MS); }
+    function getCurrentPosition(){
+      if(!navigator.geolocation) return Promise.reject(new Error("no geolocation"));
+      return new Promise((resolve,reject) => navigator.geolocation.getCurrentPosition(resolve,reject,{ enableHighAccuracy:true, timeout:12000, maximumAge:0 }));
+    }
+  </script>
 </body>
 </html>`, {
     status: 200,
