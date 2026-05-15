@@ -73,6 +73,14 @@ export default {
         }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/r/nfc" && (request.method === "GET" || request.method === "HEAD")) {
+        return redirectToRewardLiff(env, "calendar_auto", "nfc");
+      }
+
+      if (url.pathname === "/r/nfc5" && (request.method === "GET" || request.method === "HEAD")) {
+        return redirectToRewardLiff(env, "smart_202605_5", "nfc");
+      }
+
       const floor = resolveFloor(request);
       const provider = getProvider(env, floor);
 
@@ -736,8 +744,9 @@ async function pointMutation(env, body, action) {
 async function claimQrReward(env, body) {
   if (!env.DB) throw httpError("DB is not configured", 500);
   let campaign = normalizeCampaign(body.campaign || "smart_202605");
+  const entryMethod = normalizeRewardEntry(body.entry || body.entry_method || body.source || "qr");
   const idToken = stringValue(body.idToken || body.id_token);
-  if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟 QR 頁面", 400);
+  if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟領取頁面", 400);
 
   const lineProfile = await verifyLineIdToken(env, idToken);
   const lineUserId = stringValue(lineProfile.sub || lineProfile.userId);
@@ -760,7 +769,7 @@ async function claimQrReward(env, body) {
       line_user_id: lineUserId,
       points: Number(existing.points || points),
       balance_after: balance,
-      message: "這個 QR 活動已經領取過",
+      message: "這個活動已經領取過",
       event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now()) : null,
     };
   }
@@ -784,20 +793,21 @@ async function claimQrReward(env, body) {
   const claimId = insert && insert.meta && insert.meta.last_row_id ? insert.meta.last_row_id : null;
 
   try {
+    const entryLabel = rewardEntryLabel(entryMethod);
     const eventNote = calendarContext
-      ? `Google日曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location}；距離：${Math.round(calendarContext.distanceMeters)}m`
-      : `QR掃碼活動 ${campaign}`;
+      ? `${entryLabel}；Google日曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location}；距離：${Math.round(calendarContext.distanceMeters)}m`
+      : `${entryLabel} ${campaign}`;
     const mutation = await pointMutation(env, {
       channel_key: POINT_OA1,
       line_user_id: lineUserId,
       point_type: "gift_money",
       points,
-      operator_id: `qr:${campaign}`,
-      operator_name: "QR自動贈K點",
-      event_name: `QR掃碼贈K點`,
+      operator_id: `${entryMethod}:${campaign}`,
+      operator_name: `${entryLabel}自動贈K點`,
+      event_name: `${entryLabel}贈K點`,
       event_content: eventNote,
       note: eventNote,
-      business_key: `qr-reward:${campaign}:${lineUserId}`,
+      business_key: `${entryMethod}-reward:${campaign}:${lineUserId}`,
     }, "grant");
     await env.DB.prepare(`
       UPDATE reward_claims
@@ -824,6 +834,30 @@ async function claimQrReward(env, body) {
     `).bind("failed", error.message || String(error), claimId).run();
     throw error;
   }
+}
+
+function redirectToRewardLiff(env, campaign, entry) {
+  return Response.redirect(buildRewardLiffUrl(env, campaign, entry), 302);
+}
+
+function buildRewardLiffUrl(env, campaign, entry) {
+  const liffId = stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID;
+  const target = new URL(`https://liff.line.me/${encodeURIComponent(liffId)}`);
+  target.searchParams.set("campaign", normalizeCampaign(campaign));
+  target.searchParams.set("entry", normalizeRewardEntry(entry || "qr"));
+  return target.toString();
+}
+
+function normalizeRewardEntry(value) {
+  const text = stringValue(value || "qr").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return text || "qr";
+}
+
+function rewardEntryLabel(value) {
+  const entry = normalizeRewardEntry(value);
+  if (entry === "nfc") return "NFC感應";
+  if (entry === "calendar") return "日曆定位";
+  return "QR掃碼";
 }
 
 async function verifyLineIdToken(env, idToken) {

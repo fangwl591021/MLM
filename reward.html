@@ -44,6 +44,7 @@
     const qs = new URLSearchParams(location.search);
     const nested = new URLSearchParams(qs.get("liff.state") || "");
     const campaign = nested.get("campaign") || qs.get("campaign") || "smart_202605";
+    const entry = nested.get("entry") || qs.get("entry") || "qr";
     const statusEl = document.getElementById("status");
     const retryEl = document.getElementById("retry");
     const closeEl = document.getElementById("close");
@@ -119,6 +120,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             campaign,
+            entry,
             idToken,
             lat: position && position.coords.latitude,
             lng: position && position.coords.longitude,

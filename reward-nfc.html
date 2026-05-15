@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>康立智能 NFC 感應贈K點</title>
+  <style>
+    :root{--line:#06c755;--ink:#101828;--sub:#667085;--border:#d8e0eb;--soft:#f7fafc}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:#f6faf8;color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{width:min(820px,100%);margin:0 auto;padding:32px 18px}
+    .hero{border:1px solid var(--border);border-radius:22px;background:#fff;padding:28px;box-shadow:0 18px 50px rgba(16,24,40,.08)}
+    .brand{display:flex;align-items:center;gap:14px}
+    .mark{width:58px;height:58px;border-radius:18px;background:var(--line);display:grid;place-items:center;color:#fff;font-weight:900;font-size:22px}
+    h1{margin:0;font-size:28px}
+    p{color:var(--sub);line-height:1.7}
+    .urlBox{margin:18px 0;border:1px solid #b7ebc7;background:#f2fff7;border-radius:16px;padding:16px}
+    .urlBox strong{display:block;margin-bottom:8px}
+    code{display:block;word-break:break-all;color:#064e2a;font-weight:900;font-size:16px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+    .card{border:1px solid var(--border);border-radius:18px;background:#fff;padding:18px}
+    h2{margin:0 0 10px;font-size:18px}
+    ol{margin:0;padding-left:20px;color:#344054;line-height:1.8}
+    a.button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:14px;border-radius:999px;background:var(--line);color:#fff;text-decoration:none;font-weight:900;padding:0 18px}
+    .muted{font-size:14px;color:#8a95a6}
+    @media(max-width:720px){.grid{grid-template-columns:1fr}main{padding:18px 12px}.hero{padding:20px}h1{font-size:24px}}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="brand"><div class="mark">KL</div><div><h1>康立智能 NFC 感應贈K點</h1><p>把短網址寫入 NFC Tag。會員用手機感應後，會開啟 LINE LIFF，系統依 Google 日曆活動時間、地點與手機定位自動判定是否發放 K點。</p></div></div>
+      <div class="urlBox">
+        <strong>NFC Tag 建議寫入網址</strong>
+        <code>https://mlm.fangwl591021.workers.dev/r/nfc</code>
+      </div>
+      <a class="button" href="https://mlm.fangwl591021.workers.dev/r/nfc">測試感應入口</a>
+      <p class="muted">實際會轉到 LIFF：<br>https://liff.line.me/2007221311-WjM9sZPz?campaign=calendar_auto&amp;entry=nfc</p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h2>NFC 寫入流程</h2>
+        <ol>
+          <li>手機安裝 NFC Tools 或同類型 NFC 寫入工具。</li>
+          <li>選擇 Write / Add a record / URL。</li>
+          <li>貼上上方短網址。</li>
+          <li>靠近 NFC Tag 寫入。</li>
+          <li>用另一支手機感應測試。</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>發點判定流程</h2>
+        <ol>
+          <li>會員感應 NFC。</li>
+          <li>手機開啟 LINE LIFF 領取頁。</li>
+          <li>LINE 驗證會員 UID。</li>
+          <li>系統讀取 Google 日曆目前進行中的活動。</li>
+          <li>手機定位在活動地點範圍內才發放 K點。</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
