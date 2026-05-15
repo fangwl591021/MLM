@@ -81,6 +81,10 @@ export default {
         return redirectToRewardLiff(env, "smart_202605_5", "nfc");
       }
 
+      if ((url.pathname === "/nfc" || url.pathname === "/reward-nfc") && (request.method === "GET" || request.method === "HEAD")) {
+        return rewardNfcInstructionsHtml(request, env, corsHeaders);
+      }
+
       const floor = resolveFloor(request);
       const provider = getProvider(env, floor);
 
@@ -858,6 +862,59 @@ function rewardEntryLabel(value) {
   if (entry === "nfc") return "NFC感應";
   if (entry === "calendar") return "日曆定位";
   return "QR掃碼";
+}
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+function rewardNfcInstructionsHtml(request, env, corsHeaders) {
+  const origin = new URL(request.url).origin;
+  const nfcUrl = `${origin}/r/nfc`;
+  const fixedUrl = `${origin}/r/nfc5`;
+  const liffUrl = buildRewardLiffUrl(env, "calendar_auto", "nfc");
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>康立智能 NFC 感應贈K點</title>
+  <style>
+    :root{--line:#06c755;--ink:#101828;--sub:#667085;--border:#d8e0eb}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#f6faf8;color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{width:min(820px,100%);margin:0 auto;padding:32px 18px}.hero,.card{border:1px solid var(--border);border-radius:22px;background:#fff;padding:24px;box-shadow:0 18px 50px rgba(16,24,40,.08)}
+    .brand{display:flex;align-items:center;gap:14px}.mark{width:58px;height:58px;border-radius:18px;background:var(--line);display:grid;place-items:center;color:#fff;font-weight:900;font-size:22px}
+    h1{margin:0;font-size:28px}h2{margin:0 0 10px;font-size:18px}p{color:var(--sub);line-height:1.7}.urlBox{margin:18px 0;border:1px solid #b7ebc7;background:#f2fff7;border-radius:16px;padding:16px}
+    code{display:block;word-break:break-all;color:#064e2a;font-weight:900;font-size:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+    ol{margin:0;padding-left:20px;color:#344054;line-height:1.8}a.button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:14px;border-radius:999px;background:var(--line);color:#fff;text-decoration:none;font-weight:900;padding:0 18px}
+    .muted{font-size:14px;color:#8a95a6}.warn{border-color:#ffd9a8;background:#fffaf2}@media(max-width:720px){.grid{grid-template-columns:1fr}main{padding:18px 12px}.hero,.card{padding:20px}h1{font-size:24px}}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="brand"><div class="mark">KL</div><div><h1>康立智能 NFC 感應贈K點</h1><p>把短網址寫入 NFC Tag。會員手機感應後會開啟 LINE LIFF，系統依 Google 日曆活動時間、地點與手機定位自動判定是否發放 K點。</p></div></div>
+      <div class="urlBox"><strong>NFC Tag 建議寫入網址</strong><code>${escapeHtml(nfcUrl)}</code></div>
+      <a class="button" href="${escapeHtml(nfcUrl)}">測試 NFC 入口</a>
+      <p class="muted">實際會轉到 LIFF：<br>${escapeHtml(liffUrl)}</p>
+    </section>
+    <section class="grid">
+      <div class="card"><h2>NFC 寫入流程</h2><ol><li>手機安裝 NFC Tools 或同類型 NFC 寫入工具。</li><li>選擇 Write / Add a record / URL。</li><li>貼上上方短網址。</li><li>靠近 NFC Tag 寫入。</li><li>用另一支手機感應測試。</li></ol></div>
+      <div class="card"><h2>發點判定流程</h2><ol><li>會員感應 NFC。</li><li>LINE LIFF 驗證會員 UID。</li><li>系統讀取 Google 日曆目前進行中的活動。</li><li>手機定位在活動地點範圍內才發放 K點。</li><li>同一活動同一會員只可領取一次。</li></ol></div>
+      <div class="card warn"><h2>備用固定 5 K點入口</h2><p>如果某場活動暫時不使用日曆定位，可寫入固定活動入口。</p><code>${escapeHtml(fixedUrl)}</code></div>
+    </section>
+  </main>
+</body>
+</html>`, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+  });
 }
 
 async function verifyLineIdToken(env, idToken) {
