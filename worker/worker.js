@@ -755,8 +755,8 @@ async function claimQrReward(env, body) {
       point_type: "gift_money",
       points,
       operator_id: `qr:${campaign}`,
-      operator_name: "QR自動贈K幣",
-      event_name: `QR掃碼贈K幣`,
+      operator_name: "QR自動贈K點",
+      event_name: `QR掃碼贈K點`,
       event_content: `QR掃碼活動 ${campaign}`,
       note: `QR掃碼活動 ${campaign}`,
       business_key: `qr-reward:${campaign}:${lineUserId}`,
@@ -775,7 +775,7 @@ async function claimQrReward(env, body) {
       picture_url: stringValue(lineProfile.picture),
       points,
       balance_after: mutation.balance_after,
-      message: "已領取 1 K幣",
+      message: "已領取 1 K點",
     };
   } catch (error) {
     await env.DB.prepare(`
@@ -789,7 +789,7 @@ async function claimQrReward(env, body) {
 
 async function verifyLineIdToken(env, idToken) {
   const clientId = stringValue(env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || env.LINE_CHANNEL_ID);
-  if (!clientId) throw httpError("REWARD_LINE_LOGIN_CHANNEL_ID is not configured", 500);
+  if (!clientId) throw httpError("尚未設定 LINE Login Channel ID，請管理員設定 REWARD_LINE_LOGIN_CHANNEL_ID", 500);
   const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },

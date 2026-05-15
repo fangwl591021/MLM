@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>康立智能 QR 贈K幣</title>
+  <title>康立智能 QR 贈K點</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     :root{--line:#06c755;--ink:#101828;--sub:#667085;--border:#d8e0eb;--soft:#f7fafc;--danger:#d92d20}
@@ -28,8 +28,8 @@
   <main>
     <section class="card">
       <div class="mark">KL</div>
-      <h1>康立智能<br>QR 贈K幣</h1>
-      <p>使用 LINE 掃碼後，系統會將 1 K幣發送到您的康立智能會員帳號。</p>
+      <h1>康立智能<br>QR 贈K點</h1>
+      <p>使用 LINE 掃碼後，系統會將 1 K點發送到您的康立智能會員帳號。</p>
       <div id="profile" class="profile" hidden><div id="avatar" class="avatar"></div><div><strong id="name">LINE 會員</strong><p id="uid"></p></div></div>
       <div id="status" class="status">正在啟動 LINE 授權...</div>
       <button id="retry" type="button" hidden>重新領取</button>
@@ -77,7 +77,7 @@
       try {
         retryEl.hidden = true;
         statusEl.classList.remove("error");
-        statusEl.textContent = "正在確認會員資料並發送 K幣...";
+        statusEl.textContent = "正在確認會員資料並發送 K點...";
         const idToken = liff.getIDToken();
         if (!idToken) throw new Error("無法取得 LINE 授權，請用 LINE 重新開啟。");
         const response = await fetch(`${API_BASE}/api/reward/claim`, {
@@ -88,8 +88,8 @@
         const data = await response.json();
         if (!response.ok || data.status !== "success") throw new Error(data.message || "領取失敗");
         statusEl.textContent = data.duplicate
-          ? `您已領取過本活動 K幣，目前餘額 ${formatPoint(data.balance_after)} K幣。`
-          : `領取成功，已增加 ${formatPoint(data.points)} K幣，目前餘額 ${formatPoint(data.balance_after)} K幣。`;
+          ? `您已領取過本活動 K點，目前餘額 ${formatPoint(data.balance_after)} K點。`
+          : `領取成功，已增加 ${formatPoint(data.points)} K點，目前餘額 ${formatPoint(data.balance_after)} K點。`;
         closeEl.hidden = !(window.liff && liff.isInClient());
       } catch (error) {
         showError(error.message || String(error));
