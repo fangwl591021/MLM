@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>康立智能 QR 贈K幣</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root{--line:#06c755;--ink:#101828;--sub:#667085;--border:#d8e0eb;--soft:#f7fafc;--danger:#d92d20}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#f9fffb,#eef6f8);color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{width:min(420px,100%);min-height:100vh;display:grid;align-content:center;padding:28px}
+    .card{border:1px solid var(--border);border-radius:22px;background:#fff;padding:28px;box-shadow:0 24px 70px rgba(16,24,40,.12)}
+    .mark{width:66px;height:66px;border-radius:20px;background:var(--line);display:grid;place-items:center;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 28px rgba(6,199,85,.22)}
+    h1{margin:18px 0 8px;font-size:28px;line-height:1.2}
+    p{margin:0;color:var(--sub);line-height:1.7}
+    .status{margin-top:20px;border:1px solid #d7f5e2;border-radius:16px;background:#f2fff7;padding:16px;color:#067a35;font-weight:900;line-height:1.6}
+    .status.error{border-color:#ffd2d2;background:#fff5f5;color:var(--danger)}
+    .profile{display:flex;align-items:center;gap:12px;margin-top:18px}
+    .avatar{width:44px;height:44px;border-radius:50%;background:#e7eef7;display:grid;place-items:center;overflow:hidden;font-weight:900}
+    .avatar img{width:100%;height:100%;object-fit:cover}
+    button{width:100%;height:48px;margin-top:18px;border:0;border-radius:14px;background:var(--line);color:#fff;font-size:16px;font-weight:900}
+    button.secondary{background:#172033}
+    small{display:block;margin-top:14px;color:#8a95a6;line-height:1.6}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <div class="mark">KL</div>
+      <h1>康立智能<br>QR 贈K幣</h1>
+      <p>使用 LINE 掃碼後，系統會將 1 K幣發送到您的康立智能會員帳號。</p>
+      <div id="profile" class="profile" hidden><div id="avatar" class="avatar"></div><div><strong id="name">LINE 會員</strong><p id="uid"></p></div></div>
+      <div id="status" class="status">正在啟動 LINE 授權...</div>
+      <button id="retry" type="button" hidden>重新領取</button>
+      <button id="close" class="secondary" type="button" hidden>關閉</button>
+      <small id="campaignText"></small>
+    </section>
+  </main>
+  <script>
+    const API_BASE = "https://mlm.fangwl591021.workers.dev";
+    const LIFF_ID = "2007221311-WjM9sZPz";
+    const qs = new URLSearchParams(location.search);
+    const nested = new URLSearchParams(qs.get("liff.state") || "");
+    const campaign = nested.get("campaign") || qs.get("campaign") || "smart_202605";
+    const statusEl = document.getElementById("status");
+    const retryEl = document.getElementById("retry");
+    const closeEl = document.getElementById("close");
+    const profileEl = document.getElementById("profile");
+    const avatarEl = document.getElementById("avatar");
+    const nameEl = document.getElementById("name");
+    const uidEl = document.getElementById("uid");
+    document.getElementById("campaignText").textContent = `活動代碼：${campaign}`;
+    retryEl.addEventListener("click", claim);
+    closeEl.addEventListener("click", () => {
+      if (window.liff && liff.isInClient()) liff.closeWindow();
+    });
+
+    boot();
+
+    async function boot() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          liff.login({ redirectUri: location.href });
+          return;
+        }
+        const profile = await liff.getProfile().catch(() => null);
+        if (profile) renderProfile(profile);
+        await claim();
+      } catch (error) {
+        showError(error.message || String(error));
+      }
+    }
+
+    async function claim() {
+      try {
+        retryEl.hidden = true;
+        statusEl.classList.remove("error");
+        statusEl.textContent = "正在確認會員資料並發送 K幣...";
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error("無法取得 LINE 授權，請用 LINE 重新開啟。");
+        const response = await fetch(`${API_BASE}/api/reward/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaign, idToken }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.status !== "success") throw new Error(data.message || "領取失敗");
+        statusEl.textContent = data.duplicate
+          ? `您已領取過本活動 K幣，目前餘額 ${formatPoint(data.balance_after)} K幣。`
+          : `領取成功，已增加 ${formatPoint(data.points)} K幣，目前餘額 ${formatPoint(data.balance_after)} K幣。`;
+        closeEl.hidden = !(window.liff && liff.isInClient());
+      } catch (error) {
+        showError(error.message || String(error));
+      }
+    }
+
+    function renderProfile(profile) {
+      profileEl.hidden = false;
+      nameEl.textContent = profile.displayName || "LINE 會員";
+      uidEl.textContent = profile.userId || "";
+      avatarEl.innerHTML = profile.pictureUrl ? `<img src="${escapeAttr(profile.pictureUrl)}" alt="">` : (profile.displayName || "L").slice(0, 1);
+    }
+
+    function showError(message) {
+      statusEl.classList.add("error");
+      statusEl.textContent = message;
+      retryEl.hidden = false;
+      closeEl.hidden = !(window.liff && liff.isInClient());
+    }
+
+    function formatPoint(value) {
+      const number = Number(value || 0);
+      return Number.isInteger(number) ? String(number) : number.toFixed(2);
+    }
+
+    function escapeAttr(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    }
+  </script>
+</body>
+</html>

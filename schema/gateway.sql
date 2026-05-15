@@ -113,3 +113,20 @@ CREATE TABLE IF NOT EXISTS crm_sync_logs (
   message TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS reward_claims (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign TEXT NOT NULL,
+  line_user_id TEXT NOT NULL,
+  channel_key TEXT NOT NULL,
+  points REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  point_ledger_id INTEGER,
+  balance_after REAL,
+  message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(campaign, line_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reward_claims_line_user
+  ON reward_claims(line_user_id);

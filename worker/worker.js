@@ -26,6 +26,8 @@ const POINT_SOURCE_META = {
 };
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
+const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
+const DEFAULT_REWARD_POINTS = 1;
 
 export default {
   async fetch(request, env, ctx) {
@@ -70,6 +72,23 @@ export default {
         assertDashboardAuth(request, env);
         const data = await fetchConsoleSummary(env);
         return jsonResponse({ status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/reward/config" && request.method === "GET") {
+        return jsonResponse({
+          success: true,
+          status: "success",
+          liffId: stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID,
+          campaign: stringValue(url.searchParams.get("campaign")) || "smart_202605",
+          points: DEFAULT_REWARD_POINTS,
+          source: POINT_SOURCE_META[POINT_OA1].label,
+        }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/reward/claim" && request.method === "POST") {
+        const body = await safeJson(request);
+        const result = await claimQrReward(env, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/data" && request.method === "GET") {
@@ -692,6 +711,108 @@ async function pointMutation(env, body, action) {
     operatorName: input.operatorName,
   });
   return { ...local, wetw };
+}
+
+async function claimQrReward(env, body) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const campaign = normalizeCampaign(body.campaign || "smart_202605");
+  const idToken = stringValue(body.idToken || body.id_token);
+  if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟 QR 頁面", 400);
+
+  const lineProfile = await verifyLineIdToken(env, idToken);
+  const lineUserId = stringValue(lineProfile.sub || lineProfile.userId);
+  if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
+
+  const points = DEFAULT_REWARD_POINTS;
+  const existing = await env.DB.prepare(`
+    SELECT id, status, points, created_at
+    FROM reward_claims
+    WHERE campaign = ? AND line_user_id = ?
+  `).bind(campaign, lineUserId).first();
+  if (existing) {
+    const balance = await getPointAccountBalance(env, POINT_OA1, lineUserId, "gift_money");
+    return {
+      claimed: false,
+      duplicate: true,
+      campaign,
+      line_user_id: lineUserId,
+      points: Number(existing.points || points),
+      balance_after: balance,
+      message: "這個 QR 活動已經領取過",
+    };
+  }
+
+  const insert = await env.DB.prepare(`
+    INSERT INTO reward_claims (campaign, line_user_id, channel_key, points, status, created_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).bind(campaign, lineUserId, POINT_OA1, points, "pending").run();
+  const claimId = insert && insert.meta && insert.meta.last_row_id ? insert.meta.last_row_id : null;
+
+  try {
+    const mutation = await pointMutation(env, {
+      channel_key: POINT_OA1,
+      line_user_id: lineUserId,
+      point_type: "gift_money",
+      points,
+      operator_id: `qr:${campaign}`,
+      operator_name: "QR自動贈K幣",
+      event_name: `QR掃碼贈K幣`,
+      event_content: `QR掃碼活動 ${campaign}`,
+      note: `QR掃碼活動 ${campaign}`,
+      business_key: `qr-reward:${campaign}:${lineUserId}`,
+    }, "grant");
+    await env.DB.prepare(`
+      UPDATE reward_claims
+      SET status = ?, point_ledger_id = ?, balance_after = ?, message = ?
+      WHERE id = ?
+    `).bind("success", mutation.ledger_id || null, mutation.balance_after || null, "claimed", claimId).run();
+    return {
+      claimed: true,
+      duplicate: false,
+      campaign,
+      line_user_id: lineUserId,
+      display_name: stringValue(lineProfile.name),
+      picture_url: stringValue(lineProfile.picture),
+      points,
+      balance_after: mutation.balance_after,
+      message: "已領取 1 K幣",
+    };
+  } catch (error) {
+    await env.DB.prepare(`
+      UPDATE reward_claims
+      SET status = ?, message = ?
+      WHERE id = ?
+    `).bind("failed", error.message || String(error), claimId).run();
+    throw error;
+  }
+}
+
+async function verifyLineIdToken(env, idToken) {
+  const clientId = stringValue(env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || env.LINE_CHANNEL_ID);
+  if (!clientId) throw httpError("REWARD_LINE_LOGIN_CHANNEL_ID is not configured", 500);
+  const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ id_token: idToken, client_id: clientId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = stringValue(data.error_description || data.error || response.statusText);
+    throw httpError(`LINE ID Token 驗證失敗：${message}`, 401);
+  }
+  return data;
+}
+
+async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
+  const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
+  const row = await env.DB.prepare("SELECT balance FROM point_accounts WHERE account_key = ?").bind(accountKey).first();
+  return Number(row && row.balance || 0);
+}
+
+function normalizeCampaign(value) {
+  const text = stringValue(value || "smart_202605").trim();
+  const safe = text.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
+  return safe || "smart_202605";
 }
 
 async function insertWetwPointMutation(env, input, body = {}) {
