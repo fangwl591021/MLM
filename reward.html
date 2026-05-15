@@ -29,7 +29,7 @@
     <section class="card">
       <div class="mark">KL</div>
       <h1>康立智能<br>QR 贈K點</h1>
-      <p>使用 LINE 掃碼後，系統會將 1 K點發送到您的康立智能會員帳號。</p>
+      <p>使用 LINE 掃碼後，系統會將 <strong id="pointsText">1 K點</strong> 發送到您的康立智能會員帳號。</p>
       <div id="profile" class="profile" hidden><div id="avatar" class="avatar"></div><div><strong id="name">LINE 會員</strong><p id="uid"></p></div></div>
       <div id="status" class="status">正在啟動 LINE 授權...</div>
       <button id="retry" type="button" hidden>重新領取</button>
@@ -50,6 +50,7 @@
     const avatarEl = document.getElementById("avatar");
     const nameEl = document.getElementById("name");
     const uidEl = document.getElementById("uid");
+    const pointsTextEl = document.getElementById("pointsText");
     document.getElementById("campaignText").textContent = `活動代碼：${campaign}`;
     retryEl.addEventListener("click", claim);
     closeEl.addEventListener("click", () => {
@@ -61,6 +62,7 @@
     async function boot() {
       try {
         await liff.init({ liffId: LIFF_ID });
+        await loadRewardConfig();
         if (!liff.isLoggedIn()) {
           liff.login({ redirectUri: location.href });
           return;
@@ -70,6 +72,14 @@
         await claim();
       } catch (error) {
         showError(error.message || String(error));
+      }
+    }
+
+    async function loadRewardConfig() {
+      const response = await fetch(`${API_BASE}/api/reward/config?campaign=${encodeURIComponent(campaign)}`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.status === "success") {
+        pointsTextEl.textContent = `${formatPoint(data.points)} K點`;
       }
     }
 

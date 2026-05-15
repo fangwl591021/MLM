@@ -28,6 +28,10 @@ const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const DEFAULT_REWARD_POINTS = 1;
+const REWARD_CAMPAIGN_POINTS = {
+  smart_202605: 1,
+  smart_202605_5: 5,
+};
 
 export default {
   async fetch(request, env, ctx) {
@@ -75,12 +79,13 @@ export default {
       }
 
       if (url.pathname === "/api/reward/config" && request.method === "GET") {
+        const campaign = normalizeCampaign(url.searchParams.get("campaign") || "smart_202605");
         return jsonResponse({
           success: true,
           status: "success",
           liffId: stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID,
-          campaign: stringValue(url.searchParams.get("campaign")) || "smart_202605",
-          points: DEFAULT_REWARD_POINTS,
+          campaign,
+          points: rewardPointsForCampaign(campaign),
           source: POINT_SOURCE_META[POINT_OA1].label,
         }, 200, corsHeaders);
       }
@@ -723,7 +728,7 @@ async function claimQrReward(env, body) {
   const lineUserId = stringValue(lineProfile.sub || lineProfile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
 
-  const points = DEFAULT_REWARD_POINTS;
+  const points = rewardPointsForCampaign(campaign);
   const existing = await env.DB.prepare(`
     SELECT id, status, points, created_at
     FROM reward_claims
@@ -775,7 +780,7 @@ async function claimQrReward(env, body) {
       picture_url: stringValue(lineProfile.picture),
       points,
       balance_after: mutation.balance_after,
-      message: "已領取 1 K點",
+      message: `已領取 ${points} K點`,
     };
   } catch (error) {
     await env.DB.prepare(`
@@ -813,6 +818,11 @@ function normalizeCampaign(value) {
   const text = stringValue(value || "smart_202605").trim();
   const safe = text.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
   return safe || "smart_202605";
+}
+
+function rewardPointsForCampaign(campaign) {
+  const key = normalizeCampaign(campaign);
+  return Number(REWARD_CAMPAIGN_POINTS[key] || DEFAULT_REWARD_POINTS);
 }
 
 async function insertWetwPointMutation(env, input, body = {}) {
