@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
  * Core rule:
@@ -683,7 +683,7 @@ async function pointMutation(env, body, action) {
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
   const sourceMeta = pointSourceMeta(channelKey);
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
-    throw httpError(`${sourceMeta.label} 來源只允許扣K幣，不允許贈K幣`, 400);
+    throw httpError(`${sourceMeta.label} 來源只允許扣K點，不允許贈K點`, 400);
   }
   const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId);
   const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName) || operatorId;
@@ -1335,7 +1335,7 @@ function crmAdminToolHtml(headers) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KLINK CRM / K幣模組</title>
+  <title>KLINK CRM / K點模組</title>
   <style>
     :root{--line:#06c755;--ink:#172033;--muted:#667085;--border:#dbe3ee;--soft:#f6f8fb;--navy:#071833;--orange:#ff8a00;--red:#d92d20}
     *{box-sizing:border-box}body{margin:0;background:var(--soft);color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -1355,7 +1355,7 @@ function crmAdminToolHtml(headers) {
 <body>
 <div class="shell">
   <aside>
-    <div class="brand"><div class="logo">KL</div><div><h1>KLINK CRM</h1><p>LINE 會員與K幣模組</p></div></div>
+    <div class="brand"><div class="logo">KL</div><div><h1>KLINK CRM</h1><p>LINE 會員與K點模組</p></div></div>
     <section class="panel">
       <h2>連線設定</h2>
       <label>Admin Token 或 Dashboard Token</label>
@@ -1369,19 +1369,19 @@ function crmAdminToolHtml(headers) {
     <section class="panel">
       <h2>同步</h2>
       <button id="syncMembers">同步 WETW 會員</button>
-      <button id="syncPoints" class="secondary" style="margin-top:10px">同步 WETW K幣</button>
-      <p style="margin-top:10px">會員 API 已支援 WETW POST JSON 格式。K幣以 gift_money 為正式餘額。</p>
+      <button id="syncPoints" class="secondary" style="margin-top:10px">同步 WETW K點</button>
+      <p style="margin-top:10px">會員 API 已支援 WETW POST JSON 格式。K點以 gift_money 為正式餘額。</p>
     </section>
     <section class="panel">
-      <h2>手動K幣</h2>
+      <h2>手動K點</h2>
       <label>OA</label><select id="channel"><option value="oa1">OA1 產品客服</option><option value="oa2">OA2 行政客服</option></select>
       <label>LINE User ID</label><input id="lineUserId" placeholder="U...">
       <label>Point Type</label><input id="pointType" value="manual_point">
-      <label>K幣</label><input id="points" type="number" value="10">
+      <label>K點</label><input id="points" type="number" value="10">
       <label>備註</label><input id="note" placeholder="例如：活動補點 / 商品核銷">
       <div class="row" style="margin-top:12px">
-        <button id="grant">贈K幣</button>
-        <button id="deduct" class="warn">扣K幣</button>
+        <button id="grant">贈K點</button>
+        <button id="deduct" class="warn">扣K點</button>
         <button id="balance" class="secondary">查餘額</button>
       </div>
     </section>

@@ -1,4 +1,4 @@
-# KLINK LINE CRM / 點數模組
+﻿# KLINK LINE CRM / 點數模組
 
 這個模組把 `wp-line-point-migrator` 的 LINE OA CRM / 點數 gateway 併入康立監看系統 Worker。
 
@@ -23,16 +23,16 @@
 
 點數來源標示：
 
-- `oa1`：康立智能，來源網址 `https://k-link.cc/index.php/line_login/1086/`，可贈K幣與扣K幣。
-- `oa2`：康立全球，來源網址 `https://k-link.cc/index.php/line_login/1584/`，只允許扣K幣。
+- `oa1`：康立智能，來源網址 `https://k-link.cc/index.php/line_login/1086/`，可贈K點與扣K點。
+- `oa2`：康立全球，來源網址 `https://k-link.cc/index.php/line_login/1584/`，只允許扣K點。
 
-母站採兩層轉換，`gift_money` 才是最後正確可用餘額；前台一律顯示為 `K幣`。`system_point` 只作為原始點數/轉換參考，不應與 K幣加總。
+母站採兩層轉換，`gift_money` 才是最後正確可用餘額；前台一律顯示為 `K點`。`system_point` 只作為原始點數/轉換參考，不應與 K點加總。
 
 `1086` / `1584` 是 LINE login 來源標示，不等於目前 WETW API 查詢用的 `shop_id`。目前 WETW 會員與點數 API 使用 `WETW_SHOP_ID=216` 才有資料；若母站之後提供分來源的點數 `shop_id`，再設定 `WETW_POINT_SHOP_ID_OA1` / `WETW_POINT_SHOP_ID_OA2`。
 
-監看頁的 K幣彈窗會同時查詢兩個來源；扣K幣預設優先選康立全球，避免未來康立全球停止贈K幣後仍留有未處理餘額。
+監看頁的 K點彈窗會同時查詢兩個來源；扣K點預設優先選康立全球，避免未來康立全球停止贈K點後仍留有未處理餘額。
 
-人工贈扣K幣 log 會記錄操作人：
+人工贈扣K點 log 會記錄操作人：
 
 - 前端送出 `operator_name` / `operator_id`
 - Worker 寫入 `point_ledger.operator_name` / `point_ledger.operator_id`
@@ -135,7 +135,7 @@ npx.cmd wrangler d1 execute mlm_line_oa --remote --file "D:\OneDrive\文件\New 
 
 ## 同步策略
 
-目前 K幣同步採讀取母站資料並寫入本系統 D1 快取，不會直接回寫母站。等 `+1 / -1` 贈扣K幣測試完成後，再接母站寫回 API。
+目前 K點同步採讀取母站資料並寫入本系統 D1 快取，不會直接回寫母站。等 `+1 / -1` 贈扣K點測試完成後，再接母站寫回 API。
 
 `/admin/crm/sync-members` 和 `/admin/crm/sync-points` 支援兩種方式：
 

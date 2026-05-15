@@ -1,4 +1,4 @@
-# KLINK CRM / 點數模組操作表
+﻿# KLINK CRM / 點數模組操作表
 
 ## 目前狀態
 
@@ -178,7 +178,7 @@ Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/crm/sync-memb
 Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/crm/members" -Headers @{ Authorization = "Bearer $token" }
 ```
 
-測試贈K幣：
+測試贈K點：
 
 ```powershell
 $pointBody = @{
@@ -202,20 +202,20 @@ Invoke-RestMethod -Uri "https://mlm.fangwl591021.workers.dev/admin/points/balanc
 
 點數來源固定標示如下：
 
-- `oa1`：康立智能，來源網址 `https://k-link.cc/index.php/line_login/1086/`，可贈K幣也可扣K幣。
-- `oa2`：康立全球，來源網址 `https://k-link.cc/index.php/line_login/1584/`，只允許扣K幣，不允許贈K幣。
+- `oa1`：康立智能，來源網址 `https://k-link.cc/index.php/line_login/1086/`，可贈K點也可扣K點。
+- `oa2`：康立全球，來源網址 `https://k-link.cc/index.php/line_login/1584/`，只允許扣K點，不允許贈K點。
 
-母站採兩層轉換，`gift_money` 是最後正確可用餘額；後台統一顯示為 `K幣`。`system_point` 只作為原始點數/轉換參考，不與 K幣加總。
+母站採兩層轉換，`gift_money` 是最後正確可用餘額；後台統一顯示為 `K點`。`system_point` 只作為原始點數/轉換參考，不與 K點加總。
 
 注意：`1086` / `1584` 是前台 LINE login 來源標示，不等於目前 WETW 會員/點數 API 的 `shop_id`。目前母站 API 回傳資料使用 `WETW_SHOP_ID=216`；若之後母站提供兩個來源各自的點數 `shop_id`，再另外設定 `WETW_POINT_SHOP_ID_OA1`、`WETW_POINT_SHOP_ID_OA2`。
 
-後台 K幣彈窗會同時顯示兩個來源的餘額。扣K幣時優先選康立全球，目標是未來康立全球不再贈K幣前先把可扣K幣處理完。
+後台 K點彈窗會同時顯示兩個來源的餘額。扣K點時優先選康立全球，目標是未來康立全球不再贈K點前先把可扣K點處理完。
 
 目前 `/admin/crm/sync-points` 是讀母站並寫入本系統 D1 快取，不會回寫母站。等 `grant / deduct` 小額測試完成後，再接母站寫回 API。
 
 目前 `/admin/points/grant`、`/admin/points/deduct`、`/admin/points/redeem` 會先呼叫 k-link.cc 的 `insert-user-point`，成功後才寫入本系統 D1 ledger。
 
-人工贈扣K幣必須傳入操作人：
+人工贈扣K點必須傳入操作人：
 
 - `operator_name`：畫面顯示與 log 追蹤用，例如 `黃慧君`
 - `operator_id`：可填登入帳號、LINE UID 或同操作人姓名
@@ -289,11 +289,11 @@ Worker 會送出：
   "api_key": "POINT_API_KEY",
   "LINE_user_id": "Uxxxxxxxx",
   "shop_id": 216,
-  "event_name": "客服贈K幣",
+  "event_name": "客服贈K點",
   "event_content": "由 KLINK 客服系統操作",
   "point_type": "system_point",
   "get_point": 100
 }
 ```
 
-扣K幣時 `get_point` 會是負數。
+扣K點時 `get_point` 會是負數。

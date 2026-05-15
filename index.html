@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
@@ -83,19 +83,19 @@
   </div>
   <div id="pointModal" class="pointModal">
     <div class="pointDialog">
-      <div class="pointHead"><div><h3 id="pointTitle">會員K幣</h3><p id="pointSubtitle">分來源管理K幣</p></div><button id="pointClose" class="pointClose" type="button">×</button></div>
+      <div class="pointHead"><div><h3 id="pointTitle">會員K點</h3><p id="pointSubtitle">分來源管理K點</p></div><button id="pointClose" class="pointClose" type="button">×</button></div>
       <div class="pointBody">
         <div id="pointSources" class="pointSources"></div>
         <div class="pointForm">
           <label>來源<select id="pointSource"></select></label>
-          <label>K幣類型<select id="pointType"><option value="gift_money">K幣</option><option value="system_point">原始點數 system_point</option></select></label>
-          <label>K幣數量<input id="pointAmount" type="number" value="1" min="0.01" step="0.01" /></label>
+          <label>K點類型<select id="pointType"><option value="gift_money">K點</option><option value="system_point">原始點數 system_point</option></select></label>
+          <label>K點數量<input id="pointAmount" type="number" value="1" min="0.01" step="0.01" /></label>
           <label>操作人UID<input id="pointOperatorId" placeholder="例如：U管理員UID" /></label>
           <label>操作人名稱<input id="pointOperator" placeholder="例如：黃慧君" /></label>
           <label>備註<input id="pointNote" placeholder="例如：KLINK API +1 測試" /></label>
         </div>
-        <div class="pointActions"><button id="pointGrant" class="pointGrant" type="button">贈K幣</button><button id="pointDeduct" class="pointDeduct" type="button">扣K幣</button><button id="pointRefresh" class="pointRefresh" type="button">重新整理</button><span id="pointMessage" class="pointMessage"></span></div>
-        <section class="pointLedger"><h4><span>K幣流水</span><span id="pointLedgerCount" class="time">0</span></h4><div id="pointLedgerList" class="ledgerList"><div class="muted">尚未讀取流水。</div></div></section>
+        <div class="pointActions"><button id="pointGrant" class="pointGrant" type="button">贈K點</button><button id="pointDeduct" class="pointDeduct" type="button">扣K點</button><button id="pointRefresh" class="pointRefresh" type="button">重新整理</button><span id="pointMessage" class="pointMessage"></span></div>
+        <section class="pointLedger"><h4><span>K點流水</span><span id="pointLedgerCount" class="time">0</span></h4><div id="pointLedgerList" class="ledgerList"><div class="muted">尚未讀取流水。</div></div></section>
       </div>
     </div>
   </div>
@@ -455,7 +455,7 @@
         const avatar = group.avatarUrl ? `<img src="${esc(group.avatarUrl)}" alt="">` : esc(initialOf(group.displayName));
         const riskText = group.risk === "high" || hot ? "高風險" : "低風險";
         const profileLabel = !group.hasRealName ? (group.profileStatus ? `LINE ${group.profileStatus}` : "名稱待同步") : "";
-        return `<button class="item${active}" data-id="${esc(group.userId)}"><div class="avatar ${group.hasRealName ? "named" : ""}">${avatar}</div><div><div class="line"><span class="name">${esc(group.displayName)}</span><span class="time">${fmt(last["時間"])}</span></div><div class="uid">${esc(group.userId)}</div><div class="preview">${esc(last["內容"] || "")}</div><div class="tags"><span class="${statusClass(group.status)}">${esc(group.status)}</span><span class="label risk ${group.risk === "high" || hot ? "high" : "low"}">${riskText}</span><span class="label countBadge">${group.messages.length} 則</span><span class="label pointLabel" data-point-id="${esc(group.userId)}">K幣</span>${profileLabel ? `<span class="label nameWait">${esc(profileLabel)}</span>` : ""}${group.tags.slice(0, 2).map((t) => `<span class="label">${esc(t)}</span>`).join("")}${hot ? '<span class="label hot">重要</span>' : ""}</div></div></button>`;
+        return `<button class="item${active}" data-id="${esc(group.userId)}"><div class="avatar ${group.hasRealName ? "named" : ""}">${avatar}</div><div><div class="line"><span class="name">${esc(group.displayName)}</span><span class="time">${fmt(last["時間"])}</span></div><div class="uid">${esc(group.userId)}</div><div class="preview">${esc(last["內容"] || "")}</div><div class="tags"><span class="${statusClass(group.status)}">${esc(group.status)}</span><span class="label risk ${group.risk === "high" || hot ? "high" : "low"}">${riskText}</span><span class="label countBadge">${group.messages.length} 則</span><span class="label pointLabel" data-point-id="${esc(group.userId)}">K點</span>${profileLabel ? `<span class="label nameWait">${esc(profileLabel)}</span>` : ""}${group.tags.slice(0, 2).map((t) => `<span class="label">${esc(t)}</span>`).join("")}${hot ? '<span class="label hot">重要</span>' : ""}</div></div></button>`;
       }).join("");
       document.querySelectorAll(".item").forEach((btn) => { btn.onclick = () => { state.activeUserId = btn.dataset.id; render(); }; });
       document.querySelectorAll("[data-point-id]").forEach((btn) => {
@@ -485,7 +485,7 @@
       els.pendingButton.classList.toggle("active", group.status === "待處理" || group.status === "待回覆");
       els.doneButton.classList.toggle("active", group.status === "處理完畢" || group.status === "已回覆");
       els.manualBar.classList.toggle("show", !isDoneStatus(group.status));
-      els.manageBar.innerHTML = `<div class="manageLeft"><span class="floorTag">${esc(FLOORS[state.floor] || state.floor)}</span><span class="${statusClass(group.status)}">${esc(group.status)}</span><div class="manageTags">${!group.hasRealName ? '<span class="label nameWait">用戶名稱待同步</span>' : ""}${group.tags.map((t) => `<span class="label">${esc(t)}</span>`).join("")}</div></div><div class="manageActions"><button class="outlineBtn" id="pointOpenButton">K幣</button><button class="outlineBtn" id="quickNoteButton">內部備註</button></div>`;
+      els.manageBar.innerHTML = `<div class="manageLeft"><span class="floorTag">${esc(FLOORS[state.floor] || state.floor)}</span><span class="${statusClass(group.status)}">${esc(group.status)}</span><div class="manageTags">${!group.hasRealName ? '<span class="label nameWait">用戶名稱待同步</span>' : ""}${group.tags.map((t) => `<span class="label">${esc(t)}</span>`).join("")}</div></div><div class="manageActions"><button class="outlineBtn" id="pointOpenButton">K點</button><button class="outlineBtn" id="quickNoteButton">內部備註</button></div>`;
       setTimeout(() => {
         const noteBtn = $("quickNoteButton");
         const pointBtn = $("pointOpenButton");
@@ -531,8 +531,8 @@
       state.pointResolved = null;
       state.pointBalances = [];
       state.pointLedger = [];
-      els.pointTitle.textContent = `${state.pointUserName || "會員"} K幣`;
-      els.pointSubtitle.textContent = `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣K幣`;
+      els.pointTitle.textContent = `${state.pointUserName || "會員"} K點`;
+      els.pointSubtitle.textContent = `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣K點`;
       els.pointMessage.textContent = "";
       els.pointAmount.value = "1";
       els.pointOperatorId.value = localStorage.getItem("line_ai_operator_uid") || "";
@@ -547,18 +547,18 @@
     }
     async function loadPointBalances() {
       if (!state.pointUserId) return;
-      els.pointSources.innerHTML = '<div class="muted">正在讀取兩個來源的K幣...</div>';
+      els.pointSources.innerHTML = '<div class="muted">正在讀取兩個來源的K點...</div>';
       try {
         const query = `/admin/points/balance?line_user_id=${encodeURIComponent(state.pointUserId)}&user_name=${encodeURIComponent(state.pointUserName || "")}&limit=200`;
         const res = await fetch(apiUrl(query), { headers: authJsonHeaders() });
         const json = await res.json();
-        if (!res.ok || json.status !== "success") throw new Error(json.message || "K幣讀取失敗");
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "K點讀取失敗");
         state.pointBalances = Array.isArray(json.balances) ? json.balances : [];
         state.pointResolved = json.resolved || null;
         state.pointMutationUserId = state.pointResolved && state.pointResolved.point_line_user_id ? state.pointResolved.point_line_user_id : (state.pointBalances[0] && state.pointBalances[0].line_user_id) || state.pointUserId;
         els.pointSubtitle.textContent = state.pointMutationUserId && state.pointMutationUserId !== state.pointUserId
-          ? `聊天室ID ${state.pointUserId} · K幣ID ${state.pointMutationUserId}`
-          : `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣K幣`;
+          ? `聊天室ID ${state.pointUserId} · K點ID ${state.pointMutationUserId}`
+          : `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣K點`;
         renderPointSources();
         const priority = POINT_SOURCES.find((source) => source.deductPriority && pointSourceTotal(source.key) > 0);
         const funded = POINT_SOURCES.find((source) => pointSourceTotal(source.key) > 0);
@@ -577,8 +577,8 @@
         const total = pointSourceTotal(source.key);
         const rowHtml = rows.length
           ? rows.map((row) => `<div class="pointRow"><span>${esc(pointTypeName(row.point_type))}</span><strong>${esc(formatPoint(row.balance))}</strong></div>`).join("")
-          : '<div class="pointRow"><span>目前沒有K幣資料</span><strong>0</strong></div>';
-        return `<section class="pointSource ${source.deductPriority ? "priority" : ""}"><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K幣" : "只能扣K幣"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>K幣合計</span><strong>${esc(formatPoint(total))}</strong></div></div></section>`;
+          : '<div class="pointRow"><span>目前沒有K點資料</span><strong>0</strong></div>';
+        return `<section class="pointSource ${source.deductPriority ? "priority" : ""}"><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K點" : "只能扣K點"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>K點合計</span><strong>${esc(formatPoint(total))}</strong></div></div></section>`;
       }).join("");
     }
     function pointSourceTotal(sourceKey) {
@@ -587,9 +587,9 @@
         .reduce((sum, row) => sum + Number(row.balance || 0), 0);
     }
     function pointTypeName(value) {
-      if (value === "gift_money") return "K幣";
+      if (value === "gift_money") return "K點";
       if (value === "system_point") return "原始點數";
-      return value || "K幣";
+      return value || "K點";
     }
     function formatPoint(value) {
       const number = Number(value || 0);
@@ -605,7 +605,7 @@
       try {
         const res = await fetch(apiUrl(`/admin/points/ledger?line_user_id=${encodeURIComponent(lineUserId)}&limit=80`), { headers: authJsonHeaders() });
         const json = await res.json();
-        if (!res.ok || json.status !== "success") throw new Error(json.message || "K幣流水讀取失敗");
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "K點流水讀取失敗");
         const rows = Array.isArray(json.ledger) ? json.ledger : (Array.isArray(json.data) ? json.data : []);
         state.pointLedger = rows.filter((row) => row.point_type === "gift_money");
       } catch (err) {
@@ -617,7 +617,7 @@
       const rows = Array.isArray(state.pointLedger) ? state.pointLedger.slice(0, 30) : [];
       els.pointLedgerCount.textContent = rows.length ? `${rows.length}` : "0";
       if (!rows.length) {
-        els.pointLedgerList.innerHTML = '<div class="muted" style="padding:14px">目前沒有K幣流水。</div>';
+        els.pointLedgerList.innerHTML = '<div class="muted" style="padding:14px">目前沒有K點流水。</div>';
         return;
       }
       if (rows[0] && rows[0].error) {
@@ -628,7 +628,7 @@
         const source = POINT_SOURCES.find((item) => item.key === row.channel_key);
         const sourceName = source ? source.name : (row.channel_key || "來源");
         const delta = Number(row.point_delta || 0);
-        const actionName = row.action === "grant" ? "贈K幣" : (row.action === "sync" ? "同步" : "扣K幣");
+        const actionName = row.action === "grant" ? "贈K點" : (row.action === "sync" ? "同步" : "扣K點");
         const operator = row.operator_id || row.operator_name || "系統同步";
         const note = row.note || row.business_key || "";
         return `<article class="ledgerRow"><div><strong>${esc(sourceName)} · ${esc(actionName)}</strong>${note ? `<p>${esc(note)}</p>` : ""}<p>${esc(row.created_at || "")} · 操作 ${esc(operator)}</p></div><div class="ledgerAmount"><strong class="${delta >= 0 ? "positive" : "negative"}">${delta > 0 ? "+" : ""}${esc(formatPoint(delta))}</strong><span>餘額 ${esc(formatPoint(row.balance_after))}</span></div></article>`;
@@ -638,10 +638,10 @@
       const source = POINT_SOURCES.find((item) => item.key === els.pointSource.value) || POINT_SOURCES[0];
       const restricted = source && source.canGrant === false;
       els.pointGrant.disabled = restricted;
-      els.pointGrant.title = restricted ? "康立全球只允許扣K幣" : "";
-      els.pointGrant.textContent = restricted ? "不可贈K幣" : "贈K幣";
+      els.pointGrant.title = restricted ? "康立全球只允許扣K點" : "";
+      els.pointGrant.textContent = restricted ? "不可贈K點" : "贈K點";
       const current = els.pointMessage.textContent || "";
-      if (restricted && (!current || current.includes("未來不再贈"))) els.pointMessage.textContent = "康立全球未來不再贈K幣，此來源只能扣K幣。";
+      if (restricted && (!current || current.includes("未來不再贈"))) els.pointMessage.textContent = "康立全球未來不再贈K點，此來源只能扣K點。";
       if (!restricted && current.includes("未來不再贈")) els.pointMessage.textContent = "";
     }
     async function submitPointMutation(action) {
@@ -650,9 +650,9 @@
       const operatorId = els.pointOperatorId.value.trim();
       const operatorName = els.pointOperator.value.trim();
       if (!state.pointUserId) { els.pointMessage.textContent = "尚未選擇用戶。"; return; }
-      if (!amount) { els.pointMessage.textContent = "請輸入K幣數量。"; return; }
+      if (!amount) { els.pointMessage.textContent = "請輸入K點數量。"; return; }
       if (!operatorId) { els.pointMessage.textContent = "請填寫操作人UID，權限與 log 會以 UID 追蹤。"; els.pointOperatorId.focus(); return; }
-      if (action === "grant" && source.canGrant === false) { els.pointMessage.textContent = "康立全球只能扣K幣，不能贈K幣。"; return; }
+      if (action === "grant" && source.canGrant === false) { els.pointMessage.textContent = "康立全球只能扣K點，不能贈K點。"; return; }
       const note = els.pointNote.value.trim();
       localStorage.setItem("line_ai_operator_uid", operatorId);
       localStorage.setItem("line_ai_operator_name", operatorName);
@@ -665,7 +665,7 @@
         operator_name: operatorName || operatorId,
         operator_id: operatorId,
         note,
-        event_name: `${source.name}${action === "grant" ? "贈K幣" : "扣K幣"}`,
+        event_name: `${source.name}${action === "grant" ? "贈K點" : "扣K點"}`,
         event_content: note || "由 KLINK 客服系統操作",
       };
       try {
@@ -675,8 +675,8 @@
         const endpoint = action === "grant" ? "/admin/points/grant" : "/admin/points/deduct";
         const res = await fetch(apiUrl(endpoint), { method: "POST", headers: authJsonHeaders(), body: JSON.stringify(payload) });
         const json = await res.json();
-        if (!res.ok || json.status !== "success") throw new Error(json.message || "K幣操作失敗");
-        els.pointMessage.textContent = `${source.name}${action === "grant" ? "贈K幣" : "扣K幣"}完成，餘額 ${formatPoint(json.balance_after)}`;
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "K點操作失敗");
+        els.pointMessage.textContent = `${source.name}${action === "grant" ? "贈K點" : "扣K點"}完成，餘額 ${formatPoint(json.balance_after)}`;
         await loadPointBalances();
         sync();
       } catch (err) {
