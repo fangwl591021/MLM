@@ -128,6 +128,12 @@ export default {
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/reward/client-log" && request.method === "POST") {
+        const body = await safeJson(request).catch(() => ({}));
+        const result = await recordRewardClientLog(env, request, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/data" && request.method === "GET") {
         assertDashboardAuth(request, env);
         const data = await fetchDashboardData(env, floor);
@@ -845,6 +851,22 @@ async function claimQrReward(env, body) {
   }
 }
 
+async function recordRewardClientLog(env, request, body) {
+  if (!env.DB) return { recorded: false };
+  const campaign = normalizeCampaign(body.campaign || "");
+  const entry = normalizeRewardEntry(body.entry || "");
+  const stage = stringValue(body.stage).slice(0, 80);
+  const lineUserId = stringValue(body.line_user_id || body.lineUserId).slice(0, 96);
+  const isInClient = body.is_in_client || body.isInClient ? 1 : 0;
+  const message = stringValue(body.message || body.error).slice(0, 500);
+  const userAgent = stringValue(request.headers.get("User-Agent")).slice(0, 500);
+  await env.DB.prepare(`
+    INSERT INTO reward_client_logs (campaign, entry, stage, line_user_id, is_in_client, message, user_agent, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).bind(campaign, entry, stage, lineUserId, isInClient, message, userAgent).run();
+  return { recorded: true };
+}
+
 function redirectToRewardLiff(env, campaign, entry) {
   return Response.redirect(buildRewardLiffUrl(env, campaign, entry), 302);
 }
@@ -969,23 +991,44 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     boot();
     async function boot(){
       try{
+        await logStage("page_loaded", "");
         await liff.init({ liffId: LIFF_ID });
-        if(!liff.isLoggedIn()){ liff.login({ redirectUri: location.href }); return; }
+        await logStage("liff_ready", "isInClient=" + liff.isInClient());
+        if(!liff.isInClient()){
+          await logStage("not_in_line_client", "Opened outside LINE app");
+          showClosed();
+          return;
+        }
+        if(!liff.isLoggedIn()){
+          await logStage("login_redirect", "");
+          liff.login({ redirectUri: location.href });
+          return;
+        }
         await claim();
-      }catch(_error){ showClosed(); }
+      }catch(error){
+        await logStage("boot_error", error && error.message ? error.message : String(error));
+        showClosed();
+      }
     }
     async function claim(){
       showLoading();
       const idToken = liff.getIDToken();
       if(!idToken) throw new Error("missing token");
+      await logStage("before_geolocation", "");
       const position = await getCurrentPosition();
+      await logStage("geolocation_ok", "accuracy=" + position.coords.accuracy);
       const response = await fetch(API_BASE + "/api/reward/claim", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body:JSON.stringify({ campaign, entry, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
       });
       const data = await response.json().catch(() => ({}));
-      if(!response.ok || data.status !== "success"){ showClosed(); return; }
+      if(!response.ok || data.status !== "success"){
+        await logStage("claim_failed", data.message || response.status);
+        showClosed();
+        return;
+      }
+      await logStage("claim_success", data.duplicate ? "duplicate" : "claimed", data.line_user_id);
       showSuccess(data.duplicate);
     }
     function showLoading(){
@@ -1006,7 +1049,17 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     function closeSoon(){ setTimeout(() => { if(window.liff && liff.isInClient()) liff.closeWindow(); else window.close(); }, CLOSE_DELAY_MS); }
     function getCurrentPosition(){
       if(!navigator.geolocation) return Promise.reject(new Error("no geolocation"));
-      return new Promise((resolve,reject) => navigator.geolocation.getCurrentPosition(resolve,reject,{ enableHighAccuracy:true, timeout:12000, maximumAge:0 }));
+      return new Promise((resolve,reject) => navigator.geolocation.getCurrentPosition(resolve, async (error) => {
+        await logStage("geolocation_failed", error && error.message ? error.message : String(error));
+        reject(error);
+      },{ enableHighAccuracy:true, timeout:12000, maximumAge:0 }));
+    }
+    function logStage(stage, message, lineUserId){
+      return fetch(API_BASE + "/api/reward/client-log", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ campaign, entry, stage, message, line_user_id: lineUserId || "", is_in_client: Boolean(window.liff && liff.isInClient && liff.isInClient()) })
+      }).catch(() => null);
     }
   </script>
 </body>

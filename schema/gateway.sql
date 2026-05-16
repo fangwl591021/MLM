@@ -136,3 +136,18 @@ CREATE TABLE IF NOT EXISTS reward_claims (
 
 CREATE INDEX IF NOT EXISTS idx_reward_claims_line_user
   ON reward_claims(line_user_id);
+
+CREATE TABLE IF NOT EXISTS reward_client_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign TEXT NOT NULL DEFAULT '',
+  entry TEXT NOT NULL DEFAULT '',
+  stage TEXT NOT NULL DEFAULT '',
+  line_user_id TEXT NOT NULL DEFAULT '',
+  is_in_client INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  user_agent TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reward_client_logs_created
+  ON reward_client_logs(created_at);
