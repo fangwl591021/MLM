@@ -1882,8 +1882,9 @@ async function fetchWetwLatestPointBalance(env, input, body = {}) {
 
 async function fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType = "gift_money", limit = 80, body = {}) {
   const url = stringValue(env.WETW_POINTS_URL) || DEFAULT_WETW_POINT_QUERY_URL;
+  const shopId = pointApiShopId(env, channelKey, body.shop_id || body.shopId);
   const rows = await fetchWetwPointListFromWordPress(env, url, {
-    shop_id: pointApiShopId(env, channelKey, body.shop_id || body.shopId),
+    shop_id: shopId,
     LINE_user_id: lineUserId,
     point_type: pointType,
     page: 1,
@@ -1896,9 +1897,9 @@ async function fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType = "
   const effectiveRows = sorted.length ? sorted : rows;
   for (const row of effectiveRows) {
     const balance = Number(row.point_balance ?? row.balance ?? row.points);
-    if (Number.isFinite(balance)) return { balance, rows: effectiveRows };
+    if (Number.isFinite(balance)) return { balance, rows: effectiveRows, shop_id: shopId };
   }
-  return { balance: 0, rows: effectiveRows };
+  return { balance: 0, rows: effectiveRows, shop_id: shopId };
 }
 
 async function applyPointMutation(env, input) {
@@ -2021,6 +2022,8 @@ async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
     point_type: pointType,
     balance: snapshot.balance,
     updated_at: "mother-site-live",
+    query_shop_id: snapshot.shop_id,
+    live_rows: Array.isArray(snapshot.rows) ? snapshot.rows.length : 0,
   }])[0];
 }
 
@@ -2119,6 +2122,8 @@ function pointApiShopId(env, channelKey, override) {
   const sourceEnv = channelKey === POINT_OA2 ? env.WETW_POINT_SHOP_ID_OA2 : env.WETW_POINT_SHOP_ID_OA1;
   const configured = Number(sourceEnv || 0);
   if (Number.isFinite(configured) && configured > 0) return configured;
+  const metaShopId = Number(POINT_SOURCE_META[channelKey] && POINT_SOURCE_META[channelKey].shopId);
+  if (Number.isFinite(metaShopId) && metaShopId > 0) return metaShopId;
   return wetwShopId(env);
 }
 
