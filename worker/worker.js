@@ -1726,7 +1726,7 @@ async function fetchWetwLatestPointBalance(env, input, body = {}) {
   });
   const sorted = rows
     .filter((row) => !stringValue(row.point_type) || stringValue(row.point_type) === pointType)
-    .sort((a, b) => Date.parse(stringValue(b.created_at)) - Date.parse(stringValue(a.created_at)));
+    .sort((a, b) => wetwPointRowRank(b) - wetwPointRowRank(a));
   for (const row of sorted.length ? sorted : rows) {
     const balance = Number(row.point_balance ?? row.balance ?? row.points);
     if (Number.isFinite(balance)) return balance;
@@ -2054,6 +2054,7 @@ async function syncCrmMembers(env, body) {
 async function syncCrmPoints(env, body) {
   const rows = await resolvePointSyncRows(env, body || {});
   let count = 0;
+  const latestAccountRows = new Map();
   for (const item of rows) {
     const channelKey = stringValue(item.channel_key || item.channelKey || item.oa || body.channel_key || POINT_OA1);
     const lineUserId = stringValue(item.line_user_id || item.lineUserId || item.LINE_user_id || item.userId);
@@ -2064,24 +2065,41 @@ async function syncCrmPoints(env, body) {
     const masterMemberRef = stringValue(item.master_member_ref || item.member_ref || item.memberRef || item.user_id) || null;
     const wetwPointId = stringValue(item.id || item.point_id || item.ledger_id);
     const businessKey = wetwPointId ? `wetw-point:${wetwPointId}` : `wetw-sync:${accountKey}:${pointType}:${lineUserId}`;
-    await env.DB.batch([
-      env.DB.prepare(`
-        INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(account_key) DO UPDATE SET
-          master_member_ref = excluded.master_member_ref,
-          balance = excluded.balance,
-          updated_at = CURRENT_TIMESTAMP
-      `).bind(accountKey, masterMemberRef, channelKey, lineUserId, pointType, balance),
-      env.DB.prepare(`
-        INSERT OR IGNORE INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(accountKey, masterMemberRef, channelKey, lineUserId, "sync", pointType, Number(item.get_point || 0), balance, "wetw", businessKey, "WETW read-only sync"),
-    ]);
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(accountKey, masterMemberRef, channelKey, lineUserId, pointType, balance).run();
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(accountKey, masterMemberRef, channelKey, lineUserId, "sync", pointType, Number(item.get_point || 0), balance, "wetw", businessKey, "WETW read-only sync").run();
+    const rank = wetwPointRowRank(item);
+    const latest = latestAccountRows.get(accountKey);
+    if (!latest || rank > latest.rank) {
+      latestAccountRows.set(accountKey, { accountKey, masterMemberRef, channelKey, lineUserId, pointType, balance, rank });
+    }
     count += 1;
+  }
+  for (const row of latestAccountRows.values()) {
+    await env.DB.prepare(`
+      INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(account_key) DO UPDATE SET
+        master_member_ref = excluded.master_member_ref,
+        balance = excluded.balance,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(row.accountKey, row.masterMemberRef, row.channelKey, row.lineUserId, row.pointType, row.balance).run();
   }
   await writeCrmSyncLog(env, "points", count, "success", body.points ? "body" : "wetw");
   return { count, source: body.points ? "body" : "wetw" };
+}
+
+function wetwPointRowRank(item) {
+  const id = Number(item && (item.id || item.point_id || item.ledger_id));
+  if (Number.isFinite(id) && id > 0) return id;
+  const created = Date.parse(stringValue(item && (item.created_at || item.createdAt || item.date || item.datetime)));
+  if (Number.isFinite(created)) return created;
+  return 0;
 }
 
 async function resolvePointSyncRows(env, body) {
