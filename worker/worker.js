@@ -652,7 +652,7 @@ async function handlePointQueryKeyword(env, provider, event, userId) {
 
 async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
   try {
-    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5);
+    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5, { global_points: true });
     const items = (snapshot.rows || []).map((row) => wetwPointListItem(row));
     const lines = [
       `目前累積 ${formatPoint(snapshot.balance)} K點。`,
@@ -1768,7 +1768,7 @@ async function fetchMemberPointLedger(env, body) {
   const lineUserId = stringValue(profile.sub || profile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
   const displayName = stringValue(body.displayName || profile.name || profile.displayName) || "會員";
-  const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, lineUserId, "gift_money", 80);
+  const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, lineUserId, "gift_money", 80, { global_points: true });
   return {
     lineUserId,
     memberName: displayName,
@@ -2088,15 +2088,17 @@ async function fetchWetwLatestPointBalance(env, input, body = {}) {
 
 async function fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType = "gift_money", limit = 80, body = {}) {
   const url = stringValue(env.WETW_POINTS_URL) || DEFAULT_WETW_POINT_QUERY_URL;
-  const shopId = pointApiShopId(env, channelKey, body.shop_id || body.shopId);
-  const rows = await fetchWetwPointListFromWordPress(env, url, {
-    shop_id: shopId,
+  const useGlobal = body.global_points === true || body.globalPoints === true || body.shop_id === 0 || body.shopId === 0;
+  const shopId = useGlobal ? 0 : pointApiShopId(env, channelKey, body.shop_id || body.shopId);
+  const query = {
     LINE_user_id: lineUserId,
     point_type: pointType,
     page: 1,
     per_page: limit,
     max_pages: 1,
-  });
+  };
+  if (shopId > 0) query.shop_id = shopId;
+  const rows = await fetchWetwPointListFromWordPress(env, url, query);
   const sorted = rows
     .filter((row) => !stringValue(row.point_type) || stringValue(row.point_type) === pointType)
     .sort((a, b) => wetwPointRowRank(b) - wetwPointRowRank(a));
