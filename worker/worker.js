@@ -582,6 +582,7 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     accessToken: config.accessToken,
   };
 
+  const monitorEvents = [];
   for (const event of payload.events || []) {
     await recordPointEvent(env, channelKey, event);
     await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
@@ -589,11 +590,15 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
       const userId = event.source && event.source.userId ? event.source.userId : "";
       const text = stringValue(event.message && event.message.text);
       if (userId && text) await handleKeywordAutomation(env, config.floor, provider, event, userId, text, { saveMessage: false });
+    } else if (isSmartPointQueryEvent(channelKey, event)) {
+      const userId = event.source && event.source.userId ? event.source.userId : "";
+      if (userId) await handlePointQueryKeyword(env, provider, event, userId);
+    } else {
+      monitorEvents.push(event);
     }
   }
 
-  if (Array.isArray(payload.events) && payload.events.every((event) => isSmartDailyRewardEvent(channelKey, event))) return;
-  await processLineWebhook(env, config.floor, provider, payload);
+  if (monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
 }
 
 function isSmartDailyRewardEvent(channelKey, event) {
@@ -603,6 +608,50 @@ function isSmartDailyRewardEvent(channelKey, event) {
     && event.message
     && event.message.type === "text"
     && normalizeTextKeyword(event.message.text) === normalizeTextKeyword("簽到贈K點");
+}
+
+function isSmartPointQueryEvent(channelKey, event) {
+  if (channelKey !== POINT_OA1 || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
+  const text = normalizeTextKeyword(event.message.text);
+  return ["k點查詢", "K點查詢", "點數查詢", "查詢k點", "查詢K點", "查詢點數"].map(normalizeTextKeyword).includes(text);
+}
+
+async function handlePointQueryKeyword(env, provider, event, userId) {
+  const balance = await getPointAccountBalance(env, POINT_OA1, userId, "gift_money");
+  const ledger = await recentPointLedger(env, POINT_OA1, userId, "gift_money", 5);
+  const replyText = buildPointQueryReply(balance, ledger);
+  return replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
+}
+
+async function recentPointLedger(env, channelKey, userId, pointType, limit = 5) {
+  const rows = await env.DB.prepare(`
+    SELECT action, point_delta, balance_after, operator_name, note, created_at
+    FROM point_ledger
+    WHERE channel_key = ? AND line_user_id = ? AND point_type = ?
+    ORDER BY id DESC
+    LIMIT ?
+  `).bind(channelKey, userId, pointType, limit).all();
+  return rows.results || [];
+}
+
+function buildPointQueryReply(balance, ledger) {
+  const lines = [
+    `您目前累積 ${formatPoint(balance)} K點。`,
+    "",
+    "最近使用紀錄：",
+  ];
+  if (!ledger.length) {
+    lines.push("目前沒有贈扣紀錄。");
+    return lines.join("\n");
+  }
+  ledger.forEach((row) => {
+    const delta = Number(row.point_delta || 0);
+    const sign = delta >= 0 ? "+" : "";
+    const actionLabel = delta >= 0 ? "贈點" : "扣點";
+    const reason = stringValue(row.note || row.operator_name || row.action || "無備註");
+    lines.push(`${formatTaipeiDateTime(row.created_at)} ${actionLabel} ${sign}${formatPoint(delta)} K點｜${reason}｜餘額 ${formatPoint(row.balance_after)} K點`);
+  });
+  return lines.join("\n");
 }
 
 async function processPointWebhook(env, channelKey, config, payload, rawBody, signature) {
@@ -734,6 +783,24 @@ function taipeiDate() {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+}
+
+function formatTaipeiDateTime(value) {
+  const raw = stringValue(value);
+  const parsed = Date.parse(raw.includes("T") || /Z|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : `${raw}Z`);
+  if (!Number.isFinite(parsed)) return raw || "-";
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(parsed)).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 async function createBindingCode(request, env) {
