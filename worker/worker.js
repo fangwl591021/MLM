@@ -916,16 +916,36 @@ async function pointMutation(env, body, action) {
     operatorId,
     operatorName,
   };
+  const wetwBalanceBefore = await fetchWetwLatestPointBalance(env, input, body).catch(() => null);
   const wetw = await insertWetwPointMutation(env, input, body);
+  const queriedWetwBalanceAfter = await fetchWetwLatestPointBalance(env, input, body).catch(() => null);
+  const expectedWetwBalanceAfter = Number.isFinite(wetwBalanceBefore)
+    ? wetwBalanceBefore + Number(input.pointDelta || 0)
+    : null;
+  const wetwBalanceAfter = chooseMutationBalanceAfter(input.pointDelta, queriedWetwBalanceAfter, expectedWetwBalanceAfter);
   const local = await applyPointMutation(env, {
     ...input,
     source: "wetw",
     businessKey: input.businessKey || (wetw && wetw.data && wetw.data.insert_id ? `wetw:${wetw.data.insert_id}` : ""),
+    balanceAfter: wetwBalanceAfter,
     note: input.note || (wetw && wetw.message) || "",
     operatorId: input.operatorId,
     operatorName: input.operatorName,
   });
-  return { ...local, wetw };
+  return { ...local, wetw, wetw_balance_before: wetwBalanceBefore, wetw_balance_after: wetwBalanceAfter };
+}
+
+function chooseMutationBalanceAfter(delta, queriedBalance, expectedBalance) {
+  const queried = Number(queriedBalance);
+  const expected = Number(expectedBalance);
+  const hasQueried = Number.isFinite(queried);
+  const hasExpected = Number.isFinite(expected);
+  if (!hasQueried) return hasExpected ? expected : null;
+  if (!hasExpected) return queried;
+  const change = Number(delta || 0);
+  if (change > 0 && queried < expected) return expected;
+  if (change < 0 && queried > expected) return expected;
+  return queried;
 }
 
 async function claimQrReward(env, body) {
@@ -1693,6 +1713,27 @@ async function insertWetwPointMutation(env, input, body = {}) {
   return data;
 }
 
+async function fetchWetwLatestPointBalance(env, input, body = {}) {
+  const pointType = input.pointType || "gift_money";
+  const url = stringValue(env.WETW_POINTS_URL) || DEFAULT_WETW_POINT_QUERY_URL;
+  const rows = await fetchWetwPointListFromWordPress(env, url, {
+    shop_id: pointApiShopId(env, input.channelKey, body.shop_id || body.shopId),
+    LINE_user_id: input.lineUserId,
+    point_type: pointType,
+    page: 1,
+    per_page: 10,
+    max_pages: 1,
+  });
+  const sorted = rows
+    .filter((row) => !stringValue(row.point_type) || stringValue(row.point_type) === pointType)
+    .sort((a, b) => Date.parse(stringValue(b.created_at)) - Date.parse(stringValue(a.created_at)));
+  for (const row of sorted.length ? sorted : rows) {
+    const balance = Number(row.point_balance ?? row.balance ?? row.points);
+    if (Number.isFinite(balance)) return balance;
+  }
+  return null;
+}
+
 async function applyPointMutation(env, input) {
   const pointType = input.pointType || "gift_money";
   const accountKey = `${input.channelKey}:${input.lineUserId}:${pointType}`;
@@ -1705,7 +1746,10 @@ async function applyPointMutation(env, input) {
   const masterMemberRef = link && link.master_member_ref ? link.master_member_ref : null;
 
   const existing = await env.DB.prepare("SELECT balance FROM point_accounts WHERE account_key = ?").bind(accountKey).first();
-  const balanceAfter = Number(existing && existing.balance || 0) + Number(input.pointDelta || 0);
+  const explicitBalanceAfter = Number(input.balanceAfter ?? input.balance_after);
+  const balanceAfter = Number.isFinite(explicitBalanceAfter)
+    ? explicitBalanceAfter
+    : Number(existing && existing.balance || 0) + Number(input.pointDelta || 0);
 
   await env.DB.batch([
     env.DB.prepare(`
