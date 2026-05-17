@@ -667,10 +667,29 @@ function buildPointQueryReply(balance, ledger) {
 async function processPointWebhook(env, channelKey, config, payload, rawBody, signature) {
   await upsertPointChannel(env, config);
   let checkinEvents = 0;
+  const monitorEvents = [];
+  const provider = {
+    floor: config.floor,
+    id: config.floor,
+    label: config.label,
+    channelSecret: config.channelSecret,
+    accessToken: config.accessToken,
+  };
 
   for (const event of payload.events || []) {
     await recordPointEvent(env, channelKey, event);
     await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
+    if (isSmartDailyRewardEvent(channelKey, event)) {
+      const userId = event.source && event.source.userId ? event.source.userId : "";
+      const text = stringValue(event.message && event.message.text);
+      if (userId && text) await handleKeywordAutomation(env, config.floor, provider, event, userId, text, { saveMessage: false });
+      continue;
+    }
+    if (isSmartPointQueryEvent(channelKey, event)) {
+      const userId = event.source && event.source.userId ? event.source.userId : "";
+      if (userId) await handlePointQueryKeyword(env, provider, event, userId);
+      continue;
+    }
     const delta = detectCheckinPointDelta(channelKey, event.message && event.message.text);
     if (event.source && event.source.userId && delta !== null) {
       await applyPointMutation(env, {
@@ -687,16 +706,10 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
       });
       checkinEvents += 1;
     }
+    monitorEvents.push(event);
   }
 
-  const provider = {
-    floor: config.floor,
-    id: config.floor,
-    label: config.label,
-    channelSecret: config.channelSecret,
-    accessToken: config.accessToken,
-  };
-  await processLineWebhook(env, config.floor, provider, payload);
+  if (monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
 
   let forwarded = null;
   if (config.forwardUrl) {
@@ -2347,10 +2360,13 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
   const messageRows = await env.DB.prepare(`SELECT * FROM messages WHERE thread_id IN (${placeholders}) ORDER BY created_at ASC`).bind(...ids).all();
   const byThread = new Map(ids.map((id) => [id, []]));
   for (const row of messageRows.results || []) {
+    if (isMonitorHiddenMessage(row)) continue;
     if (!byThread.has(row.thread_id)) byThread.set(row.thread_id, []);
     byThread.get(row.thread_id).push(row);
   }
-  return results.map((row) => threadFromD1(row, byThread.get(row.id) || []));
+  return results
+    .map((row) => threadFromD1(row, byThread.get(row.id) || []))
+    .filter((thread) => thread.messages.length > 0);
 }
 
 async function fetchThread(env, floor, id) {
@@ -2363,7 +2379,12 @@ async function fetchThread(env, floor, id) {
   `).bind(floor, lookup, id.replace(/^(admin:)?user:/, "")).first();
   if (!row) return null;
   const messages = await env.DB.prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC").bind(row.id).all();
-  return threadFromD1(row, messages.results || []);
+  return threadFromD1(row, (messages.results || []).filter((message) => !isMonitorHiddenMessage(message)));
+}
+
+function isMonitorHiddenMessage(message) {
+  return stringValue(message && message.floor_id) === FLOOR_MAIN
+    && normalizeTextKeyword(message && message.text) === normalizeTextKeyword("簽到贈K點");
 }
 
 async function fetchAiLogs(env, floor = FLOOR_MAIN, limit = 100) {
