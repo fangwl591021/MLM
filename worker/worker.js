@@ -1256,9 +1256,8 @@ function pointsTallLiffHtml(env, corsHeaders) {
     th:nth-child(2),td:nth-child(2){width:190px}
     th:nth-child(3),td:nth-child(3){width:220px}
     th:nth-child(4),td:nth-child(4){width:260px}
-    th:nth-child(5),td:nth-child(5){width:120px}
-    th:nth-child(6),td:nth-child(6){width:120px}
-    th:nth-child(7),td:nth-child(7){width:130px}
+    th:nth-child(5),td:nth-child(5){width:130px}
+    th:nth-child(6),td:nth-child(6){width:140px}
     .amount{font-weight:900}.pos{color:#087a3a}.neg{color:#be123c}
     .state{min-height:240px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:16px}
     .spinner{width:34px;height:34px;border-radius:50%;border:4px solid #dff7e9;border-top-color:var(--line);animation:spin .8s linear infinite;margin:0 auto 14px}
@@ -1282,7 +1281,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
     <section id="empty" class="state hidden">目前沒有點數紀錄</section>
     <section id="tableWrap" class="tableWrap hidden">
       <table>
-        <thead><tr><th>序號</th><th>日期時間</th><th>活動名稱</th><th>活動內容</th><th>消費店家</th><th>點數類型</th><th>點數&金額</th></tr></thead>
+        <thead><tr><th>序號</th><th>日期時間</th><th>活動名稱</th><th>活動內容</th><th>消費店家</th><th>點數&金額</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </section>
@@ -1333,7 +1332,6 @@ function pointsTallLiffHtml(env, corsHeaders) {
           "<td>" + esc(item.eventName) + "</td>" +
           "<td>" + esc(item.eventContent) + "</td>" +
           "<td>" + esc(item.storeName) + "</td>" +
-          "<td>" + esc(item.pointType) + "</td>" +
           "<td class='amount " + amountClass + "'>" + esc(formatPoint(item.amount)) + "</td>" +
         "</tr>";
       }).join("");
