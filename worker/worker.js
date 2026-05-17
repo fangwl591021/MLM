@@ -68,6 +68,7 @@ export default {
             WETW_POINTS_URL: Boolean(env.WETW_POINTS_URL),
             WETW_POINT_INSERT_URL: Boolean(env.WETW_POINT_INSERT_URL),
             WETW_SHOP_ID: Boolean(env.WETW_SHOP_ID),
+            GATEWAY_FORWARD_TOKEN: Boolean(env.GATEWAY_FORWARD_TOKEN || env.MLM_FORWARD_TOKEN),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
@@ -205,6 +206,14 @@ export default {
         const body = await safeJson(request);
         const result = await pointMutation(env, body, action);
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
+      const internalGatewayMatch = url.pathname.match(/^\/internal\/line-webhook\/([^/]+)$/);
+      if (internalGatewayMatch && request.method === "POST") {
+        const channelKey = internalGatewayMatch[1];
+        if (!POINT_CHANNELS.has(channelKey)) return jsonResponse({ success: false, status: "error", message: `Unknown LINE point channel: ${channelKey}` }, 404, corsHeaders);
+        const result = await handleGatewayForwardedWebhook(request, env, ctx, channelKey, corsHeaders);
+        return result;
       }
 
       if (url.pathname === "/api/migrate-gas-to-d1" && request.method === "POST") {
@@ -370,7 +379,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -522,6 +531,49 @@ async function handlePointWebhook(request, env, ctx, channelKey, corsHeaders) {
     floor: config.floor,
     queued_events: Array.isArray(payload.events) ? payload.events.length : 0,
   }, 200, corsHeaders);
+}
+
+async function handleGatewayForwardedWebhook(request, env, ctx, channelKey, corsHeaders) {
+  const token = stringValue(env.GATEWAY_FORWARD_TOKEN || env.MLM_FORWARD_TOKEN);
+  if (!token) {
+    return jsonResponse({ success: false, status: "error", message: "GATEWAY_FORWARD_TOKEN is not configured" }, 500, corsHeaders);
+  }
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-gateway-signature") || "";
+  const validGateway = await verifyGatewaySignature(rawBody, signature, token);
+  if (!validGateway) return jsonResponse({ success: false, status: "error", message: "Invalid gateway signature" }, 401, corsHeaders);
+
+  const config = getPointChannelConfig(env, channelKey);
+  const payload = JSON.parse(rawBody);
+  ctx.waitUntil(processGatewayForwardedWebhook(env, channelKey, config, payload).catch((error) => {
+    console.error("processGatewayForwardedWebhook failed", error && error.stack ? error.stack : error);
+  }));
+
+  return jsonResponse({
+    success: true,
+    status: "success",
+    channel_key: channelKey,
+    floor: config.floor,
+    queued_events: Array.isArray(payload.events) ? payload.events.length : 0,
+    source: "gateway-forward",
+  }, 200, corsHeaders);
+}
+
+async function processGatewayForwardedWebhook(env, channelKey, config, payload) {
+  await upsertPointChannel(env, config);
+  for (const event of payload.events || []) {
+    await recordPointEvent(env, channelKey, event);
+    await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
+  }
+
+  const provider = {
+    floor: config.floor,
+    id: config.floor,
+    label: config.label,
+    channelSecret: config.channelSecret,
+    accessToken: config.accessToken,
+  };
+  await processLineWebhook(env, config.floor, provider, payload);
 }
 
 async function processPointWebhook(env, channelKey, config, payload, rawBody, signature) {
@@ -3038,6 +3090,15 @@ async function verifyLineSignature(rawBody, signature, secret) {
   if (!rawBody || !signature || !secret) return false;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
+  return constantTimeEqual(expected, signature);
+}
+
+async function verifyGatewaySignature(rawBody, signature, token) {
+  if (!rawBody || !signature || !token) return false;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expected = btoa(String.fromCharCode(...new Uint8Array(digest)));
   return constantTimeEqual(expected, signature);
