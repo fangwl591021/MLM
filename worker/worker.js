@@ -1280,7 +1280,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
     <section id="empty" class="state hidden">目前沒有點數紀錄</section>
     <section id="tableWrap" class="tableWrap hidden">
       <table>
-        <thead><tr><th>點數&金額</th><th>活動名稱</th><th>日期時間</th><th>活動內容</th><th>消費店家</th></tr></thead>
+        <thead><tr><th>點數統計</th><th>活動名稱</th><th>日期時間</th><th>活動內容</th><th>消費店家</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </section>
