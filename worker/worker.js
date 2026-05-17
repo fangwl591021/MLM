@@ -60,6 +60,8 @@ export default {
             LINE_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
             LINE_ADMIN_CHANNEL_SECRET: Boolean(env.LINE_ADMIN_CHANNEL_SECRET),
             LINE_ADMIN_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN),
+            LINE_OA1_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_OA1_CHANNEL_ACCESS_TOKEN),
+            LINE_OA2_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_OA2_CHANNEL_ACCESS_TOKEN),
             DASHBOARD_API_TOKEN: Boolean(env.DASHBOARD_API_TOKEN),
             ADMIN_TOKEN: Boolean(env.ADMIN_TOKEN),
             CHANNEL_CONFIG_JSON: Boolean(env.CHANNEL_CONFIG_JSON),
@@ -502,10 +504,16 @@ function getPointChannelConfig(env, channelKey) {
     channelKey,
     floor,
     label: stringValue(channelConfig.label || (channelKey === POINT_OA2 ? "OA2 行政客服" : "OA1 產品客服")),
-    channelSecret: stringValue(channelConfig.channelSecret || provider.channelSecret),
-    accessToken: stringValue(channelConfig.channelAccessToken || provider.accessToken),
+    channelSecret: stringValue(channelConfig.channelSecret || pointChannelEnv(env, channelKey, "SECRET") || provider.channelSecret),
+    accessToken: stringValue(channelConfig.channelAccessToken || pointChannelEnv(env, channelKey, "ACCESS_TOKEN") || provider.accessToken),
     forwardUrl: stringValue(channelConfig.forwardUrl),
   };
+}
+
+function pointChannelEnv(env, channelKey, suffix) {
+  if (channelKey === POINT_OA1) return env[`LINE_OA1_CHANNEL_${suffix}`] || env[`LINE_SMART_CHANNEL_${suffix}`] || "";
+  if (channelKey === POINT_OA2) return env[`LINE_OA2_CHANNEL_${suffix}`] || env[`LINE_GLOBAL_CHANNEL_${suffix}`] || "";
+  return "";
 }
 
 async function handlePointWebhook(request, env, ctx, channelKey, corsHeaders) {
@@ -561,11 +569,6 @@ async function handleGatewayForwardedWebhook(request, env, ctx, channelKey, cors
 
 async function processGatewayForwardedWebhook(env, channelKey, config, payload) {
   await upsertPointChannel(env, config);
-  for (const event of payload.events || []) {
-    await recordPointEvent(env, channelKey, event);
-    await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
-  }
-
   const provider = {
     floor: config.floor,
     id: config.floor,
@@ -573,7 +576,28 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     channelSecret: config.channelSecret,
     accessToken: config.accessToken,
   };
+
+  for (const event of payload.events || []) {
+    await recordPointEvent(env, channelKey, event);
+    await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
+    if (isSmartDailyRewardEvent(channelKey, event)) {
+      const userId = event.source && event.source.userId ? event.source.userId : "";
+      const text = stringValue(event.message && event.message.text);
+      if (userId && text) await handleKeywordAutomation(env, config.floor, provider, event, userId, text, { saveMessage: false });
+    }
+  }
+
+  if (Array.isArray(payload.events) && payload.events.every((event) => isSmartDailyRewardEvent(channelKey, event))) return;
   await processLineWebhook(env, config.floor, provider, payload);
+}
+
+function isSmartDailyRewardEvent(channelKey, event) {
+  return channelKey === POINT_OA1
+    && event
+    && event.type === "message"
+    && event.message
+    && event.message.type === "text"
+    && normalizeTextKeyword(event.message.text) === normalizeTextKeyword("簽到贈K點");
 }
 
 async function processPointWebhook(env, channelKey, config, payload, rawBody, signature) {
@@ -2252,7 +2276,7 @@ async function processLineWebhook(env, floor, provider, payload) {
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
 }
 
-async function handleKeywordAutomation(env, floor, provider, event, userId, text) {
+async function handleKeywordAutomation(env, floor, provider, event, userId, text, options = {}) {
   if (floor !== FLOOR_MAIN || !userId || !text) return null;
   const rule = await matchKeywordRule(env, floor, text);
   if (!rule || rule.action !== "daily_point_reward") return null;
@@ -2270,16 +2294,32 @@ async function handleKeywordAutomation(env, floor, provider, event, userId, text
     result = { error: error && error.message ? error.message : String(error) };
     replyText = "簽到暫時失敗，請稍後再試。";
   }
-  await replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
-  await saveAdminMessage(env, {
-    floor,
-    userId,
-    text: replyText,
-    createdAt: Date.now(),
-    status: STATUS_DONE,
-    category: "關鍵字自動回覆",
-  });
+  const delivery = await replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
+  await recordDailyKeywordDelivery(env, rule, userId, delivery);
+  if (options.saveMessage !== false) {
+    await saveAdminMessage(env, {
+      floor,
+      userId,
+      text: replyText,
+      createdAt: Date.now(),
+      status: STATUS_DONE,
+      category: "關鍵字自動回覆",
+    });
+  }
   return result;
+}
+
+async function recordDailyKeywordDelivery(env, rule, userId, delivery) {
+  if (!rule || !userId) return;
+  const rewardDate = taipeiDate();
+  const ok = delivery && delivery.ok;
+  const status = delivery && delivery.status ? delivery.status : 0;
+  const detail = stringValue(delivery && delivery.detail).slice(0, 240);
+  await env.DB.prepare(`
+    UPDATE daily_keyword_rewards
+    SET message = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+  `).bind(ok ? `line_delivery_ok:${status}` : `line_delivery_failed:${status}:${detail}`, rule.id, userId, rewardDate).run();
 }
 
 async function matchKeywordRule(env, floor, text) {
