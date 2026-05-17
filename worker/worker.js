@@ -2260,9 +2260,12 @@ async function handleKeywordAutomation(env, floor, provider, event, userId, text
   let replyText;
   try {
     result = await applyDailyKeywordReward(env, rule, userId);
+    const balance = result && result.balance_after !== undefined && result.balance_after !== null
+      ? result.balance_after
+      : await getPointAccountBalance(env, stringValue(rule.channel_key) || POINT_OA1, userId, stringValue(rule.point_type) || "gift_money");
     replyText = result.duplicate
-      ? (rule.response_duplicate || `您今天已經簽到過，明天再來領取 ${formatPoint(result.points)} K點。`)
-      : (rule.response_success || `簽到成功，已贈送 ${formatPoint(result.points)} K點。`);
+      ? `您今天已經簽到過，目前累積 ${formatPoint(balance)} K點。`
+      : `簽到成功，已贈送 ${formatPoint(result.points)} K點。目前累積 ${formatPoint(balance)} K點。`;
   } catch (error) {
     result = { error: error && error.message ? error.message : String(error) };
     replyText = "簽到暫時失敗，請稍後再試。";
