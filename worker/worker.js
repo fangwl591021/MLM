@@ -617,8 +617,7 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
     if (isSmartDailyRewardEvent(channelKey, event)) {
       const userId = event.source && event.source.userId ? event.source.userId : "";
-      const text = stringValue(event.message && event.message.text);
-      if (userId && text) await handleKeywordAutomation(env, config.floor, provider, event, userId, text, { saveMessage: false });
+      if (userId) await handleSmartRewardBalanceDisplay(env, provider, event, userId);
     } else if (isSmartPointQueryEvent(channelKey, event)) {
       const userId = event.source && event.source.userId ? event.source.userId : "";
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
@@ -636,7 +635,7 @@ function isSmartDailyRewardEvent(channelKey, event) {
     && event.type === "message"
     && event.message
     && event.message.type === "text"
-    && isDailyRewardKeywordText(event.message.text);
+    && normalizeTextKeyword(event.message.text) === normalizeTextKeyword("簽到贈K點");
 }
 
 function isSmartPointQueryEvent(channelKey, event) {
@@ -649,6 +648,30 @@ async function handlePointQueryKeyword(env, provider, event, userId) {
   const liffId = stringValue(env.POINTS_LIFF_ID) || POINTS_LIFF_ID;
   const replyText = `請點選以下連結查看您的點數列表：\nhttps://liff.line.me/${liffId}`;
   return replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
+}
+
+async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
+  try {
+    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5);
+    const items = (snapshot.rows || []).map((row) => wetwPointListItem(row));
+    const lines = [
+      `目前累積 ${formatPoint(snapshot.balance)} K點。`,
+      "",
+      "最近K點紀錄：",
+    ];
+    if (!items.length) {
+      lines.push("目前母站沒有K點紀錄。");
+    } else {
+      items.slice(0, 5).forEach((item) => {
+        const amount = Number(item.amount || 0);
+        const sign = amount >= 0 ? "+" : "";
+        lines.push(`${item.datetime || "-"} ${item.eventName || "K點紀錄"} ${sign}${formatPoint(amount)}點｜${item.eventContent || "無備註"}`);
+      });
+    }
+    return replyOrPushLineMessage(provider, event.replyToken, userId, lines.join("\n"));
+  } catch (_error) {
+    return replyOrPushLineMessage(provider, event.replyToken, userId, "目前無法讀取母站K點資料，請稍後再試。");
+  }
 }
 
 async function recentPointLedger(env, channelKey, userId, pointType, limit = 5) {
@@ -699,8 +722,7 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
     await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
     if (isSmartDailyRewardEvent(channelKey, event)) {
       const userId = event.source && event.source.userId ? event.source.userId : "";
-      const text = stringValue(event.message && event.message.text);
-      if (userId && text) await handleKeywordAutomation(env, config.floor, provider, event, userId, text, { saveMessage: false });
+      if (userId) await handleSmartRewardBalanceDisplay(env, provider, event, userId);
       continue;
     }
     if (isSmartPointQueryEvent(channelKey, event)) {
@@ -812,6 +834,7 @@ async function tryApplyBindingCode(env, channelKey, lineUserId, text) {
 
 function detectCheckinPointDelta(channelKey, text) {
   if (!text) return null;
+  if (channelKey === POINT_OA1) return null;
   if (normalizeTextKeyword(text) === normalizeTextKeyword("簽到贈K點")) return null;
   if (!/\u6703\u54e1\u6253\u5361|\u6253\u5361|\u7c3d\u5230|checkin/i.test(text)) return null;
   return channelKey === POINT_OA2 ? 5 : 10;
@@ -2837,7 +2860,7 @@ async function fetchThread(env, floor, id) {
 
 function isMonitorHiddenMessage(message) {
   return stringValue(message && message.floor_id) === FLOOR_MAIN
-    && isDailyRewardKeywordText(message && message.text);
+    && normalizeTextKeyword(message && message.text) === normalizeTextKeyword("簽到贈K點");
 }
 
 async function fetchAiLogs(env, floor = FLOOR_MAIN, limit = 100) {
@@ -3061,9 +3084,6 @@ async function matchKeywordRule(env, floor, text) {
     if (matchType === "contains" && normalized.includes(keyword)) return row;
     if (normalized === keyword) return row;
   }
-  if (floor === FLOOR_MAIN && isDailyRewardKeywordText(text)) {
-    return (rows.results || []).find((row) => row.action === "daily_point_reward") || null;
-  }
   return null;
 }
 
@@ -3138,15 +3158,6 @@ async function applyDailyKeywordReward(env, rule, userId) {
 
 function normalizeTextKeyword(value) {
   return stringValue(value).replace(/\s+/g, "").toLowerCase();
-}
-
-function isDailyRewardKeywordText(value) {
-  const text = normalizeTextKeyword(value);
-  return [
-    "簽到贈K點",
-    "會員打卡",
-    "每日簽到贈點",
-  ].map(normalizeTextKeyword).includes(text);
 }
 
 async function saveIncomingMessage(env, floor, provider, event, userId, text) {

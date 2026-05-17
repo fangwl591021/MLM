@@ -204,40 +204,8 @@ INSERT OR IGNORE INTO keyword_rules (
   'oa1',
   'gift_money',
   5,
-  1,
+  0,
   100,
-  '簽到成功，已贈送 5 K點。',
-  '您今天已經簽到過，明天再來領取 5 K點。'
-);
-
-INSERT OR IGNORE INTO keyword_rules (
-  floor_id, keyword, match_type, action, channel_key, point_type, points, active, priority, response_success, response_duplicate
-) VALUES (
-  'main',
-  '會員打卡',
-  'exact',
-  'daily_point_reward',
-  'oa1',
-  'gift_money',
-  5,
-  1,
-  95,
-  '簽到成功，已贈送 5 K點。',
-  '您今天已經簽到過，明天再來領取 5 K點。'
-);
-
-INSERT OR IGNORE INTO keyword_rules (
-  floor_id, keyword, match_type, action, channel_key, point_type, points, active, priority, response_success, response_duplicate
-) VALUES (
-  'main',
-  '每日簽到贈點',
-  'exact',
-  'daily_point_reward',
-  'oa1',
-  'gift_money',
-  5,
-  1,
-  90,
   '簽到成功，已贈送 5 K點。',
   '您今天已經簽到過，明天再來領取 5 K點。'
 );
