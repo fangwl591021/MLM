@@ -28,6 +28,7 @@ const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
+const POINTS_LIFF_ID = "2007221311-WjM9sZPz";
 const DEFAULT_REWARD_POINTS = 1;
 const REWARD_CAMPAIGN_POINTS = {
   smart_202605: 1,
@@ -93,6 +94,10 @@ export default {
         return rewardCompactNfcLiffHtml(env, corsHeaders);
       }
 
+      if (url.pathname === "/liff/points" && (request.method === "GET" || request.method === "HEAD")) {
+        return pointsTallLiffHtml(env, corsHeaders);
+      }
+
       const floor = resolveFloor(request);
       const provider = getProvider(env, floor);
 
@@ -134,6 +139,12 @@ export default {
       if (url.pathname === "/api/reward/client-log" && request.method === "POST") {
         const body = await safeJson(request).catch(() => ({}));
         const result = await recordRewardClientLog(env, request, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/points/member-ledger" && request.method === "POST") {
+        const body = await safeJson(request).catch(() => ({}));
+        const result = await fetchMemberPointLedger(env, body);
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
@@ -1218,6 +1229,131 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
   });
 }
 
+function pointsTallLiffHtml(env, corsHeaders) {
+  const liffId = stringValue(env.POINTS_LIFF_ID || env.REWARD_LIFF_ID) || POINTS_LIFF_ID;
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>會員點數列表</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root{--ink:#20252d;--muted:#667085;--line:#06c755;--border:#d9dee7;--head:#f5f5f6;--row:#fbfbfc}
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:#fff;color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif}
+    body{padding:22px 18px calc(22px + env(safe-area-inset-bottom))}
+    .wrap{max-width:1180px;margin:0 auto}
+    h1{font-size:26px;line-height:1.25;margin:0 0 34px;font-weight:900;letter-spacing:0}
+    .member{font-size:20px;font-weight:800;margin:0 0 20px}
+    .summary{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 18px}
+    .pill{border:1px solid #ccefd9;background:#f0fff6;color:#04783a;border-radius:999px;padding:8px 13px;font-size:14px;font-weight:800}
+    .tableWrap{border:1px solid var(--border);overflow:auto;max-height:calc(100vh - 172px);background:#fff}
+    table{width:100%;min-width:980px;border-collapse:collapse;table-layout:fixed;font-size:16px}
+    th,td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:14px 12px;text-align:center;vertical-align:middle;line-height:1.35}
+    th{position:sticky;top:0;background:var(--head);font-weight:900;z-index:1}
+    tr:nth-child(even) td{background:var(--row)}
+    th:nth-child(1),td:nth-child(1){width:64px}
+    th:nth-child(2),td:nth-child(2){width:190px}
+    th:nth-child(3),td:nth-child(3){width:220px}
+    th:nth-child(4),td:nth-child(4){width:260px}
+    th:nth-child(5),td:nth-child(5){width:120px}
+    th:nth-child(6),td:nth-child(6){width:120px}
+    th:nth-child(7),td:nth-child(7){width:130px}
+    .amount{font-weight:900}.pos{color:#087a3a}.neg{color:#be123c}
+    .state{min-height:240px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:16px}
+    .spinner{width:34px;height:34px;border-radius:50%;border:4px solid #dff7e9;border-top-color:var(--line);animation:spin .8s linear infinite;margin:0 auto 14px}
+    .hidden{display:none}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:720px){
+      body{padding:18px 14px calc(18px + env(safe-area-inset-bottom))}
+      h1{font-size:24px;margin-bottom:24px}.member{font-size:18px}
+      .tableWrap{max-height:calc(100vh - 154px)}
+      table{font-size:15px;min-width:900px}
+      th,td{padding:12px 10px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>會員點數列表</h1>
+    <p class="member">會員名稱：<span id="memberName">讀取中</span></p>
+    <div class="summary"><span class="pill">目前點數 <span id="balance">0點</span></span><span class="pill">最近紀錄 <span id="count">0筆</span></span></div>
+    <section id="loading" class="state"><div><div class="spinner"></div><div>正在讀取點數紀錄</div></div></section>
+    <section id="empty" class="state hidden">目前沒有點數紀錄</section>
+    <section id="tableWrap" class="tableWrap hidden">
+      <table>
+        <thead><tr><th>序號</th><th>日期時間</th><th>活動名稱</th><th>活動內容</th><th>消費店家</th><th>點數類型</th><th>點數&金額</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const API_BASE = "https://mlm.fangwl591021.workers.dev";
+    const LIFF_ID = ${JSON.stringify(liffId)};
+    const memberNameEl = document.getElementById("memberName");
+    const balanceEl = document.getElementById("balance");
+    const countEl = document.getElementById("count");
+    const loadingEl = document.getElementById("loading");
+    const emptyEl = document.getElementById("empty");
+    const tableWrapEl = document.getElementById("tableWrap");
+    const rowsEl = document.getElementById("rows");
+    boot();
+    async function boot(){
+      try{
+        await liff.init({ liffId: LIFF_ID });
+        if(!liff.isLoggedIn()){ liff.login({ redirectUri: location.href }); return; }
+        const profile = await liff.getProfile().catch(() => null);
+        const idToken = liff.getIDToken();
+        if(!idToken) throw new Error("missing id token");
+        const response = await fetch(API_BASE + "/api/points/member-ledger", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body:JSON.stringify({ idToken, displayName: profile && profile.displayName ? profile.displayName : "" })
+        });
+        const data = await response.json();
+        if(!response.ok || data.status !== "success") throw new Error(data.message || "讀取失敗");
+        render(data);
+      }catch(error){
+        loadingEl.classList.add("hidden");
+        emptyEl.classList.remove("hidden");
+        emptyEl.textContent = error && error.message ? error.message : "點數紀錄讀取失敗";
+      }
+    }
+    function render(data){
+      loadingEl.classList.add("hidden");
+      memberNameEl.textContent = data.memberName || "會員";
+      balanceEl.textContent = formatPoint(data.balance || 0);
+      countEl.textContent = (data.items || []).length + "筆";
+      if(!data.items || !data.items.length){ emptyEl.classList.remove("hidden"); return; }
+      rowsEl.innerHTML = data.items.map((item, index) => {
+        const amountClass = Number(item.amount || 0) >= 0 ? "pos" : "neg";
+        return "<tr>" +
+          "<td>" + (index + 1) + "</td>" +
+          "<td>" + esc(item.datetime) + "</td>" +
+          "<td>" + esc(item.eventName) + "</td>" +
+          "<td>" + esc(item.eventContent) + "</td>" +
+          "<td>" + esc(item.storeName) + "</td>" +
+          "<td>" + esc(item.pointType) + "</td>" +
+          "<td class='amount " + amountClass + "'>" + esc(formatPoint(item.amount)) + "</td>" +
+        "</tr>";
+      }).join("");
+      tableWrapEl.classList.remove("hidden");
+    }
+    function formatPoint(value){
+      const number = Number(value || 0);
+      const text = Number.isInteger(number) ? String(number) : number.toFixed(2);
+      return text + "點";
+    }
+    function esc(value){return String(value == null ? "" : value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]));}
+  </script>
+</body>
+</html>`, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
 async function verifyLineIdToken(env, idToken) {
   const clientId = stringValue(env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || env.LINE_CHANNEL_ID);
   if (!clientId) throw httpError("尚未設定 LINE Login Channel ID，請管理員設定 REWARD_LINE_LOGIN_CHANNEL_ID", 500);
@@ -1232,6 +1368,54 @@ async function verifyLineIdToken(env, idToken) {
     throw httpError(`LINE ID Token 驗證失敗：${message}`, 401);
   }
   return data;
+}
+
+async function fetchMemberPointLedger(env, body) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const idToken = stringValue(body.idToken || body.id_token);
+  if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟頁面", 400);
+  const profile = await verifyLineIdToken(env, idToken);
+  const lineUserId = stringValue(profile.sub || profile.userId);
+  if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
+  const displayName = stringValue(body.displayName || profile.name || profile.displayName) || "會員";
+  const balance = await getPointAccountBalance(env, POINT_OA1, lineUserId, "gift_money");
+  const rows = await env.DB.prepare(`
+    SELECT action, point_delta, balance_after, operator_name, note, created_at
+    FROM point_ledger
+    WHERE channel_key = ? AND line_user_id = ? AND point_type = 'gift_money'
+    ORDER BY id DESC
+    LIMIT 80
+  `).bind(POINT_OA1, lineUserId).all();
+  return {
+    lineUserId,
+    memberName: displayName,
+    balance,
+    items: (rows.results || []).map((row) => pointLedgerListItem(row)),
+  };
+}
+
+function pointLedgerListItem(row) {
+  const delta = Number(row.point_delta || 0);
+  const note = stringValue(row.note);
+  const operator = stringValue(row.operator_name);
+  return {
+    datetime: formatTaipeiDateTime(row.created_at),
+    eventName: pointEventName(row, note),
+    eventContent: note || "由 KLINK 客服系統操作",
+    storeName: operator && /客服|系統|自動|關鍵字|QR/.test(operator) ? "系統" : (operator || "系統"),
+    pointType: "購物金",
+    amount: delta,
+    balanceAfter: Number(row.balance_after || 0),
+  };
+}
+
+function pointEventName(row, note) {
+  const delta = Number(row.point_delta || 0);
+  if (/每日簽到/.test(note)) return "簽到贈點";
+  if (/QR|掃碼/.test(note)) return "QR掃碼贈點";
+  if (/NFC/.test(note)) return "NFC感應贈點";
+  if (delta >= 0) return "康立智能贈點";
+  return "康立智能扣點";
 }
 
 async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
