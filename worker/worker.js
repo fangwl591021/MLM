@@ -216,7 +216,8 @@ export default {
       if (url.pathname === "/admin/points/backfill-auto-rewards" && request.method === "POST") {
         assertPointAdminAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
-        const result = await backfillMissingAutoRewards(env, body);
+        const queryBody = Object.fromEntries(url.searchParams.entries());
+        const result = await backfillMissingAutoRewards(env, { ...queryBody, ...body });
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
@@ -944,7 +945,10 @@ async function pointMutation(env, body, action) {
 
 async function backfillMissingAutoRewards(env, body = {}) {
   if (!env.DB) throw httpError("DB is not configured", 500);
-  const dryRun = body.dry_run !== false && body.dryRun !== false;
+  const dryValue = body.dry_run !== undefined ? body.dry_run : body.dryRun;
+  const dryRun = dryValue === undefined
+    ? true
+    : !(dryValue === false || ["false", "0", "no"].includes(String(dryValue).toLowerCase()));
   const limit = clampNumber(body.limit || 80, 1, 300);
   const date = stringValue(body.date || body.reward_date || body.rewardDate).slice(0, 10);
   const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
@@ -958,8 +962,8 @@ async function backfillMissingAutoRewards(env, body = {}) {
   ];
   const bindings = [POINT_OA1];
   if (date) {
-    where.push("(date(created_at) = ? OR business_key LIKE ? OR note LIKE ?)");
-    bindings.push(date, `%:${date}`, `%${date}%`);
+    where.push("date(created_at) = ?");
+    bindings.push(date);
   }
   if (lineUserId) {
     where.push("line_user_id = ?");
@@ -1024,6 +1028,7 @@ async function backfillMissingAutoRewards(env, body = {}) {
             shop_remark: `補登查詢表；原始紀錄ID:${row.id}；原始識別:${row.business_key}`,
           }, "grant");
           checkedByUser.delete(row.line_user_id);
+          await markAutoRewardBackfilled(env, row, mutation);
           report.inserted += 1;
           detail.status = "inserted";
           detail.wetw_id = stringValue(mutation && mutation.wetw && mutation.wetw.data && mutation.wetw.data.insert_id);
@@ -1037,6 +1042,28 @@ async function backfillMissingAutoRewards(env, body = {}) {
     report.details.push(detail);
   }
   return report;
+}
+
+async function markAutoRewardBackfilled(env, row, mutation) {
+  const businessKey = stringValue(row && row.business_key);
+  if (!businessKey.startsWith("keyword:")) return;
+  const parts = businessKey.split(":");
+  const keyword = stringValue(parts[1]);
+  const userId = stringValue(row && row.line_user_id);
+  const rewardDate = stringValue(parts[3] || row.created_at).slice(0, 10);
+  if (!keyword || !userId || !rewardDate) return;
+  await env.DB.prepare(`
+    UPDATE daily_keyword_rewards
+    SET point_ledger_id = ?, balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE keyword = ? AND line_user_id = ? AND reward_date = ?
+  `).bind(
+    mutation && mutation.ledger_id ? mutation.ledger_id : null,
+    mutation && mutation.balance_after !== undefined ? mutation.balance_after : null,
+    "backfilled_to_oa1_1086",
+    keyword,
+    userId,
+    rewardDate,
+  ).run();
 }
 
 async function cachedWetwRowsForBackfill(env, cache, lineUserId) {
