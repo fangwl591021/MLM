@@ -509,8 +509,8 @@ function getPointChannelConfig(env, channelKey) {
     channelKey,
     floor,
     label: stringValue(channelConfig.label || (channelKey === POINT_OA2 ? "OA2 行政客服" : "OA1 產品客服")),
-    channelSecret: stringValue(channelConfig.channelSecret || pointChannelEnv(env, channelKey, "SECRET") || provider.channelSecret),
-    accessToken: stringValue(channelConfig.channelAccessToken || pointChannelEnv(env, channelKey, "ACCESS_TOKEN") || provider.accessToken),
+    channelSecret: stringValue(pointChannelEnv(env, channelKey, "SECRET") || channelConfig.channelSecret || provider.channelSecret),
+    accessToken: stringValue(pointChannelEnv(env, channelKey, "ACCESS_TOKEN") || channelConfig.channelAccessToken || provider.accessToken),
     forwardUrl: stringValue(channelConfig.forwardUrl),
   };
 }
