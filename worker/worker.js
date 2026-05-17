@@ -221,6 +221,14 @@ export default {
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/admin/points/repair-daily-keyword-balances" && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const queryBody = Object.fromEntries(url.searchParams.entries());
+        const result = await repairDailyKeywordBalances(env, { ...queryBody, ...body });
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
       if ((url.pathname === "/admin/points/grant" || url.pathname === "/admin/points/deduct" || url.pathname === "/admin/points/redeem") && request.method === "POST") {
         assertPointAdminAuth(request, env);
         const action = url.pathname.endsWith("/grant") ? "grant" : url.pathname.endsWith("/deduct") ? "deduct" : "redeem";
@@ -405,7 +413,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -1060,6 +1068,125 @@ async function markAutoRewardBackfilled(env, row, mutation) {
     mutation && mutation.ledger_id ? mutation.ledger_id : null,
     mutation && mutation.balance_after !== undefined ? mutation.balance_after : null,
     "backfilled_to_oa1_1086",
+    keyword,
+    userId,
+    rewardDate,
+  ).run();
+}
+
+async function repairDailyKeywordBalances(env, body = {}) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const dryValue = body.dry_run !== undefined ? body.dry_run : body.dryRun;
+  const dryRun = dryValue === undefined
+    ? true
+    : !(dryValue === false || ["false", "0", "no"].includes(String(dryValue).toLowerCase()));
+  const date = stringValue(body.date || body.reward_date || body.rewardDate || taipeiDate()).slice(0, 10);
+  const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
+  const limit = clampNumber(body.limit || 30, 1, 100);
+  const bindings = [date];
+  const where = [
+    "channel_key = 'oa1'",
+    "point_type = 'gift_money'",
+    "point_delta > 0",
+    "business_key LIKE 'keyword:%'",
+    "business_key NOT LIKE 'backfill:%'",
+    "business_key NOT LIKE 'repair-balance:%'",
+    "date(created_at) = ?",
+  ];
+  if (lineUserId) {
+    where.push("line_user_id = ?");
+    bindings.push(lineUserId);
+  }
+  bindings.push(limit);
+  const rows = await env.DB.prepare(`
+    SELECT id, line_user_id, point_delta, balance_after, business_key, note, created_at
+    FROM point_ledger
+    WHERE ${where.join(" AND ")}
+    ORDER BY id DESC
+    LIMIT ?
+  `).bind(...bindings).all();
+  const report = {
+    dry_run: dryRun,
+    date,
+    scanned: 0,
+    already_correct: 0,
+    repaired: 0,
+    failed: 0,
+    details: [],
+  };
+  for (const row of rows.results || []) {
+    const base = Number(row.balance_after || 0);
+    const points = Number(row.point_delta || 0);
+    const target = base + points;
+    const detail = {
+      id: row.id,
+      line_user_id: row.line_user_id,
+      base,
+      points,
+      target,
+      current: null,
+      delta: null,
+      status: "",
+      wetw_id: "",
+      error: "",
+    };
+    report.scanned += 1;
+    try {
+      const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, row.line_user_id, "gift_money", 20);
+      const current = Number(snapshot.balance || 0);
+      const delta = target - current;
+      detail.current = current;
+      detail.delta = delta;
+      if (Math.abs(delta) < 0.0001) {
+        detail.status = "already_correct";
+        report.already_correct += 1;
+      } else if (dryRun) {
+        detail.status = "needs_repair";
+      } else {
+        const action = delta > 0 ? "grant" : "deduct";
+        const mutation = await pointMutation(env, {
+          channel_key: POINT_OA1,
+          line_user_id: row.line_user_id,
+          point_type: "gift_money",
+          points: Math.abs(delta),
+          operator_id: `repair:${row.id}`,
+          operator_name: "簽到K點餘額修正",
+          event_name: "簽到K點餘額修正",
+          event_content: `回溯當下K點 ${formatPoint(base)} + ${formatPoint(points)} = ${formatPoint(target)}`,
+          note: `回溯當下K點 ${formatPoint(base)} + ${formatPoint(points)} = ${formatPoint(target)}`,
+          business_key: `repair-balance:${row.business_key}`,
+          shop_remark: `簽到餘額修正；原始紀錄ID:${row.id}；目標餘額:${formatPoint(target)}`,
+        }, action);
+        await markKeywordBalanceRepaired(env, row, target, mutation);
+        detail.status = "repaired";
+        detail.wetw_id = stringValue(mutation && mutation.wetw && mutation.wetw.data && mutation.wetw.data.insert_id);
+        report.repaired += 1;
+      }
+    } catch (error) {
+      detail.status = "failed";
+      detail.error = error && error.message ? error.message : String(error);
+      report.failed += 1;
+    }
+    report.details.push(detail);
+  }
+  return report;
+}
+
+async function markKeywordBalanceRepaired(env, row, target, mutation) {
+  const businessKey = stringValue(row && row.business_key);
+  const parts = businessKey.split(":");
+  const keyword = stringValue(parts[1]);
+  const userId = stringValue(row && row.line_user_id);
+  const rewardDate = stringValue(parts[3] || row.created_at).slice(0, 10);
+  if (!keyword || !userId || !rewardDate) return;
+  await env.DB.prepare(`
+    UPDATE daily_keyword_rewards
+    SET point_ledger_id = ?, balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE keyword = ? AND line_user_id = ? AND reward_date = ?
+  `).bind(
+    mutation && mutation.ledger_id ? mutation.ledger_id : null,
+    target,
+    "repaired_to_event_base_plus_points",
     keyword,
     userId,
     rewardDate,
