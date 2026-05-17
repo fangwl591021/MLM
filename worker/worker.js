@@ -416,7 +416,9 @@ export default {
         routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
-      return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
+      const payload = { status: "error", message: err && err.message ? err.message : String(err) };
+      if (err && err.code) payload.code = err.code;
+      return jsonResponse(payload, err.status || 500, corsHeaders);
     }
   },
 };
@@ -1632,6 +1634,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
   <script>
     const API_BASE = "https://mlm.fangwl591021.workers.dev";
     const LIFF_ID = ${JSON.stringify(liffId)};
+    const TOKEN_REFRESH_KEY = "klink_points_token_refresh:" + LIFF_ID;
     const memberNameEl = document.getElementById("memberName");
     const balanceEl = document.getElementById("balance");
     const countEl = document.getElementById("count");
@@ -1653,9 +1656,24 @@ function pointsTallLiffHtml(env, corsHeaders) {
           body:JSON.stringify({ idToken, displayName: profile && profile.displayName ? profile.displayName : "" })
         });
         const data = await response.json();
-        if(!response.ok || data.status !== "success") throw new Error(data.message || "讀取失敗");
+        if(!response.ok || data.status !== "success"){
+          const apiError = new Error(data.message || "讀取失敗");
+          apiError.code = data.code || "";
+          apiError.httpStatus = response.status;
+          throw apiError;
+        }
+        sessionStorage.removeItem(TOKEN_REFRESH_KEY);
         render(data);
       }catch(error){
+        if(isExpiredTokenError(error) && !sessionStorage.getItem(TOKEN_REFRESH_KEY)){
+          sessionStorage.setItem(TOKEN_REFRESH_KEY, "1");
+          loadingEl.classList.remove("hidden");
+          emptyEl.classList.add("hidden");
+          loadingEl.innerHTML = "<div><div class='spinner'></div><div>LINE 登入逾時，正在重新驗證</div></div>";
+          try{ if(window.liff && liff.isLoggedIn()) liff.logout(); }catch(_err){}
+          liff.login({ redirectUri: cleanRedirectUrl() });
+          return;
+        }
         loadingEl.classList.add("hidden");
         emptyEl.classList.remove("hidden");
         emptyEl.textContent = error && error.message ? error.message : "點數紀錄讀取失敗";
@@ -1684,6 +1702,16 @@ function pointsTallLiffHtml(env, corsHeaders) {
       const text = Number.isInteger(number) ? String(number) : number.toFixed(2);
       return text + "點";
     }
+    function isExpiredTokenError(error){
+      const message = String(error && error.message ? error.message : "");
+      const code = String(error && error.code ? error.code : "");
+      return code === "line_id_token_expired" || /IdToken expired|token expired|登入逾時|驗證失敗/.test(message);
+    }
+    function cleanRedirectUrl(){
+      const url = new URL(location.href);
+      url.hash = "";
+      return url.toString();
+    }
     function esc(value){return String(value == null ? "" : value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]));}
   </script>
 </body>
@@ -1704,7 +1732,8 @@ async function verifyLineIdToken(env, idToken) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = stringValue(data.error_description || data.error || response.statusText);
-    throw httpError(`LINE ID Token 驗證失敗：${message}`, 401);
+    const code = /expired/i.test(message) ? "line_id_token_expired" : "line_id_token_invalid";
+    throw httpError(`LINE ID Token 驗證失敗：${message}`, 401, code);
   }
   return data;
 }
@@ -3815,6 +3844,7 @@ function assertPointAdminAuth(request, env) {
 function httpError(message, status) {
   const err = new Error(message);
   err.status = status;
+  err.code = arguments.length >= 3 ? arguments[2] : "";
   return err;
 }
 
