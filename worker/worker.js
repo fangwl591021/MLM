@@ -652,7 +652,7 @@ async function handlePointQueryKeyword(env, provider, event, userId) {
 
 async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
   try {
-    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5, { global_points: true });
+    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5);
     const items = (snapshot.rows || []).map((row) => wetwPointListItem(row));
     const lines = [
       `目前累積 ${formatPoint(snapshot.balance)} K點。`,
@@ -1768,7 +1768,7 @@ async function fetchMemberPointLedger(env, body) {
   const lineUserId = stringValue(profile.sub || profile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
   const displayName = stringValue(body.displayName || profile.name || profile.displayName) || "會員";
-  const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, lineUserId, "gift_money", 80, { global_points: true });
+  const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, lineUserId, "gift_money", 80);
   return {
     lineUserId,
     memberName: displayName,
