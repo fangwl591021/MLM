@@ -276,7 +276,12 @@ export default {
 
       if (url.pathname === "/api/line-bot-info" && request.method === "GET") {
         assertDashboardAuth(request, env);
-        const info = await fetchLineBotInfo(provider);
+        const channelKey = stringValue(url.searchParams.get("channel") || url.searchParams.get("channel_key"));
+        const pointConfig = POINT_CHANNELS.has(channelKey) ? getPointChannelConfig(env, channelKey) : null;
+        const botProvider = pointConfig
+          ? { floor: pointConfig.floor, id: channelKey, label: pointConfig.label, channelSecret: pointConfig.channelSecret, accessToken: pointConfig.accessToken }
+          : provider;
+        const info = await fetchLineBotInfo(botProvider);
         return jsonResponse({ status: info.ok ? "success" : "error", data: info }, info.ok ? 200 : 502, corsHeaders);
       }
 
