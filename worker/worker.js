@@ -1252,12 +1252,11 @@ function pointsTallLiffHtml(env, corsHeaders) {
     th,td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:14px 12px;text-align:center;vertical-align:middle;line-height:1.35}
     th{position:sticky;top:0;background:var(--head);font-weight:900;z-index:1}
     tr:nth-child(even) td{background:var(--row)}
-    th:nth-child(1),td:nth-child(1){width:64px}
-    th:nth-child(2),td:nth-child(2){width:190px}
-    th:nth-child(3),td:nth-child(3){width:220px}
-    th:nth-child(4),td:nth-child(4){width:260px}
+    th:nth-child(1),td:nth-child(1){width:130px}
+    th:nth-child(2),td:nth-child(2){width:220px}
+    th:nth-child(3),td:nth-child(3){width:190px}
+    th:nth-child(4),td:nth-child(4){width:280px}
     th:nth-child(5),td:nth-child(5){width:130px}
-    th:nth-child(6),td:nth-child(6){width:140px}
     .amount{font-weight:900}.pos{color:#087a3a}.neg{color:#be123c}
     .state{min-height:240px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:16px}
     .spinner{width:34px;height:34px;border-radius:50%;border:4px solid #dff7e9;border-top-color:var(--line);animation:spin .8s linear infinite;margin:0 auto 14px}
@@ -1281,7 +1280,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
     <section id="empty" class="state hidden">目前沒有點數紀錄</section>
     <section id="tableWrap" class="tableWrap hidden">
       <table>
-        <thead><tr><th>序號</th><th>日期時間</th><th>活動名稱</th><th>活動內容</th><th>消費店家</th><th>點數&金額</th></tr></thead>
+        <thead><tr><th>點數&金額</th><th>活動名稱</th><th>日期時間</th><th>活動內容</th><th>消費店家</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </section>
@@ -1327,12 +1326,11 @@ function pointsTallLiffHtml(env, corsHeaders) {
       rowsEl.innerHTML = data.items.map((item, index) => {
         const amountClass = Number(item.amount || 0) >= 0 ? "pos" : "neg";
         return "<tr>" +
-          "<td>" + (index + 1) + "</td>" +
-          "<td>" + esc(item.datetime) + "</td>" +
+          "<td class='amount " + amountClass + "'>" + esc(formatPoint(item.amount)) + "</td>" +
           "<td>" + esc(item.eventName) + "</td>" +
+          "<td>" + esc(item.datetime) + "</td>" +
           "<td>" + esc(item.eventContent) + "</td>" +
           "<td>" + esc(item.storeName) + "</td>" +
-          "<td class='amount " + amountClass + "'>" + esc(formatPoint(item.amount)) + "</td>" +
         "</tr>";
       }).join("");
       tableWrapEl.classList.remove("hidden");
