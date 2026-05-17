@@ -151,3 +151,61 @@ CREATE TABLE IF NOT EXISTS reward_client_logs (
 
 CREATE INDEX IF NOT EXISTS idx_reward_client_logs_created
   ON reward_client_logs(created_at);
+
+CREATE TABLE IF NOT EXISTS keyword_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  floor_id TEXT NOT NULL DEFAULT 'main',
+  keyword TEXT NOT NULL,
+  match_type TEXT NOT NULL DEFAULT 'exact',
+  action TEXT NOT NULL DEFAULT '',
+  channel_key TEXT NOT NULL DEFAULT 'oa1',
+  point_type TEXT NOT NULL DEFAULT 'gift_money',
+  points REAL NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  priority INTEGER NOT NULL DEFAULT 0,
+  response_success TEXT NOT NULL DEFAULT '',
+  response_duplicate TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(floor_id, keyword)
+);
+
+CREATE INDEX IF NOT EXISTS idx_keyword_rules_active
+  ON keyword_rules(floor_id, active);
+
+CREATE TABLE IF NOT EXISTS daily_keyword_rewards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rule_id INTEGER,
+  keyword TEXT NOT NULL DEFAULT '',
+  line_user_id TEXT NOT NULL,
+  channel_key TEXT NOT NULL DEFAULT 'oa1',
+  point_type TEXT NOT NULL DEFAULT 'gift_money',
+  points REAL NOT NULL DEFAULT 0,
+  reward_date TEXT NOT NULL,
+  point_ledger_id INTEGER,
+  balance_after REAL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(rule_id, line_user_id, reward_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_keyword_rewards_date
+  ON daily_keyword_rewards(reward_date, keyword);
+
+INSERT OR IGNORE INTO keyword_rules (
+  floor_id, keyword, match_type, action, channel_key, point_type, points, active, priority, response_success, response_duplicate
+) VALUES (
+  'main',
+  '簽到贈K點',
+  'exact',
+  'daily_point_reward',
+  'oa1',
+  'gift_money',
+  5,
+  1,
+  100,
+  '簽到成功，已贈送 5 K點。',
+  '您今天已經簽到過，明天再來領取 5 K點。'
+);

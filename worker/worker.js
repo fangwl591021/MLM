@@ -641,6 +641,7 @@ async function tryApplyBindingCode(env, channelKey, lineUserId, text) {
 
 function detectCheckinPointDelta(channelKey, text) {
   if (!text) return null;
+  if (normalizeTextKeyword(text) === normalizeTextKeyword("簽到贈K點")) return null;
   if (!/\u6703\u54e1\u6253\u5361|\u6253\u5361|\u7c3d\u5230|checkin/i.test(text)) return null;
   return channelKey === POINT_OA2 ? 5 : 10;
 }
@@ -2194,8 +2195,114 @@ async function processLineWebhook(env, floor, provider, payload) {
     const text = stringValue(event.message.text);
     if (!userId || !text) continue;
     await saveIncomingMessage(env, floor, provider, event, userId, text);
+    await handleKeywordAutomation(env, floor, provider, event, userId, text);
   }
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
+}
+
+async function handleKeywordAutomation(env, floor, provider, event, userId, text) {
+  if (floor !== FLOOR_MAIN || !userId || !text) return null;
+  const rule = await matchKeywordRule(env, floor, text);
+  if (!rule || rule.action !== "daily_point_reward") return null;
+  let result;
+  let replyText;
+  try {
+    result = await applyDailyKeywordReward(env, rule, userId);
+    replyText = result.duplicate
+      ? (rule.response_duplicate || `您今天已經簽到過，明天再來領取 ${formatPoint(result.points)} K點。`)
+      : (rule.response_success || `簽到成功，已贈送 ${formatPoint(result.points)} K點。`);
+  } catch (error) {
+    result = { error: error && error.message ? error.message : String(error) };
+    replyText = "簽到暫時失敗，請稍後再試。";
+  }
+  await replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
+  await saveAdminMessage(env, {
+    floor,
+    userId,
+    text: replyText,
+    createdAt: Date.now(),
+    status: STATUS_DONE,
+    category: "關鍵字自動回覆",
+  });
+  return result;
+}
+
+async function matchKeywordRule(env, floor, text) {
+  const rows = await env.DB.prepare(`
+    SELECT id, floor_id, keyword, match_type, action, channel_key, point_type, points, response_success, response_duplicate
+    FROM keyword_rules
+    WHERE floor_id = ? AND active = 1
+    ORDER BY priority DESC, id ASC
+  `).bind(floor).all();
+  const normalized = normalizeTextKeyword(text);
+  for (const row of rows.results || []) {
+    const keyword = normalizeTextKeyword(row.keyword);
+    const matchType = stringValue(row.match_type || "exact");
+    if (matchType === "contains" && normalized.includes(keyword)) return row;
+    if (normalized === keyword) return row;
+  }
+  return null;
+}
+
+async function applyDailyKeywordReward(env, rule, userId) {
+  const rewardDate = taipeiDate();
+  const points = Number(rule.points || 0) || 5;
+  const channelKey = stringValue(rule.channel_key) || POINT_OA1;
+  const pointType = stringValue(rule.point_type) || "gift_money";
+  const keyword = stringValue(rule.keyword);
+  const insert = await env.DB.prepare(`
+    INSERT OR IGNORE INTO daily_keyword_rewards (rule_id, keyword, line_user_id, channel_key, point_type, points, reward_date, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
+  const inserted = Boolean(insert && insert.meta && insert.meta.changes);
+  if (!inserted) {
+    const existing = await env.DB.prepare(`
+      SELECT points, balance_after, status
+      FROM daily_keyword_rewards
+      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+    `).bind(rule.id, userId, rewardDate).first();
+    if (existing && existing.status === "failed") {
+      await env.DB.prepare(`
+        UPDATE daily_keyword_rewards
+        SET status = 'pending', message = '', updated_at = CURRENT_TIMESTAMP
+        WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+      `).bind(rule.id, userId, rewardDate).run();
+    } else {
+      return { duplicate: true, points: Number(existing && existing.points || points), balance_after: existing && existing.balance_after };
+    }
+  }
+
+  try {
+    const mutation = await pointMutation(env, {
+      channel_key: channelKey,
+      line_user_id: userId,
+      point_type: pointType,
+      points,
+      operator_id: `keyword:${keyword}`,
+      operator_name: "關鍵字自動贈K點",
+      event_name: keyword,
+      event_content: `每日簽到 ${rewardDate}`,
+      note: `每日簽到 ${rewardDate}`,
+      business_key: `keyword:${keyword}:${userId}:${rewardDate}`,
+    }, "grant");
+    await env.DB.prepare(`
+      UPDATE daily_keyword_rewards
+      SET status = 'success', point_ledger_id = ?, balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+    `).bind(mutation.ledger_id || null, mutation.balance_after || null, "claimed", rule.id, userId, rewardDate).run();
+    return { duplicate: false, points, balance_after: mutation.balance_after };
+  } catch (error) {
+    await env.DB.prepare(`
+      UPDATE daily_keyword_rewards
+      SET status = 'failed', message = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+    `).bind(error && error.message ? error.message : String(error), rule.id, userId, rewardDate).run();
+    throw error;
+  }
+}
+
+function normalizeTextKeyword(value) {
+  return stringValue(value).replace(/\s+/g, "").toLowerCase();
 }
 
 async function saveIncomingMessage(env, floor, provider, event, userId, text) {
@@ -2612,6 +2719,24 @@ async function pushLineMessage(provider, userId, text) {
   return { ok: response.ok, status: response.status, detail };
 }
 
+async function replyLineMessage(provider, replyToken, text) {
+  if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
+  if (!replyToken) return { ok: false, status: 400, detail: "reply token is empty" };
+  const response = await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.accessToken}` },
+    body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
+  });
+  const detail = await response.text();
+  return { ok: response.ok, status: response.status, detail };
+}
+
+async function replyOrPushLineMessage(provider, replyToken, userId, text) {
+  const reply = await replyLineMessage(provider, replyToken, text);
+  if (reply.ok || !userId) return reply;
+  return pushLineMessage(provider, userId, text);
+}
+
 async function attachLineProfiles(payload, provider) {
   if (!provider.accessToken || !Array.isArray(payload.events)) return;
   const cache = new Map();
@@ -2838,6 +2963,11 @@ function numberValue(value) {
 function numberOrZero(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function formatPoint(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) ? String(number) : number.toFixed(2);
 }
 
 function taipeiStartOfDay(now) {
