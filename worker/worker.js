@@ -636,7 +636,7 @@ function isSmartDailyRewardEvent(channelKey, event) {
     && event.type === "message"
     && event.message
     && event.message.type === "text"
-    && normalizeTextKeyword(event.message.text) === normalizeTextKeyword("簽到贈K點");
+    && isDailyRewardKeywordText(event.message.text);
 }
 
 function isSmartPointQueryEvent(channelKey, event) {
@@ -2837,7 +2837,7 @@ async function fetchThread(env, floor, id) {
 
 function isMonitorHiddenMessage(message) {
   return stringValue(message && message.floor_id) === FLOOR_MAIN
-    && normalizeTextKeyword(message && message.text) === normalizeTextKeyword("簽到贈K點");
+    && isDailyRewardKeywordText(message && message.text);
 }
 
 async function fetchAiLogs(env, floor = FLOOR_MAIN, limit = 100) {
@@ -3061,6 +3061,9 @@ async function matchKeywordRule(env, floor, text) {
     if (matchType === "contains" && normalized.includes(keyword)) return row;
     if (normalized === keyword) return row;
   }
+  if (floor === FLOOR_MAIN && isDailyRewardKeywordText(text)) {
+    return (rows.results || []).find((row) => row.action === "daily_point_reward") || null;
+  }
   return null;
 }
 
@@ -3070,6 +3073,17 @@ async function applyDailyKeywordReward(env, rule, userId) {
   const channelKey = stringValue(rule.channel_key) || POINT_OA1;
   const pointType = stringValue(rule.point_type) || "gift_money";
   const keyword = stringValue(rule.keyword);
+  const existingSameDay = await env.DB.prepare(`
+    SELECT id, keyword, points, balance_after, status
+    FROM daily_keyword_rewards
+    WHERE line_user_id = ? AND channel_key = ? AND point_type = ? AND reward_date = ? AND status != 'failed'
+    ORDER BY id ASC
+    LIMIT 1
+  `).bind(userId, channelKey, pointType, rewardDate).first();
+  if (existingSameDay) {
+    const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10);
+    return { duplicate: true, points: Number(existingSameDay.points || points), balance_after: snapshot.balance };
+  }
   const insert = await env.DB.prepare(`
     INSERT OR IGNORE INTO daily_keyword_rewards (rule_id, keyword, line_user_id, channel_key, point_type, points, reward_date, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -3124,6 +3138,15 @@ async function applyDailyKeywordReward(env, rule, userId) {
 
 function normalizeTextKeyword(value) {
   return stringValue(value).replace(/\s+/g, "").toLowerCase();
+}
+
+function isDailyRewardKeywordText(value) {
+  const text = normalizeTextKeyword(value);
+  return [
+    "簽到贈K點",
+    "會員打卡",
+    "每日簽到贈點",
+  ].map(normalizeTextKeyword).includes(text);
 }
 
 async function saveIncomingMessage(env, floor, provider, event, userId, text) {
