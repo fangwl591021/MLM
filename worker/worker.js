@@ -968,14 +968,14 @@ async function claimQrReward(env, body) {
     WHERE campaign = ? AND line_user_id = ?
   `).bind(campaign, lineUserId).first();
   if (existing) {
-    const balance = await getPointAccountBalance(env, POINT_OA1, lineUserId, "gift_money");
+    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, lineUserId, "gift_money", 10);
     return {
       claimed: false,
       duplicate: true,
       campaign,
       line_user_id: lineUserId,
       points: Number(existing.points || points),
-      balance_after: balance,
+      balance_after: snapshot.balance,
       message: "這個活動已經領取過",
       event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now()) : null,
     };
@@ -1399,26 +1399,31 @@ async function verifyLineIdToken(env, idToken) {
 }
 
 async function fetchMemberPointLedger(env, body) {
-  if (!env.DB) throw httpError("DB is not configured", 500);
   const idToken = stringValue(body.idToken || body.id_token);
   if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟頁面", 400);
   const profile = await verifyLineIdToken(env, idToken);
   const lineUserId = stringValue(profile.sub || profile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
   const displayName = stringValue(body.displayName || profile.name || profile.displayName) || "會員";
-  const balance = await getPointAccountBalance(env, POINT_OA1, lineUserId, "gift_money");
-  const rows = await env.DB.prepare(`
-    SELECT action, point_delta, balance_after, operator_name, note, created_at
-    FROM point_ledger
-    WHERE channel_key = ? AND line_user_id = ? AND point_type = 'gift_money'
-    ORDER BY id DESC
-    LIMIT 80
-  `).bind(POINT_OA1, lineUserId).all();
+  const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, lineUserId, "gift_money", 80);
   return {
     lineUserId,
     memberName: displayName,
-    balance,
-    items: (rows.results || []).map((row) => pointLedgerListItem(row)),
+    balance: snapshot.balance,
+    items: snapshot.rows.map((row) => wetwPointListItem(row)),
+  };
+}
+
+function wetwPointListItem(row) {
+  const delta = Number(row.get_point ?? row.point_delta ?? 0);
+  return {
+    datetime: formatTaipeiDateTime(row.created_at || row.createdAt || row.date || row.datetime),
+    eventName: kPointDisplayText(stringValue(row.event_name || row.eventName) || pointEventName({ point_delta: delta }, stringValue(row.event_content || row.shop_remark))),
+    eventContent: kPointDisplayText(stringValue(row.event_content || row.eventContent || row.shop_remark) || "由 KLINK 系統記錄"),
+    storeName: kPointDisplayText(stringValue(row.child_shop_name || row.shop_user_lineid || row.shop_name) || "系統"),
+    pointType: "K點",
+    amount: delta,
+    balanceAfter: Number(row.point_balance ?? row.balance ?? 0),
   };
 }
 
@@ -1431,7 +1436,7 @@ function pointLedgerListItem(row) {
     eventName: pointEventName(row, note),
     eventContent: note || "由 KLINK 客服系統操作",
     storeName: operator && /客服|系統|自動|關鍵字|QR/.test(operator) ? "系統" : (operator || "系統"),
-    pointType: "購物金",
+    pointType: "K點",
     amount: delta,
     balanceAfter: Number(row.balance_after || 0),
   };
@@ -1714,24 +1719,29 @@ async function insertWetwPointMutation(env, input, body = {}) {
 }
 
 async function fetchWetwLatestPointBalance(env, input, body = {}) {
-  const pointType = input.pointType || "gift_money";
+  const snapshot = await fetchWetwPointSnapshot(env, input.channelKey, input.lineUserId, input.pointType || "gift_money", 10, body);
+  return snapshot.balance;
+}
+
+async function fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType = "gift_money", limit = 80, body = {}) {
   const url = stringValue(env.WETW_POINTS_URL) || DEFAULT_WETW_POINT_QUERY_URL;
   const rows = await fetchWetwPointListFromWordPress(env, url, {
-    shop_id: pointApiShopId(env, input.channelKey, body.shop_id || body.shopId),
-    LINE_user_id: input.lineUserId,
+    shop_id: pointApiShopId(env, channelKey, body.shop_id || body.shopId),
+    LINE_user_id: lineUserId,
     point_type: pointType,
     page: 1,
-    per_page: 10,
+    per_page: limit,
     max_pages: 1,
   });
   const sorted = rows
     .filter((row) => !stringValue(row.point_type) || stringValue(row.point_type) === pointType)
     .sort((a, b) => wetwPointRowRank(b) - wetwPointRowRank(a));
-  for (const row of sorted.length ? sorted : rows) {
+  const effectiveRows = sorted.length ? sorted : rows;
+  for (const row of effectiveRows) {
     const balance = Number(row.point_balance ?? row.balance ?? row.points);
-    if (Number.isFinite(balance)) return balance;
+    if (Number.isFinite(balance)) return { balance, rows: effectiveRows };
   }
-  return null;
+  return { balance: 0, rows: effectiveRows };
 }
 
 async function applyPointMutation(env, input) {
@@ -1777,37 +1787,16 @@ async function listPointBalances(env, url) {
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
   if (channelKey && lineUserId) {
-    const rows = await env.DB.prepare(`
-      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
-      FROM point_accounts
-      WHERE channel_key = ? AND line_user_id = ?
-      ORDER BY point_type
-      LIMIT ?
-    `).bind(channelKey, lineUserId, limit).all();
-    return decoratePointBalances(rows.results || []);
+    return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")] };
   }
   if (lineUserId) {
-    const rows = await env.DB.prepare(`
-      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
-      FROM point_accounts
-      WHERE line_user_id = ?
-      ORDER BY channel_key, point_type
-      LIMIT ?
-    `).bind(lineUserId, limit).all();
-    if (rows.results && rows.results.length) {
-      return { balances: decoratePointBalances(rows.results), resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact" } };
-    }
+    const exactBalances = await livePointBalancesForUser(env, lineUserId);
+    if (exactBalances.length) return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" } };
     const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     if (resolved && resolved.pointLineUserId) {
-      const resolvedRows = await env.DB.prepare(`
-        SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
-        FROM point_accounts
-        WHERE line_user_id = ?
-        ORDER BY channel_key, point_type
-        LIMIT ?
-      `).bind(resolved.pointLineUserId, limit).all();
+      const resolvedRows = await livePointBalancesForUser(env, resolved.pointLineUserId);
       return {
-        balances: decoratePointBalances(resolvedRows.results || []).map((row) => ({
+        balances: resolvedRows.map((row) => ({
           ...row,
           chat_line_user_id: lineUserId,
           resolved_from_name: resolved.name,
@@ -1851,6 +1840,31 @@ async function listPointBalances(env, url) {
     LIMIT ?
   `).bind(limit).all();
   return decoratePointBalances(rows.results || []);
+}
+
+async function livePointBalancesForUser(env, lineUserId) {
+  const balances = [];
+  for (const channelKey of [POINT_OA1, POINT_OA2]) {
+    try {
+      balances.push(await livePointBalanceRow(env, channelKey, lineUserId, "gift_money"));
+    } catch (_err) {
+      // A LINE uid may not exist in every source. Keep the other source usable.
+    }
+  }
+  return balances;
+}
+
+async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
+  const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 20);
+  return decoratePointBalances([{
+    account_key: `${channelKey}:${lineUserId}:${pointType}`,
+    master_member_ref: "",
+    channel_key: channelKey,
+    line_user_id: lineUserId,
+    point_type: pointType,
+    balance: snapshot.balance,
+    updated_at: "mother-site-live",
+  }])[0];
 }
 
 function pointSourceMeta(channelKey) {
@@ -1958,24 +1972,20 @@ async function listPointLedger(env, url) {
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
   if (channelKey && lineUserId) {
-    const rows = await env.DB.prepare(`
-      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
-      FROM point_ledger
-      WHERE channel_key = ? AND line_user_id = ?
-      ORDER BY id DESC
-      LIMIT ?
-    `).bind(channelKey, lineUserId, limit).all();
-    return rows.results || [];
+    const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", limit);
+    return snapshot.rows.map((row) => wetwPointLedgerRow(channelKey, lineUserId, row));
   }
   if (lineUserId) {
-    const rows = await env.DB.prepare(`
-      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
-      FROM point_ledger
-      WHERE line_user_id = ?
-      ORDER BY id DESC
-      LIMIT ?
-    `).bind(lineUserId, limit).all();
-    return rows.results || [];
+    const ledgers = [];
+    for (const sourceKey of [POINT_OA1, POINT_OA2]) {
+      try {
+        const snapshot = await fetchWetwPointSnapshot(env, sourceKey, lineUserId, "gift_money", limit);
+        ledgers.push(...snapshot.rows.map((row) => wetwPointLedgerRow(sourceKey, lineUserId, row)));
+      } catch (_err) {
+        // Some members only exist in one source.
+      }
+    }
+    return ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
   }
   if (masterMemberRef) {
     const rows = await env.DB.prepare(`
@@ -1994,6 +2004,42 @@ async function listPointLedger(env, url) {
     LIMIT ?
   `).bind(limit).all();
   return rows.results || [];
+}
+
+function wetwPointLedgerRow(channelKey, lineUserId, row) {
+  const delta = Number(row.get_point ?? row.point_delta ?? 0);
+  const wetwId = stringValue(row.id || row.point_id || row.ledger_id);
+  return {
+    id: wetwId || `${channelKey}:${lineUserId}:${wetwPointRowRank(row)}`,
+    master_member_ref: stringValue(row.user_id || row.member_ref || row.master_member_ref),
+    channel_key: channelKey,
+    line_user_id: lineUserId,
+    action: delta >= 0 ? "grant" : "deduct",
+    point_type: "gift_money",
+    point_delta: delta,
+    balance_after: Number(row.point_balance ?? row.balance ?? 0),
+    source: "wetw-live",
+    business_key: wetwId ? `wetw-point:${wetwId}` : "",
+    operator_id: stringValue(row.shop_user_lineid),
+    operator_name: kPointDisplayText(stringValue(row.child_shop_name || row.shop_user_lineid) || "母站"),
+    note: kPointDisplayText([row.event_name, row.event_content || row.shop_remark].map(stringValue).filter(Boolean).join("｜")),
+    created_at: stringValue(row.created_at || row.createdAt || row.date || row.datetime),
+  };
+}
+
+function kPointDisplayText(value) {
+  return stringValue(value)
+    .replace(/購物金/g, "K點")
+    .replace(/增加([0-9]+(?:\.[0-9]+)?)元/g, "增加$1點")
+    .replace(/扣除([0-9]+(?:\.[0-9]+)?)元/g, "扣除$1點")
+    .replace(/([+-]?[0-9]+(?:\.[0-9]+)?)元/g, "$1點");
+}
+
+function wetwPointRowRankFromLedger(row) {
+  const businessId = Number(String(row && row.business_key || "").replace(/^wetw-point:/, ""));
+  if (Number.isFinite(businessId) && businessId > 0) return businessId;
+  const created = Date.parse(stringValue(row && row.created_at));
+  return Number.isFinite(created) ? created : 0;
 }
 
 async function listCrmMembers(env, url) {
@@ -2697,7 +2743,8 @@ async function applyDailyKeywordReward(env, rule, userId) {
         WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
       `).bind(rule.id, userId, rewardDate).run();
     } else {
-      return { duplicate: true, points: Number(existing && existing.points || points), balance_after: existing && existing.balance_after };
+      const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10);
+      return { duplicate: true, points: Number(existing && existing.points || points), balance_after: snapshot.balance };
     }
   }
 
