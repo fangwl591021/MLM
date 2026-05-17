@@ -213,6 +213,13 @@ export default {
         return jsonResponse({ success: true, status: "success", ledger }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/admin/points/backfill-auto-rewards" && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const result = await backfillMissingAutoRewards(env, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
       if ((url.pathname === "/admin/points/grant" || url.pathname === "/admin/points/deduct" || url.pathname === "/admin/points/redeem") && request.method === "POST") {
         assertPointAdminAuth(request, env);
         const action = url.pathname.endsWith("/grant") ? "grant" : url.pathname.endsWith("/deduct") ? "deduct" : "redeem";
@@ -397,7 +404,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       return jsonResponse({ status: "error", message: err && err.message ? err.message : String(err) }, err.status || 500, corsHeaders);
@@ -933,6 +940,156 @@ async function pointMutation(env, body, action) {
     operatorName: input.operatorName,
   });
   return { ...local, wetw, wetw_balance_before: wetwBalanceBefore, wetw_balance_after: wetwBalanceAfter };
+}
+
+async function backfillMissingAutoRewards(env, body = {}) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const dryRun = body.dry_run !== false && body.dryRun !== false;
+  const limit = clampNumber(body.limit || 80, 1, 300);
+  const date = stringValue(body.date || body.reward_date || body.rewardDate).slice(0, 10);
+  const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
+
+  const where = [
+    "channel_key = ?",
+    "point_type = 'gift_money'",
+    "point_delta > 0",
+    "(business_key LIKE 'keyword:%' OR business_key LIKE 'qr-reward:%' OR business_key LIKE 'nfc-reward:%')",
+    "business_key NOT LIKE 'backfill:%'",
+  ];
+  const bindings = [POINT_OA1];
+  if (date) {
+    where.push("(date(created_at) = ? OR business_key LIKE ? OR note LIKE ?)");
+    bindings.push(date, `%:${date}`, `%${date}%`);
+  }
+  if (lineUserId) {
+    where.push("line_user_id = ?");
+    bindings.push(lineUserId);
+  }
+  bindings.push(limit);
+
+  const rows = await env.DB.prepare(`
+    SELECT id, account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
+    FROM point_ledger
+    WHERE ${where.join(" AND ")}
+    ORDER BY id DESC
+    LIMIT ?
+  `).bind(...bindings).all();
+  const candidates = rows.results || [];
+  const checkedByUser = new Map();
+  const report = {
+    dry_run: dryRun,
+    scanned: candidates.length,
+    already_exists: 0,
+    missing: 0,
+    inserted: 0,
+    failed: 0,
+    details: [],
+  };
+
+  for (const row of candidates) {
+    const marker = autoRewardMarker(row);
+    const detail = {
+      id: row.id,
+      line_user_id: row.line_user_id,
+      points: Number(row.point_delta || 0),
+      business_key: row.business_key,
+      note: row.note,
+      marker,
+      status: "",
+      wetw_id: "",
+      error: "",
+    };
+    try {
+      const rows = await cachedWetwRowsForBackfill(env, checkedByUser, row.line_user_id);
+      const match = findAutoRewardWetwMatch(row, rows);
+      if (match) {
+        report.already_exists += 1;
+        detail.status = "already_exists";
+        detail.wetw_id = stringValue(match.id || match.point_id || match.ledger_id);
+      } else {
+        report.missing += 1;
+        detail.status = "missing";
+        if (!dryRun) {
+          const mutation = await pointMutation(env, {
+            channel_key: POINT_OA1,
+            line_user_id: row.line_user_id,
+            point_type: "gift_money",
+            points: Number(row.point_delta || 0),
+            operator_id: `backfill:${row.id}`,
+            operator_name: "補登K點",
+            event_name: autoRewardEventName(row),
+            event_content: `${marker}；補登查詢表`,
+            note: `${marker}；補登查詢表`,
+            business_key: `backfill:${row.business_key}`,
+            shop_remark: `補登查詢表；原始紀錄ID:${row.id}；原始識別:${row.business_key}`,
+          }, "grant");
+          checkedByUser.delete(row.line_user_id);
+          report.inserted += 1;
+          detail.status = "inserted";
+          detail.wetw_id = stringValue(mutation && mutation.wetw && mutation.wetw.data && mutation.wetw.data.insert_id);
+        }
+      }
+    } catch (error) {
+      report.failed += 1;
+      detail.status = "failed";
+      detail.error = error && error.message ? error.message : String(error);
+    }
+    report.details.push(detail);
+  }
+  return report;
+}
+
+async function cachedWetwRowsForBackfill(env, cache, lineUserId) {
+  const key = stringValue(lineUserId);
+  if (!cache.has(key)) {
+    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, key, "gift_money", 100);
+    cache.set(key, snapshot.rows || []);
+  }
+  return cache.get(key) || [];
+}
+
+function autoRewardMarker(row) {
+  const note = stringValue(row && row.note);
+  if (note) return note;
+  const key = stringValue(row && row.business_key);
+  if (key.startsWith("keyword:")) {
+    const parts = key.split(":");
+    return parts[3] ? `每日簽到 ${parts[3]}` : "每日簽到";
+  }
+  if (key.startsWith("qr-reward:")) return `QR掃碼活動 ${key.split(":")[1] || ""}`.trim();
+  if (key.startsWith("nfc-reward:")) return `NFC感應活動 ${key.split(":")[1] || ""}`.trim();
+  return key;
+}
+
+function autoRewardEventName(row) {
+  const key = stringValue(row && row.business_key);
+  if (key.startsWith("keyword:")) return "簽到贈K點補登";
+  if (key.startsWith("nfc-reward:")) return "NFC感應贈K點補登";
+  return "QR掃碼贈K點補登";
+}
+
+function findAutoRewardWetwMatch(row, wetwRows) {
+  const marker = kPointDisplayText(autoRewardMarker(row));
+  const businessKey = stringValue(row && row.business_key);
+  const amount = Number(row && row.point_delta || 0);
+  const createdDay = stringValue(row && row.created_at).slice(0, 10);
+  return (wetwRows || []).find((item) => {
+    const delta = Number(item.get_point ?? item.point_delta ?? 0);
+    if (Number.isFinite(amount) && Number.isFinite(delta) && Math.abs(delta - amount) > 0.0001) return false;
+    const text = kPointDisplayText([
+      item.event_name,
+      item.event_content,
+      item.shop_remark,
+      item.note,
+    ].map(stringValue).filter(Boolean).join("｜"));
+    const itemDay = stringValue(item.created_at || item.createdAt || item.date || item.datetime).slice(0, 10);
+    if (businessKey && text.includes(businessKey)) return true;
+    if (marker && text.includes(marker)) return true;
+    if (businessKey.startsWith("keyword:") && text.includes("每日簽到") && createdDay && itemDay === createdDay) return true;
+    const campaign = businessKey.match(/^(?:qr|nfc)-reward:([^:]+)/);
+    if (campaign && text.includes(campaign[1])) return true;
+    return false;
+  }) || null;
 }
 
 function chooseMutationBalanceAfter(delta, queriedBalance, expectedBalance) {
