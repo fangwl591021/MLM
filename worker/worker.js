@@ -28,7 +28,7 @@ const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
-const POINTS_LIFF_ID = "2007221311-WjM9sZPz";
+const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
 const DEFAULT_REWARD_POINTS = 1;
 const REWARD_CAMPAIGN_POINTS = {
   smart_202605: 1,
@@ -628,9 +628,8 @@ function isSmartPointQueryEvent(channelKey, event) {
 }
 
 async function handlePointQueryKeyword(env, provider, event, userId) {
-  const balance = await getPointAccountBalance(env, POINT_OA1, userId, "gift_money");
-  const ledger = await recentPointLedger(env, POINT_OA1, userId, "gift_money", 5);
-  const replyText = buildPointQueryReply(balance, ledger);
+  const liffId = stringValue(env.POINTS_LIFF_ID) || POINTS_LIFF_ID;
+  const replyText = `請點選以下連結查看您的點數列表：\nhttps://liff.line.me/${liffId}`;
   return replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
 }
 
