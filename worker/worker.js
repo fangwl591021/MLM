@@ -652,7 +652,9 @@ async function handlePointQueryKeyword(env, provider, event, userId) {
 
 async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
   try {
-    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5);
+    const snapshot = await fetchWetwPointSnapshot(env, POINT_OA1, userId, "gift_money", 5, {
+      shop_id: memberCheckinShopId(env),
+    });
     const items = (snapshot.rows || []).map((row) => wetwPointListItem(row));
     const lines = [
       `目前累積 ${formatPoint(snapshot.balance)} K點。`,
@@ -672,6 +674,12 @@ async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
   } catch (_error) {
     return replyOrPushLineMessage(provider, event.replyToken, userId, "目前無法讀取母站K點資料，請稍後再試。");
   }
+}
+
+function memberCheckinShopId(env) {
+  const configured = Number(env.WETW_MEMBER_CHECKIN_SHOP_ID || 0);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return wetwShopId(env);
 }
 
 async function recentPointLedger(env, channelKey, userId, pointType, limit = 5) {
