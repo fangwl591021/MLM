@@ -20,6 +20,7 @@ const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
 const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_MAIN, [POINT_OA2]: FLOOR_ADMIN };
+const D1_IN_QUERY_BATCH_SIZE = 50;
 const POINT_SOURCE_META = {
   [POINT_OA1]: { label: "康立智能", shopId: 1086, loginUrl: "https://k-link.cc/index.php/line_login/1086/", canGrant: true },
   [POINT_OA2]: { label: "康立全球", shopId: 1584, loginUrl: "https://k-link.cc/index.php/line_login/1584/", canGrant: false, deductPriority: true },
@@ -2842,10 +2843,14 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
   `).bind(floor, limit).all();
   if (!results.length) return [];
   const ids = results.map((row) => row.id);
-  const placeholders = ids.map(() => "?").join(",");
-  const messageRows = await env.DB.prepare(`SELECT * FROM messages WHERE thread_id IN (${placeholders}) ORDER BY created_at ASC`).bind(...ids).all();
+  const messageResults = [];
+  for (const batch of chunkArray(ids, D1_IN_QUERY_BATCH_SIZE)) {
+    const placeholders = batch.map(() => "?").join(",");
+    const messageRows = await env.DB.prepare(`SELECT * FROM messages WHERE thread_id IN (${placeholders}) ORDER BY created_at ASC`).bind(...batch).all();
+    messageResults.push(...(messageRows.results || []));
+  }
   const byThread = new Map(ids.map((id) => [id, []]));
-  for (const row of messageRows.results || []) {
+  for (const row of messageResults) {
     if (isMonitorHiddenMessage(row)) continue;
     if (!byThread.has(row.thread_id)) byThread.set(row.thread_id, []);
     byThread.get(row.thread_id).push(row);
@@ -2853,6 +2858,14 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
   return results
     .map((row) => threadFromD1(row, byThread.get(row.id) || []))
     .filter((thread) => thread.messages.length > 0);
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 async function fetchThread(env, floor, id) {
