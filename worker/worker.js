@@ -39,6 +39,7 @@ const REWARD_CALENDAR_AUTO = "calendar_auto";
 const DEFAULT_REWARD_CALENDAR_ID = "e60890fdb27ca97452f32e6484c312ed029faef62a6ddd4fbbe753fa557bcde5@group.calendar.google.com";
 const DEFAULT_REWARD_GEOFENCE_METERS = 300;
 const DEFAULT_REWARD_CALENDAR_POINTS = 5;
+const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 90;
 
 export default {
   async fetch(request, env, ctx) {
@@ -127,7 +128,7 @@ export default {
         return jsonResponse({
           success: true,
           status: "success",
-          events: events.map((event) => publicCalendarEvent(event, now)),
+          events: events.map((event) => publicCalendarEvent(event, now, null, env)),
         }, 200, corsHeaders);
       }
 
@@ -1322,7 +1323,7 @@ async function claimQrReward(env, body) {
       points: Number(existing.points || points),
       balance_after: snapshot.balance,
       message: "這個活動已經領取過",
-      event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now()) : null,
+      event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now(), null, env) : null,
     };
   }
 
@@ -1376,7 +1377,7 @@ async function claimQrReward(env, body) {
       points,
       balance_after: mutation.balance_after,
       message: `已領取 ${points} K點`,
-      event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now(), calendarContext) : null,
+      event: calendarContext ? publicCalendarEvent(calendarContext.event, Date.now(), calendarContext, env) : null,
     };
   } catch (error) {
     await env.DB.prepare(`
@@ -1836,7 +1837,8 @@ async function resolveCalendarRewardContext(env, body) {
     throw httpError("請允許定位，系統才能確認是否在活動地點", 400);
   }
   const now = Date.now();
-  const events = (await fetchRewardCalendarEvents(env)).filter((event) => event.startsAt <= now && event.endsAt >= now);
+  const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
+  const events = (await fetchRewardCalendarEvents(env)).filter((event) => event.startsAt - earlyMs <= now && event.endsAt >= now);
   if (!events.length) throw httpError("目前非課程時間，請查看行事曆", 400);
 
   const radius = rewardGeofenceMeters(env);
@@ -2024,15 +2026,21 @@ function rewardGeofenceMeters(env) {
   return Number.isFinite(meters) && meters > 0 ? Math.round(meters) : DEFAULT_REWARD_GEOFENCE_METERS;
 }
 
-function publicCalendarEvent(event, now = Date.now(), context = null) {
+function rewardCheckinEarlyMinutes(env) {
+  const minutes = Number(env.REWARD_CHECKIN_EARLY_MINUTES || DEFAULT_REWARD_CHECKIN_EARLY_MINUTES);
+  return Number.isFinite(minutes) && minutes >= 0 ? Math.round(minutes) : DEFAULT_REWARD_CHECKIN_EARLY_MINUTES;
+}
+
+function publicCalendarEvent(event, now = Date.now(), context = null, env = {}) {
+  const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
   return {
     uid: event.uid,
     title: event.summary,
     location: event.location,
     startsAt: event.startsAt,
     endsAt: event.endsAt,
-    active: event.startsAt <= now && event.endsAt >= now,
-    points: rewardPointsFromEvent({}, event),
+    active: event.startsAt - earlyMs <= now && event.endsAt >= now,
+    points: rewardPointsFromEvent(env, event),
     distanceMeters: context && Number.isFinite(context.distanceMeters) ? Math.round(context.distanceMeters) : null,
   };
 }
