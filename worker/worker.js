@@ -1759,7 +1759,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       const data = await response.json().catch(() => ({}));
       if(!response.ok || data.status !== "success"){
         await logStage("claim_failed", data.message || response.status);
-        showClosed();
+        showClosed(data.message || "");
         return;
       }
       await logStage("claim_success", data.duplicate ? "duplicate" : "claimed", data.line_user_id);
@@ -1775,10 +1775,10 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       loadingIconEl.classList.add("hidden"); successIconEl.classList.remove("hidden"); plainIconEl.classList.add("hidden");
       titleEl.textContent = duplicate ? "已領取過本課程紅包" : "紅包已送出"; messageEl.textContent = duplicate ? "本課程已完成領取" : "已發送 5 K點"; closeSoon();
     }
-    function showClosed(){
+    function showClosed(reason){
       appEl.classList.add("error");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
-      titleEl.textContent = "目前非課程時間，請查看行事曆"; messageEl.textContent = ""; closeSoon();
+      titleEl.textContent = reason || "目前非課程時間，請查看行事曆"; messageEl.textContent = reason ? "請確認測試網址、時間或定位設定" : ""; closeSoon();
     }
     function showOutsideLine(){
       appEl.classList.add("error");
@@ -2097,11 +2097,13 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
     throw httpError("目前非測試簽到時間", 400);
   }
   const geo = await geocodeRewardLocation(env, flow.address);
-  if (!geo) throw httpError("測試地址無法定位，請重新建立測試網址", 400);
-  const distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
-  const radius = rewardGeofenceMeters(env);
-  if (distanceMeters > radius) {
-    throw httpError(`您目前距離測試地點約 ${Math.round(distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
+  let distanceMeters = null;
+  if (geo) {
+    distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
+    const radius = rewardGeofenceMeters(env);
+    if (distanceMeters > radius) {
+      throw httpError(`您目前距離測試地點約 ${Math.round(distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
+    }
   }
   const points = Number(flow.points || calendarDefaultPoints(env));
   return {
@@ -2119,8 +2121,8 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
     userLng,
     userAccuracy: Number(body.accuracy || 0) || null,
     distanceMeters,
-    eventLat: geo.lat,
-    eventLng: geo.lng,
+    eventLat: geo ? geo.lat : null,
+    eventLng: geo ? geo.lng : null,
   };
 }
 
