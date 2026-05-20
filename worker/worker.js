@@ -699,16 +699,19 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
       SET stage = ?, starts_at = ?, ends_at = ?, updated_at = ?
       WHERE token = ?
     `).bind("complete", parsed.startsAt, parsed.endsAt, now, flow.token).run();
-    const url = `${publicBaseUrl(env)}/r/nfc-test?token=${encodeURIComponent(flow.token)}`;
+    const campaign = `${NFC_TEST_CAMPAIGN_PREFIX}${flow.token}`;
+    const liffUrl = buildRewardLiffUrl(env, campaign, "nfc");
+    const backupUrl = `${publicBaseUrl(env)}/r/nfc-test?token=${encodeURIComponent(flow.token)}`;
     await replyOrPushLineMessage(provider, event.replyToken, userId, [
       "NFC 測試網址已建立：",
-      url,
+      liffUrl,
       "",
       `地址：${flow.address}`,
       `時間：${formatNfcTestTimeRange(parsed.startsAt, parsed.endsAt)}`,
       `點數：${calendarDefaultPoints(env)}點`,
       "",
-      "把這個網址寫入 NFC Tag，或直接用 LINE 開啟測試。",
+      "請把上方 LIFF 網址寫入 NFC Tag。",
+      `備用短網址：${backupUrl}`,
     ].join("\n"));
     return true;
   }
@@ -1714,7 +1717,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
         await logStage("liff_ready", "isInClient=" + liff.isInClient());
         if(!liff.isInClient()){
           await logStage("not_in_line_client", "Opened outside LINE app");
-          showClosed();
+          showOutsideLine();
           return;
         }
         if(!liff.isLoggedIn()){
@@ -1763,6 +1766,11 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       appEl.classList.add("error");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
       titleEl.textContent = "目前非課程時間，請查看行事曆"; messageEl.textContent = ""; closeSoon();
+    }
+    function showOutsideLine(){
+      appEl.classList.add("error");
+      loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
+      titleEl.textContent = "請使用 LINE 開啟"; messageEl.textContent = "NFC 請寫入 LIFF 網址，不要寫入一般網頁短網址";
     }
     function closeSoon(){ setTimeout(() => { if(window.liff && liff.isInClient()) liff.closeWindow(); else window.close(); }, CLOSE_DELAY_MS); }
     function getCurrentPosition(){
