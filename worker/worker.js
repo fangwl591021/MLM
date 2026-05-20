@@ -83,6 +83,9 @@ export default {
       }
 
       if (url.pathname === "/r/nfc" && (request.method === "GET" || request.method === "HEAD")) {
+        if (url.searchParams.has("liff.state") || url.searchParams.has("campaign")) {
+          return rewardCompactNfcLiffHtml(env, corsHeaders);
+        }
         return redirectToRewardLiff(env, "calendar_auto", "nfc");
       }
 
