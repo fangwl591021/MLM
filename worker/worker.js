@@ -36,6 +36,8 @@ const REWARD_CAMPAIGN_POINTS = {
   smart_202605_5: 5,
 };
 const REWARD_CALENDAR_AUTO = "calendar_auto";
+const NFC_TEST_CAMPAIGN_PREFIX = "nfc_test_";
+const DEFAULT_PUBLIC_BASE_URL = "https://mlm.fangwl591021.workers.dev";
 const DEFAULT_REWARD_CALENDAR_ID = "e60890fdb27ca97452f32e6484c312ed029faef62a6ddd4fbbe753fa557bcde5@group.calendar.google.com";
 const DEFAULT_REWARD_GEOFENCE_METERS = 300;
 const DEFAULT_REWARD_CALENDAR_POINTS = 5;
@@ -84,6 +86,12 @@ export default {
         return redirectToRewardLiff(env, "calendar_auto", "nfc");
       }
 
+      if (url.pathname === "/r/nfc-test" && (request.method === "GET" || request.method === "HEAD")) {
+        const token = normalizeNfcTestToken(url.searchParams.get("token"));
+        if (!token) return new Response("NFC test token is required", { status: 400, headers: corsHeaders });
+        return redirectToRewardLiff(env, `${NFC_TEST_CAMPAIGN_PREFIX}${token}`, "nfc");
+      }
+
       if (url.pathname === "/r/nfc5" && (request.method === "GET" || request.method === "HEAD")) {
         return redirectToRewardLiff(env, "smart_202605_5", "nfc");
       }
@@ -116,9 +124,9 @@ export default {
           status: "success",
           liffId: stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID,
           campaign,
-          points: campaign === REWARD_CALENDAR_AUTO ? calendarDefaultPoints(env) : rewardPointsForCampaign(campaign),
+          points: campaign === REWARD_CALENDAR_AUTO || isNfcTestCampaign(campaign) ? calendarDefaultPoints(env) : rewardPointsForCampaign(campaign),
           source: POINT_SOURCE_META[POINT_OA1].label,
-          calendarMode: campaign === REWARD_CALENDAR_AUTO,
+          calendarMode: campaign === REWARD_CALENDAR_AUTO || isNfcTestCampaign(campaign),
         }, 200, corsHeaders);
       }
 
@@ -617,11 +625,12 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
   for (const event of payload.events || []) {
     await recordPointEvent(env, channelKey, event);
     await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
-    if (isSmartDailyRewardEvent(channelKey, event)) {
-      const userId = event.source && event.source.userId ? event.source.userId : "";
+    const userId = event.source && event.source.userId ? event.source.userId : "";
+    if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
+      // consumed by the ad hoc NFC testing setup flow
+    } else if (isSmartDailyRewardEvent(channelKey, event)) {
       if (userId) await handleSmartRewardBalanceDisplay(env, provider, event, userId);
     } else if (isSmartPointQueryEvent(channelKey, event)) {
-      const userId = event.source && event.source.userId ? event.source.userId : "";
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
     } else {
       monitorEvents.push(event);
@@ -644,6 +653,160 @@ function isSmartPointQueryEvent(channelKey, event) {
   if (channelKey !== POINT_OA1 || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
   const text = normalizeTextKeyword(event.message.text);
   return ["k點查詢", "K點查詢", "點數查詢", "查詢k點", "查詢K點", "查詢點數"].map(normalizeTextKeyword).includes(text);
+}
+
+async function handleNfcTestConversation(env, channelKey, provider, event, userId) {
+  if (channelKey !== POINT_OA1 || !env.DB || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
+  const text = stringValue(event.message.text).trim();
+  if (!text) return false;
+  await ensureNfcTestTables(env);
+
+  if (normalizeTextKeyword(text) === normalizeTextKeyword("簽到測試")) {
+    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    const now = Date.now();
+    await env.DB.prepare(`
+      INSERT INTO nfc_test_flows (token, channel_key, user_id, stage, address, points, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(token, channelKey, userId, "address", "", calendarDefaultPoints(env), now, now).run();
+    await replyOrPushLineMessage(provider, event.replyToken, userId, "請輸入地址");
+    return true;
+  }
+
+  const flow = await latestOpenNfcTestFlow(env, channelKey, userId);
+  if (!flow) return false;
+  const now = Date.now();
+  if (flow.stage === "address") {
+    await env.DB.prepare(`
+      UPDATE nfc_test_flows
+      SET stage = ?, address = ?, updated_at = ?
+      WHERE token = ?
+    `).bind("time", text.slice(0, 300), now, flow.token).run();
+    await replyOrPushLineMessage(provider, event.replyToken, userId, "請輸入簽到時間\n例：今天 18:00-21:00\n也可輸入：明天 13:00-16:00、2026-05-20 18:00-21:00");
+    return true;
+  }
+
+  if (flow.stage === "time") {
+    const parsed = parseNfcTestTimeInput(text, now);
+    if (!parsed) {
+      await replyOrPushLineMessage(provider, event.replyToken, userId, "時間格式看不懂，請改用：今天 18:00-21:00 或 2026-05-20 18:00-21:00");
+      return true;
+    }
+    await env.DB.prepare(`
+      UPDATE nfc_test_flows
+      SET stage = ?, starts_at = ?, ends_at = ?, updated_at = ?
+      WHERE token = ?
+    `).bind("complete", parsed.startsAt, parsed.endsAt, now, flow.token).run();
+    const url = `${publicBaseUrl(env)}/r/nfc-test?token=${encodeURIComponent(flow.token)}`;
+    await replyOrPushLineMessage(provider, event.replyToken, userId, [
+      "NFC 測試網址已建立：",
+      url,
+      "",
+      `地址：${flow.address}`,
+      `時間：${formatNfcTestTimeRange(parsed.startsAt, parsed.endsAt)}`,
+      `點數：${calendarDefaultPoints(env)}點`,
+      "",
+      "把這個網址寫入 NFC Tag，或直接用 LINE 開啟測試。",
+    ].join("\n"));
+    return true;
+  }
+
+  return false;
+}
+
+async function ensureNfcTestTables(env) {
+  if (!env.DB) return;
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS nfc_test_flows (
+      token TEXT PRIMARY KEY,
+      channel_key TEXT NOT NULL DEFAULT 'oa1',
+      user_id TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      address TEXT NOT NULL DEFAULT '',
+      starts_at INTEGER,
+      ends_at INTEGER,
+      points INTEGER NOT NULL DEFAULT 5,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_nfc_test_flows_user
+    ON nfc_test_flows(channel_key, user_id, updated_at)
+  `).run();
+}
+
+async function latestOpenNfcTestFlow(env, channelKey, userId) {
+  if (!env.DB) return null;
+  return env.DB.prepare(`
+    SELECT token, channel_key, user_id, stage, address, starts_at, ends_at, points, created_at, updated_at
+    FROM nfc_test_flows
+    WHERE channel_key = ? AND user_id = ? AND stage IN ('address', 'time') AND updated_at >= ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(channelKey, userId, Date.now() - 24 * 60 * 60 * 1000).first();
+}
+
+function parseNfcTestTimeInput(input, now = Date.now()) {
+  const text = stringValue(input)
+    .replace(/[－—–]/g, "-")
+    .replace(/[～~]/g, "-")
+    .replace(/\s*(至|到)\s*/g, "-")
+    .trim();
+  if (!text) return null;
+  const base = taipeiDateParts(now);
+  let year = base.year;
+  let month = base.month;
+  let day = base.day;
+  let rest = text;
+  const isoDate = rest.match(/(20\d{2})[-/](\d{1,2})[-/](\d{1,2})/);
+  const slashDate = rest.match(/(?:^|\s)(\d{1,2})\/(\d{1,2})(?:\s|$)/);
+  if (/明天/.test(rest)) {
+    const tomorrow = taipeiDateParts(now + 24 * 60 * 60 * 1000);
+    year = tomorrow.year; month = tomorrow.month; day = tomorrow.day;
+  } else if (isoDate) {
+    year = Number(isoDate[1]); month = Number(isoDate[2]); day = Number(isoDate[3]);
+    rest = rest.replace(isoDate[0], " ");
+  } else if (slashDate) {
+    month = Number(slashDate[1]); day = Number(slashDate[2]);
+  }
+  const times = [...rest.matchAll(/(\d{1,2})[:：](\d{2})/g)].map((match) => ({ hour: Number(match[1]), minute: Number(match[2]) }));
+  if (!times.length) return null;
+  if (times.some((time) => time.hour > 23 || time.minute > 59)) return null;
+  const startsAt = taipeiLocalTimestamp(year, month, day, times[0].hour, times[0].minute);
+  let endsAt = times[1]
+    ? taipeiLocalTimestamp(year, month, day, times[1].hour, times[1].minute)
+    : startsAt + 3 * 60 * 60 * 1000;
+  if (endsAt <= startsAt) endsAt += 24 * 60 * 60 * 1000;
+  return { startsAt, endsAt };
+}
+
+function taipeiDateParts(value = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value)).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return { year: Number(parts.year), month: Number(parts.month), day: Number(parts.day) };
+}
+
+function taipeiLocalTimestamp(year, month, day, hour, minute) {
+  return Date.UTC(year, month - 1, day, hour, minute, 0) - 8 * 60 * 60 * 1000;
+}
+
+function formatNfcTestTimeRange(startsAt, endsAt) {
+  return `${formatTaipeiDateTime(new Date(startsAt).toISOString())}-${formatTaipeiDateTime(new Date(endsAt).toISOString()).slice(6)}`;
+}
+
+function publicBaseUrl(env) {
+  return stringValue(env.PUBLIC_BASE_URL || env.WORKER_PUBLIC_URL || DEFAULT_PUBLIC_BASE_URL).replace(/\/+$/, "");
+}
+
+function normalizeNfcTestToken(value) {
+  return stringValue(value).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40);
 }
 
 async function handlePointQueryKeyword(env, provider, event, userId) {
@@ -730,13 +893,15 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
   for (const event of payload.events || []) {
     await recordPointEvent(env, channelKey, event);
     await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
+    const userId = event.source && event.source.userId ? event.source.userId : "";
+    if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
+      continue;
+    }
     if (isSmartDailyRewardEvent(channelKey, event)) {
-      const userId = event.source && event.source.userId ? event.source.userId : "";
       if (userId) await handleSmartRewardBalanceDisplay(env, provider, event, userId);
       continue;
     }
     if (isSmartPointQueryEvent(channelKey, event)) {
-      const userId = event.source && event.source.userId ? event.source.userId : "";
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
       continue;
     }
@@ -1305,7 +1470,9 @@ async function claimQrReward(env, body) {
   const lineUserId = stringValue(lineProfile.sub || lineProfile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
 
-  const calendarContext = campaign === REWARD_CALENDAR_AUTO ? await resolveCalendarRewardContext(env, body) : null;
+  const calendarContext = campaign === REWARD_CALENDAR_AUTO
+    ? await resolveCalendarRewardContext(env, body)
+    : (isNfcTestCampaign(campaign) ? await resolveNfcTestRewardContext(env, campaign, body) : null);
   if (calendarContext) campaign = calendarContext.campaign;
   const points = calendarContext ? calendarContext.points : rewardPointsForCampaign(campaign);
   const existing = await env.DB.prepare(`
@@ -1518,8 +1685,9 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     const API_BASE = "https://mlm.fangwl591021.workers.dev";
     const LIFF_ID = ${JSON.stringify(liffId)};
     const CLOSE_DELAY_MS = 2400;
-    const campaign = "calendar_auto";
-    const entry = "nfc";
+    const params = mergedParams();
+    const campaign = params.get("campaign") || "calendar_auto";
+    const entry = params.get("entry") || "nfc";
     const appEl = document.getElementById("app");
     const titleEl = document.getElementById("title");
     const messageEl = document.getElementById("message");
@@ -1527,6 +1695,15 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     const successIconEl = document.getElementById("successIcon");
     const plainIconEl = document.getElementById("plainIcon");
     boot();
+    function mergedParams(){
+      const params = new URLSearchParams(location.search);
+      const state = params.get("liff.state");
+      if(state){
+        const stateParams = new URLSearchParams(state.charAt(0) === "?" ? state.slice(1) : state);
+        stateParams.forEach((value, key) => params.set(key, value));
+      }
+      return params;
+    }
     async function boot(){
       try{
         await logStage("page_loaded", "");
@@ -1874,6 +2051,55 @@ async function resolveCalendarRewardContext(env, body) {
   };
 }
 
+async function resolveNfcTestRewardContext(env, campaign, body) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const userLat = Number(body.lat || body.latitude);
+  const userLng = Number(body.lng || body.longitude);
+  if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+    throw httpError("請允許定位，系統才能確認是否在測試地點", 400);
+  }
+  await ensureNfcTestTables(env);
+  const token = normalizeNfcTestToken(campaign.replace(NFC_TEST_CAMPAIGN_PREFIX, ""));
+  const flow = token ? await env.DB.prepare(`
+    SELECT token, address, starts_at, ends_at, points
+    FROM nfc_test_flows
+    WHERE token = ? AND channel_key = ? AND stage = 'complete'
+  `).bind(token, POINT_OA1).first() : null;
+  if (!flow) throw httpError("找不到 NFC 測試設定，請重新在聊天室輸入簽到測試", 404);
+  const now = Date.now();
+  const startsAt = Number(flow.starts_at || 0);
+  const endsAt = Number(flow.ends_at || 0);
+  if (!startsAt || !endsAt || startsAt > now || endsAt < now) {
+    throw httpError("目前非測試簽到時間", 400);
+  }
+  const geo = await geocodeRewardLocation(env, flow.address);
+  if (!geo) throw httpError("測試地址無法定位，請重新建立測試網址", 400);
+  const distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
+  const radius = rewardGeofenceMeters(env);
+  if (distanceMeters > radius) {
+    throw httpError(`您目前距離測試地點約 ${Math.round(distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
+  }
+  const points = Number(flow.points || calendarDefaultPoints(env));
+  return {
+    campaign,
+    event: {
+      uid: `nfc-test:${token}`,
+      summary: "NFC測試簽到",
+      description: `測試贈點 ${points} K點`,
+      location: flow.address,
+      startsAt,
+      endsAt,
+    },
+    points: Number.isFinite(points) && points > 0 ? points : calendarDefaultPoints(env),
+    userLat,
+    userLng,
+    userAccuracy: Number(body.accuracy || 0) || null,
+    distanceMeters,
+    eventLat: geo.lat,
+    eventLng: geo.lng,
+  };
+}
+
 async function fetchRewardCalendarEvents(env) {
   const calendarId = stringValue(env.REWARD_GOOGLE_CALENDAR_ID) || DEFAULT_REWARD_CALENDAR_ID;
   const icsUrl = stringValue(env.REWARD_GOOGLE_CALENDAR_ICS_URL)
@@ -2040,7 +2266,7 @@ function publicCalendarEvent(event, now = Date.now(), context = null, env = {}) 
     startsAt: event.startsAt,
     endsAt: event.endsAt,
     active: event.startsAt - earlyMs <= now && event.endsAt >= now,
-    points: rewardPointsFromEvent(env, event),
+    points: context && Number(context.points) > 0 ? Number(context.points) : rewardPointsFromEvent(env, event),
     distanceMeters: context && Number.isFinite(context.distanceMeters) ? Math.round(context.distanceMeters) : null,
   };
 }
@@ -2056,6 +2282,10 @@ function normalizeCampaign(value) {
   const text = stringValue(value || "smart_202605").trim();
   const safe = text.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
   return safe || "smart_202605";
+}
+
+function isNfcTestCampaign(campaign) {
+  return normalizeCampaign(campaign).startsWith(NFC_TEST_CAMPAIGN_PREFIX);
 }
 
 function rewardPointsForCampaign(campaign) {
