@@ -2130,13 +2130,11 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
     throw httpError(`目前非測試簽到時間：${formatNfcTestTimeRange(startsAt, endsAt)}`, 400);
   }
   const geo = await geocodeRewardLocation(env, flow.address);
-  let distanceMeters = null;
-  if (geo) {
-    distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
-    const radius = rewardGeofenceMeters(env);
-    if (distanceMeters > radius) {
-      throw httpError(`您目前距離測試地點約 ${Math.round(distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
-    }
+  if (!geo) throw httpError("測試地址無法判定位置，請改用較簡短地址，例如：台北市南京東路五段108號", 400);
+  const distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
+  const radius = rewardGeofenceMeters(env);
+  if (distanceMeters > radius) {
+    throw httpError(`您目前距離測試地點約 ${Math.round(distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
   }
   const points = Number(flow.points || calendarDefaultPoints(env));
   return {
@@ -2154,8 +2152,8 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
     userLng,
     userAccuracy: Number(body.accuracy || 0) || null,
     distanceMeters,
-    eventLat: geo ? geo.lat : null,
-    eventLng: geo ? geo.lng : null,
+    eventLat: geo.lat,
+    eventLng: geo.lng,
   };
 }
 
@@ -2260,20 +2258,39 @@ async function geocodeRewardLocation(env, location) {
   if (!text) return null;
   const direct = parseLatLng(text);
   if (direct) return direct;
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tw&q=${encodeURIComponent(text)}`;
-  const response = await fetch(url, {
-    headers: {
-      "Accept": "application/json",
-      "User-Agent": "KLINK-reward-geofence/1.0",
-    },
-  });
-  if (!response.ok) return null;
-  const data = await response.json().catch(() => []);
-  const first = Array.isArray(data) ? data[0] : null;
-  if (!first) return null;
-  const lat = Number(first.lat);
-  const lng = Number(first.lon);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  const candidates = normalizeRewardLocationQueries(text);
+  for (const query of candidates) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tw&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "KLINK-reward-geofence/1.0",
+      },
+    });
+    if (!response.ok) continue;
+    const data = await response.json().catch(() => []);
+    const first = Array.isArray(data) ? data[0] : null;
+    if (!first) continue;
+    const lat = Number(first.lat);
+    const lng = Number(first.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+  return null;
+}
+
+function normalizeRewardLocationQueries(location) {
+  const original = stringValue(location).trim();
+  const simplified = original
+    .replace(/臺/g, "台")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/\s+/g, "")
+    .replace(/[\(（].*?[\)）]/g, "");
+  const withoutFloor = simplified.replace(/\d+樓(?:之\d+)?(?:號)?/g, "");
+  const withoutVillage = withoutFloor.replace(/[\u4e00-\u9fa5]{1,6}里/g, "");
+  const roadAddress = withoutVillage.match(/(.+?[路街道段])(.+)/);
+  const candidates = [original, simplified, withoutFloor, withoutVillage];
+  if (roadAddress) candidates.push(`${roadAddress[1]}${roadAddress[2]}`);
+  return [...new Set(candidates.map((item) => item.trim()).filter(Boolean))];
 }
 
 function parseLatLng(text) {
