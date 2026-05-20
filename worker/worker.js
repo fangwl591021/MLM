@@ -89,6 +89,10 @@ export default {
         return redirectToRewardLiff(env, "calendar_auto", "nfc");
       }
 
+      if ((url.pathname === "/r/checkin" || url.pathname === "/r/course-checkin") && (request.method === "GET" || request.method === "HEAD")) {
+        return redirectToRewardLiff(env, "calendar_auto", "checkin");
+      }
+
       if (url.pathname === "/r/nfc-test" && (request.method === "GET" || request.method === "HEAD")) {
         const token = normalizeNfcTestToken(url.searchParams.get("token"));
         if (!token) return new Response("NFC test token is required", { status: 400, headers: corsHeaders });
@@ -1586,7 +1590,7 @@ function redirectToRewardLiff(env, campaign, entry) {
 
 function buildRewardLiffUrl(env, campaign, entry) {
   const normalizedEntry = normalizeRewardEntry(entry || "qr");
-  const liffId = normalizedEntry === "nfc"
+  const liffId = normalizedEntry === "nfc" || normalizedEntry === "checkin"
     ? (stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID)
     : (stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID);
   const target = new URL(`https://liff.line.me/${encodeURIComponent(liffId)}`);
@@ -1597,7 +1601,7 @@ function buildRewardLiffUrl(env, campaign, entry) {
 
 function buildRewardLineAppUrl(env, campaign, entry) {
   const normalizedEntry = normalizeRewardEntry(entry || "qr");
-  const liffId = normalizedEntry === "nfc"
+  const liffId = normalizedEntry === "nfc" || normalizedEntry === "checkin"
     ? (stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID)
     : (stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID);
   const target = new URL(`line://app/${encodeURIComponent(liffId)}`);
@@ -1614,6 +1618,7 @@ function normalizeRewardEntry(value) {
 function rewardEntryLabel(value) {
   const entry = normalizeRewardEntry(value);
   if (entry === "nfc") return "NFC感應";
+  if (entry === "checkin") return "課程報到";
   if (entry === "calendar") return "日曆定位";
   return "QR掃碼";
 }
@@ -1707,6 +1712,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     const params = mergedParams();
     const campaign = params.get("campaign") || "calendar_auto";
     const entry = params.get("entry") || "nfc";
+    const isCourseCheckin = entry === "checkin" || entry === "calendar";
     const appEl = document.getElementById("app");
     const titleEl = document.getElementById("title");
     const messageEl = document.getElementById("message");
@@ -1763,17 +1769,27 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
         return;
       }
       await logStage("claim_success", data.duplicate ? "duplicate" : "claimed", data.line_user_id);
-      showSuccess(data.duplicate);
+      showSuccess(data);
     }
     function showLoading(){
       appEl.classList.remove("error");
       loadingIconEl.classList.remove("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.add("hidden");
-      titleEl.textContent = "請稍後，系統處理中"; messageEl.textContent = "正在確認課程時間";
+      titleEl.textContent = "請稍後，系統處理中"; messageEl.textContent = isCourseCheckin ? "正在確認課程、時間與位置" : "正在確認課程時間";
     }
-    function showSuccess(duplicate){
+    function showSuccess(data){
+      const duplicate = data && data.duplicate;
+      const eventTitle = data && data.event && data.event.title ? data.event.title : "";
+      const points = data && data.points ? data.points : 5;
       appEl.classList.remove("error");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.remove("hidden"); plainIconEl.classList.add("hidden");
-      titleEl.textContent = duplicate ? "已領取過本課程紅包" : "紅包已送出"; messageEl.textContent = duplicate ? "本課程已完成領取" : "已發送 5 K點"; closeSoon();
+      if(isCourseCheckin){
+        titleEl.textContent = duplicate ? "本課程已完成報到" : "課程報到成功";
+        messageEl.textContent = duplicate ? (eventTitle || "您已完成本課程報到") : ((eventTitle ? eventTitle + "｜" : "") + "已發送 " + points + "點");
+      }else{
+        titleEl.textContent = duplicate ? "已領取過本課程紅包" : "紅包已送出";
+        messageEl.textContent = duplicate ? "本課程已完成領取" : "已發送 " + points + " K點";
+      }
+      closeSoon();
     }
     function showClosed(reason){
       appEl.classList.add("error");
@@ -1783,7 +1799,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     function showOutsideLine(){
       appEl.classList.add("error");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
-      titleEl.textContent = "請使用 LINE 開啟"; messageEl.textContent = "NFC 請寫入 LIFF 網址，不要寫入一般網頁短網址";
+      titleEl.textContent = "請使用 LINE 開啟"; messageEl.textContent = isCourseCheckin ? "請從官方帳號內點選課程報到" : "NFC 請寫入 LIFF 網址，不要寫入一般網頁短網址";
     }
     function closeSoon(){ setTimeout(() => { if(window.liff && liff.isInClient()) liff.closeWindow(); else window.close(); }, CLOSE_DELAY_MS); }
     function getCurrentPosition(){
@@ -2039,8 +2055,11 @@ async function resolveCalendarRewardContext(env, body) {
   }
   const now = Date.now();
   const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
-  const events = (await fetchRewardCalendarEvents(env)).filter((event) => event.startsAt - earlyMs <= now && event.endsAt >= now);
-  if (!events.length) throw httpError("目前非課程時間，請查看行事曆", 400);
+  const allEvents = await fetchRewardCalendarEvents(env);
+  const todayEvents = allEvents.filter((event) => isSameTaipeiDate(event.startsAt, now));
+  if (!todayEvents.length) throw httpError("今天沒有行事曆活動", 400);
+  const events = todayEvents.filter((event) => event.startsAt - earlyMs <= now && event.endsAt >= now);
+  if (!events.length) throw httpError(`今天有活動，但目前不在報到時間：${todayEvents.map((event) => formatCalendarEventBrief(event)).join("；")}`, 400);
 
   const radius = rewardGeofenceMeters(env);
   const checked = [];
@@ -2073,6 +2092,19 @@ async function resolveCalendarRewardContext(env, body) {
     eventLat: best.geo.lat,
     eventLng: best.geo.lng,
   };
+}
+
+function isSameTaipeiDate(a, b) {
+  return taipeiDateKey(a) === taipeiDateKey(b);
+}
+
+function taipeiDateKey(value) {
+  const parts = taipeiDateParts(value);
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function formatCalendarEventBrief(event) {
+  return `${event.summary || "未命名活動"} ${formatTaipeiDateTime(new Date(event.startsAt).toISOString())}-${formatTaipeiDateTime(new Date(event.endsAt).toISOString()).slice(6)} ${event.location || "未填地點"}`;
 }
 
 async function resolveNfcTestRewardContext(env, campaign, body) {
