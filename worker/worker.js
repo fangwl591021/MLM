@@ -700,18 +700,20 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
       WHERE token = ?
     `).bind("complete", parsed.startsAt, parsed.endsAt, now, flow.token).run();
     const campaign = `${NFC_TEST_CAMPAIGN_PREFIX}${flow.token}`;
+    const nfcAppUrl = buildRewardLineAppUrl(env, campaign, "nfc");
     const liffUrl = buildRewardLiffUrl(env, campaign, "nfc");
     const backupUrl = `${publicBaseUrl(env)}/r/nfc-test?token=${encodeURIComponent(flow.token)}`;
     await replyOrPushLineMessage(provider, event.replyToken, userId, [
       "NFC 測試網址已建立：",
-      liffUrl,
+      nfcAppUrl,
       "",
       `地址：${flow.address}`,
       `時間：${formatNfcTestTimeRange(parsed.startsAt, parsed.endsAt)}`,
       `點數：${calendarDefaultPoints(env)}點`,
       "",
-      "請把上方 LIFF 網址寫入 NFC Tag。",
-      `備用短網址：${backupUrl}`,
+      "請把上方 LINE App 網址寫入 NFC Tag。",
+      `LIFF備用：${liffUrl}`,
+      `短網址備用：${backupUrl}`,
     ].join("\n"));
     return true;
   }
@@ -1588,6 +1590,17 @@ function buildRewardLiffUrl(env, campaign, entry) {
     ? (stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID)
     : (stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID);
   const target = new URL(`https://liff.line.me/${encodeURIComponent(liffId)}`);
+  target.searchParams.set("campaign", normalizeCampaign(campaign));
+  target.searchParams.set("entry", normalizedEntry);
+  return target.toString();
+}
+
+function buildRewardLineAppUrl(env, campaign, entry) {
+  const normalizedEntry = normalizeRewardEntry(entry || "qr");
+  const liffId = normalizedEntry === "nfc"
+    ? (stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID)
+    : (stringValue(env.REWARD_LIFF_ID) || REWARD_LIFF_ID);
+  const target = new URL(`line://app/${encodeURIComponent(liffId)}`);
   target.searchParams.set("campaign", normalizeCampaign(campaign));
   target.searchParams.set("entry", normalizedEntry);
   return target.toString();
