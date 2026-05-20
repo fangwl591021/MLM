@@ -2125,8 +2125,9 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
   const now = Date.now();
   const startsAt = Number(flow.starts_at || 0);
   const endsAt = Number(flow.ends_at || 0);
-  if (!startsAt || !endsAt || startsAt > now || endsAt < now) {
-    throw httpError("目前非測試簽到時間", 400);
+  const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
+  if (!startsAt || !endsAt || startsAt - earlyMs > now || endsAt < now) {
+    throw httpError(`目前非測試簽到時間：${formatNfcTestTimeRange(startsAt, endsAt)}`, 400);
   }
   const geo = await geocodeRewardLocation(env, flow.address);
   let distanceMeters = null;
