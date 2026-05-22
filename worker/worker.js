@@ -42,6 +42,12 @@ const DEFAULT_REWARD_CALENDAR_ID = "e60890fdb27ca97452f32e6484c312ed029faef62a6d
 const DEFAULT_REWARD_GEOFENCE_METERS = 300;
 const DEFAULT_REWARD_CALENDAR_POINTS = 5;
 const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 90;
+const CHECKIN_LOCATION_META = {
+  taipei: { label: "台北", keywords: ["台北", "臺北", "南京東路五段108", "台北總公司"] },
+  taichung: { label: "台中", keywords: ["台中", "臺中", "市政路500", "台中營業處"] },
+  kaohsiung: { label: "高雄", keywords: ["高雄", "光華一路206", "高雄營業處"] },
+  other: { label: "其他", keywords: [] },
+};
 
 export default {
   async fetch(request, env, ctx) {
@@ -668,14 +674,16 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
   if (!text) return false;
   await ensureNfcTestTables(env);
 
-  if (normalizeTextKeyword(text) === normalizeTextKeyword("簽到測試")) {
+  const isTempCheckinKeyword = normalizeTextKeyword(text) === normalizeTextKeyword("報到點");
+  const isTestKeyword = normalizeTextKeyword(text) === normalizeTextKeyword("簽到測試");
+  if (isTempCheckinKeyword || isTestKeyword) {
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
     const now = Date.now();
     await env.DB.prepare(`
       INSERT INTO nfc_test_flows (token, channel_key, user_id, stage, address, points, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(token, channelKey, userId, "address", "", calendarDefaultPoints(env), now, now).run();
-    await replyOrPushLineMessage(provider, event.replyToken, userId, "請輸入地址");
+    await replyOrPushLineMessage(provider, event.replyToken, userId, isTempCheckinKeyword ? "請輸入臨時報到點地址" : "請輸入地址");
     return true;
   }
 
@@ -705,17 +713,19 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
     `).bind("complete", parsed.startsAt, parsed.endsAt, now, flow.token).run();
     const campaign = `${NFC_TEST_CAMPAIGN_PREFIX}${flow.token}`;
     const nfcAppUrl = buildRewardLineAppUrl(env, campaign, "nfc");
+    const tempCheckinUrl = buildRewardLiffUrl(env, campaign, "checkin");
     const liffUrl = buildRewardLiffUrl(env, campaign, "nfc");
     const backupUrl = `${publicBaseUrl(env)}/r/nfc-test?token=${encodeURIComponent(flow.token)}`;
     await replyOrPushLineMessage(provider, event.replyToken, userId, [
-      "NFC 測試網址已建立：",
-      nfcAppUrl,
+      "報到點已建立：",
+      tempCheckinUrl,
       "",
       `地址：${flow.address}`,
       `時間：${formatNfcTestTimeRange(parsed.startsAt, parsed.endsAt)}`,
       `點數：${calendarDefaultPoints(env)}點`,
       "",
-      "請把上方 LINE App 網址寫入 NFC Tag。",
+      "使用者也可在課程報到選「其他」後依定位報到。",
+      `LINE App備用：${nfcAppUrl}`,
       `LIFF備用：${liffUrl}`,
       `短網址備用：${backupUrl}`,
     ].join("\n"));
@@ -1683,7 +1693,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>NFC 贈K點</title>
+  <title>課程報到</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     :root{--line:#06c755;--ink:#111827;--muted:#667085;--red:#e11d48}
@@ -1694,6 +1704,8 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     .packet{width:92px;height:112px;margin:0 auto 18px;border-radius:18px 18px 26px 26px;background:linear-gradient(180deg,#ff3b30,#c1121f);position:relative;box-shadow:0 18px 42px rgba(225,29,72,.25)}
     .packet:before{content:"";position:absolute;left:50%;top:40px;width:42px;height:42px;border-radius:50%;background:#ffd166;transform:translateX(-50%)}.packet:after{content:"5";position:absolute;left:50%;top:44px;transform:translateX(-50%);font-weight:900;font-size:24px;color:#8a1c13}
     .mark{width:62px;height:62px;margin:0 auto 18px;border-radius:18px;background:var(--red);display:grid;place-items:center;color:#fff;font-size:24px;font-weight:900;box-shadow:0 16px 38px rgba(225,29,72,.18)}
+    .locations{display:none;margin-top:18px;gap:10px;grid-template-columns:1fr 1fr}.locations.active{display:grid}.choice{appearance:none;border:1px solid #d6e2ef;background:#fff;color:#111827;border-radius:16px;min-height:52px;font-size:17px;font-weight:900;box-shadow:0 8px 24px rgba(16,24,40,.06)}
+    .choice.primary{background:var(--line);border-color:var(--line);color:#fff}.choice.other{grid-column:1 / -1}
     .hidden{display:none}.error h1{color:var(--red)}@keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
@@ -1704,6 +1716,12 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     <div id="plainIcon" class="mark hidden">KL</div>
     <h1 id="title">請稍後，系統處理中</h1>
     <p id="message">正在確認課程時間</p>
+    <div id="locationPanel" class="locations">
+      <button class="choice primary" data-location="taipei" type="button">台北</button>
+      <button class="choice primary" data-location="taichung" type="button">台中</button>
+      <button class="choice primary" data-location="kaohsiung" type="button">高雄</button>
+      <button class="choice other" data-location="other" type="button">其他</button>
+    </div>
   </main>
   <script>
     const API_BASE = "https://mlm.fangwl591021.workers.dev";
@@ -1713,12 +1731,20 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     const campaign = params.get("campaign") || "calendar_auto";
     const entry = params.get("entry") || "nfc";
     const isCourseCheckin = entry === "checkin" || entry === "calendar";
+    let selectedLocation = params.get("location") || params.get("site") || "";
     const appEl = document.getElementById("app");
     const titleEl = document.getElementById("title");
     const messageEl = document.getElementById("message");
     const loadingIconEl = document.getElementById("loadingIcon");
     const successIconEl = document.getElementById("successIcon");
     const plainIconEl = document.getElementById("plainIcon");
+    const locationPanelEl = document.getElementById("locationPanel");
+    locationPanelEl.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-location]");
+      if(!button) return;
+      selectedLocation = button.dataset.location || "";
+      claim();
+    });
     boot();
     function mergedParams(){
       const params = new URLSearchParams(location.search);
@@ -1744,6 +1770,10 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
           liff.login({ redirectUri: location.href });
           return;
         }
+        if(isCourseCheckin && !selectedLocation && campaign === "calendar_auto"){
+          showLocationPicker();
+          return;
+        }
         await claim();
       }catch(error){
         await logStage("boot_error", error && error.message ? error.message : String(error));
@@ -1760,7 +1790,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       const response = await fetch(API_BASE + "/api/reward/claim", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ campaign, entry, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
+        body:JSON.stringify({ campaign, entry, location:selectedLocation, checkinLocation:selectedLocation, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
       });
       const data = await response.json().catch(() => ({}));
       if(!response.ok || data.status !== "success"){
@@ -1773,14 +1803,22 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     }
     function showLoading(){
       appEl.classList.remove("error");
+      locationPanelEl.classList.remove("active");
       loadingIconEl.classList.remove("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.add("hidden");
       titleEl.textContent = "請稍後，系統處理中"; messageEl.textContent = isCourseCheckin ? "正在確認課程、時間與位置" : "正在確認課程時間";
+    }
+    function showLocationPicker(){
+      appEl.classList.remove("error");
+      loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
+      locationPanelEl.classList.add("active");
+      titleEl.textContent = "選擇報到地點"; messageEl.textContent = "請先選擇本次課程所在區域";
     }
     function showSuccess(data){
       const duplicate = data && data.duplicate;
       const eventTitle = data && data.event && data.event.title ? data.event.title : "";
       const points = data && data.points ? data.points : 5;
       appEl.classList.remove("error");
+      locationPanelEl.classList.remove("active");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.remove("hidden"); plainIconEl.classList.add("hidden");
       if(isCourseCheckin){
         titleEl.textContent = duplicate ? "本課程已完成報到" : "課程報到成功";
@@ -1793,11 +1831,13 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     }
     function showClosed(reason){
       appEl.classList.add("error");
+      locationPanelEl.classList.remove("active");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
       titleEl.textContent = reason || "目前非課程時間，請查看行事曆"; messageEl.textContent = reason ? "請確認測試網址、時間或定位設定" : ""; closeSoon();
     }
     function showOutsideLine(){
       appEl.classList.add("error");
+      locationPanelEl.classList.remove("active");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
       titleEl.textContent = "請使用 LINE 開啟"; messageEl.textContent = isCourseCheckin ? "請從官方帳號內點選課程報到" : "NFC 請寫入 LIFF 網址，不要寫入一般網頁短網址";
     }
@@ -2053,13 +2093,20 @@ async function resolveCalendarRewardContext(env, body) {
   if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
     throw httpError("請允許定位，系統才能確認是否在活動地點", 400);
   }
+  const selectedLocation = normalizeCheckinLocation(body.checkinLocation || body.location || body.site);
+  if (selectedLocation === "other") {
+    return resolveTemporaryCheckinRewardContext(env, body);
+  }
+  const locationMeta = selectedLocation ? CHECKIN_LOCATION_META[selectedLocation] : null;
   const now = Date.now();
   const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
   const allEvents = await fetchRewardCalendarEvents(env);
-  const todayEvents = allEvents.filter((event) => isSameTaipeiDate(event.startsAt, now));
-  if (!todayEvents.length) throw httpError("今天沒有行事曆活動", 400);
+  const todayEvents = allEvents
+    .filter((event) => isSameTaipeiDate(event.startsAt, now))
+    .filter((event) => !locationMeta || calendarEventMatchesCheckinLocation(event, selectedLocation));
+  if (!todayEvents.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}沒有行事曆活動`, 400);
   const events = todayEvents.filter((event) => event.startsAt - earlyMs <= now && event.endsAt >= now);
-  if (!events.length) throw httpError(`今天有活動，但目前不在報到時間：${todayEvents.map((event) => formatCalendarEventBrief(event)).join("；")}`, 400);
+  if (!events.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}有活動，但目前不在報到時間：${todayEvents.map((event) => formatCalendarEventBrief(event)).join("；")}`, 400);
 
   const radius = rewardGeofenceMeters(env);
   const checked = [];
@@ -2092,6 +2139,80 @@ async function resolveCalendarRewardContext(env, body) {
     eventLat: best.geo.lat,
     eventLng: best.geo.lng,
   };
+}
+
+async function resolveTemporaryCheckinRewardContext(env, body) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const userLat = Number(body.lat || body.latitude);
+  const userLng = Number(body.lng || body.longitude);
+  if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+    throw httpError("請允許定位，系統才能確認是否在臨時報到點", 400);
+  }
+  await ensureNfcTestTables(env);
+  const now = Date.now();
+  const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
+  const rows = await env.DB.prepare(`
+    SELECT token, address, starts_at, ends_at, points
+    FROM nfc_test_flows
+    WHERE channel_key = ? AND stage = 'complete' AND starts_at - ? <= ? AND ends_at >= ?
+    ORDER BY updated_at DESC
+    LIMIT 20
+  `).bind(POINT_OA1, earlyMs, now, now).all();
+  const flows = rows.results || [];
+  if (!flows.length) throw httpError("目前沒有可用的臨時報到點，請先在聊天室輸入報到點建立", 400);
+  const checked = [];
+  for (const flow of flows) {
+    const geo = await geocodeRewardLocation(env, flow.address);
+    if (!geo) continue;
+    checked.push({ flow, geo, distanceMeters: haversineMeters(userLat, userLng, geo.lat, geo.lng) });
+  }
+  checked.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  const best = checked[0];
+  if (!best) throw httpError("臨時報到點地址無法判定位置，請重新建立較簡短地址", 400);
+  const radius = rewardGeofenceMeters(env);
+  if (best.distanceMeters > radius) {
+    throw httpError(`您目前距離臨時報到點約 ${Math.round(best.distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
+  }
+  const points = Number(best.flow.points || calendarDefaultPoints(env));
+  return {
+    campaign: `${NFC_TEST_CAMPAIGN_PREFIX}${best.flow.token}`,
+    event: {
+      uid: `temp-checkin:${best.flow.token}`,
+      summary: "臨時報到點",
+      description: `臨時報到贈點 ${points} K點`,
+      location: best.flow.address,
+      startsAt: Number(best.flow.starts_at || 0),
+      endsAt: Number(best.flow.ends_at || 0),
+    },
+    points: Number.isFinite(points) && points > 0 ? points : calendarDefaultPoints(env),
+    userLat,
+    userLng,
+    userAccuracy: Number(body.accuracy || 0) || null,
+    distanceMeters: best.distanceMeters,
+    eventLat: best.geo.lat,
+    eventLng: best.geo.lng,
+  };
+}
+
+function normalizeCheckinLocation(value) {
+  const text = stringValue(value).toLowerCase().trim();
+  if (!text) return "";
+  if (["taipei", "台北", "臺北"].includes(text)) return "taipei";
+  if (["taichung", "台中", "臺中"].includes(text)) return "taichung";
+  if (["kaohsiung", "高雄"].includes(text)) return "kaohsiung";
+  if (["other", "其他"].includes(text)) return "other";
+  return "";
+}
+
+function calendarEventMatchesCheckinLocation(event, locationKey) {
+  const meta = CHECKIN_LOCATION_META[locationKey];
+  if (!meta) return true;
+  const text = normalizeLocationText(`${event.summary || ""} ${event.description || ""} ${event.location || ""}`);
+  return meta.keywords.some((keyword) => text.includes(normalizeLocationText(keyword)));
+}
+
+function normalizeLocationText(value) {
+  return stringValue(value).replace(/臺/g, "台").replace(/\s+/g, "");
 }
 
 function isSameTaipeiDate(a, b) {
@@ -2137,12 +2258,14 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
     throw httpError(`您目前距離測試地點約 ${Math.round(distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
   }
   const points = Number(flow.points || calendarDefaultPoints(env));
+  const entry = normalizeRewardEntry(body.entry || body.entry_method || body.source || "nfc");
+  const eventTitle = entry === "checkin" ? "臨時報到點" : "NFC測試簽到";
   return {
     campaign,
     event: {
       uid: `nfc-test:${token}`,
-      summary: "NFC測試簽到",
-      description: `測試贈點 ${points} K點`,
+      summary: eventTitle,
+      description: `${eventTitle}贈點 ${points} K點`,
       location: flow.address,
       startsAt,
       endsAt,
