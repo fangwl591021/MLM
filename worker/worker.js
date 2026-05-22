@@ -43,9 +43,9 @@ const DEFAULT_REWARD_GEOFENCE_METERS = 300;
 const DEFAULT_REWARD_CALENDAR_POINTS = 5;
 const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 90;
 const CHECKIN_LOCATION_META = {
-  taipei: { label: "台北", keywords: ["台北", "臺北", "南京東路五段108", "台北總公司"] },
-  taichung: { label: "台中", keywords: ["台中", "臺中", "市政路500", "台中營業處"] },
-  kaohsiung: { label: "高雄", keywords: ["高雄", "光華一路206", "高雄營業處"] },
+  taipei: { label: "台北", keywords: ["台北", "臺北", "南京東路五段108", "台北總公司"], lat: 25.0513143, lng: 121.5621864 },
+  taichung: { label: "台中", keywords: ["台中", "臺中", "市政路500", "台中營業處"], lat: 24.159265, lng: 120.636989 },
+  kaohsiung: { label: "高雄", keywords: ["高雄", "光華一路206", "高雄營業處"], lat: 22.6290869, lng: 120.3138688 },
   other: { label: "其他", keywords: [] },
 };
 
@@ -669,9 +669,10 @@ function isSmartPointQueryEvent(channelKey, event) {
 }
 
 async function handleNfcTestConversation(env, channelKey, provider, event, userId) {
-  if (channelKey !== POINT_OA1 || !env.DB || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
-  const text = stringValue(event.message.text).trim();
-  if (!text) return false;
+  if (channelKey !== POINT_OA1 || !env.DB || !event || event.type !== "message" || !event.message) return false;
+  const message = event.message || {};
+  const messageType = stringValue(message.type);
+  const text = messageType === "text" ? stringValue(message.text).trim() : "";
   await ensureNfcTestTables(env);
 
   const isTempCheckinKeyword = normalizeTextKeyword(text) === normalizeTextKeyword("報到點");
@@ -683,7 +684,7 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
       INSERT INTO nfc_test_flows (token, channel_key, user_id, stage, address, points, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(token, channelKey, userId, "address", "", calendarDefaultPoints(env), now, now).run();
-    await replyOrPushLineMessage(provider, event.replyToken, userId, isTempCheckinKeyword ? "請輸入臨時報到點地址" : "請輸入地址");
+    await replyOrPushLineMessage(provider, event.replyToken, userId, isTempCheckinKeyword ? "請輸入臨時報到點地址，或直接傳送 LINE 位置（較準）" : "請輸入地址，或直接傳送 LINE 位置（較準）");
     return true;
   }
 
@@ -691,16 +692,25 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
   if (!flow) return false;
   const now = Date.now();
   if (flow.stage === "address") {
+    const address = nfcFlowAddressFromMessage(message);
+    if (!address) {
+      await replyOrPushLineMessage(provider, event.replyToken, userId, "請輸入地址，或使用 LINE 的位置功能傳送目前地點。");
+      return true;
+    }
     await env.DB.prepare(`
       UPDATE nfc_test_flows
       SET stage = ?, address = ?, updated_at = ?
       WHERE token = ?
-    `).bind("time", text.slice(0, 300), now, flow.token).run();
+    `).bind("time", address.slice(0, 300), now, flow.token).run();
     await replyOrPushLineMessage(provider, event.replyToken, userId, "請輸入簽到時間\n例：今天 18:00-21:00\n也可輸入：明天 13:00-16:00、2026-05-20 18:00-21:00");
     return true;
   }
 
   if (flow.stage === "time") {
+    if (!text) {
+      await replyOrPushLineMessage(provider, event.replyToken, userId, "請輸入簽到時間\n例：今天 18:00-21:00");
+      return true;
+    }
     const parsed = parseNfcTestTimeInput(text, now);
     if (!parsed) {
       await replyOrPushLineMessage(provider, event.replyToken, userId, "時間格式看不懂，請改用：今天 18:00-21:00 或 2026-05-20 18:00-21:00");
@@ -733,6 +743,19 @@ async function handleNfcTestConversation(env, channelKey, provider, event, userI
   }
 
   return false;
+}
+
+function nfcFlowAddressFromMessage(message) {
+  if (!message) return "";
+  if (message.type === "location") {
+    const lat = Number(message.latitude);
+    const lng = Number(message.longitude);
+    const label = [message.title, message.address].map(stringValue).filter(Boolean).join(" ");
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return `${lat},${lng} ${label}`.trim();
+    return label;
+  }
+  if (message.type === "text") return stringValue(message.text).trim();
+  return "";
 }
 
 async function ensureNfcTestTables(env) {
@@ -1811,7 +1834,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       appEl.classList.remove("error");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.remove("hidden");
       locationPanelEl.classList.add("active");
-      titleEl.textContent = "選擇報到地點"; messageEl.textContent = "請先選擇本次課程所在區域";
+      titleEl.textContent = "選擇報到地點"; messageEl.textContent = "台北、台中、高雄使用公司定位；其他請先在聊天室輸入報到點並傳送 LINE 位置";
     }
     function showSuccess(data){
       const duplicate = data && data.duplicate;
@@ -2111,7 +2134,9 @@ async function resolveCalendarRewardContext(env, body) {
   const radius = rewardGeofenceMeters(env);
   const checked = [];
   for (const event of events) {
-    const geo = await geocodeRewardLocation(env, event.location);
+    const geo = locationMeta && Number.isFinite(locationMeta.lat) && Number.isFinite(locationMeta.lng)
+      ? { lat: locationMeta.lat, lng: locationMeta.lng }
+      : await geocodeRewardLocation(env, event.location);
     if (!geo) {
       checked.push({ event, distanceMeters: Number.POSITIVE_INFINITY, geo: null });
       continue;
@@ -2381,6 +2406,8 @@ async function geocodeRewardLocation(env, location) {
   if (!text) return null;
   const direct = parseLatLng(text);
   if (direct) return direct;
+  const known = knownRewardLocationLatLng(text);
+  if (known) return known;
   const candidates = normalizeRewardLocationQueries(text);
   for (const query of candidates) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tw&q=${encodeURIComponent(query)}`;
@@ -2399,6 +2426,18 @@ async function geocodeRewardLocation(env, location) {
     if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
   }
   return null;
+}
+
+function knownRewardLocationLatLng(location) {
+  const text = normalizeLocationText(location);
+  if (!text) return null;
+  const knownLocations = [
+    { keywords: ["南京東路五段108", "台北總公司"], lat: CHECKIN_LOCATION_META.taipei.lat, lng: CHECKIN_LOCATION_META.taipei.lng },
+    { keywords: ["市政路500", "台中營業處"], lat: CHECKIN_LOCATION_META.taichung.lat, lng: CHECKIN_LOCATION_META.taichung.lng },
+    { keywords: ["光華一路206", "高雄營業處"], lat: CHECKIN_LOCATION_META.kaohsiung.lat, lng: CHECKIN_LOCATION_META.kaohsiung.lng },
+  ];
+  const matched = knownLocations.find((item) => item.keywords.some((keyword) => text.includes(normalizeLocationText(keyword))));
+  return matched ? { lat: matched.lat, lng: matched.lng } : null;
 }
 
 function normalizeRewardLocationQueries(location) {
