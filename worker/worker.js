@@ -3534,9 +3534,13 @@ async function handleKeywordAutomation(env, floor, provider, event, userId, text
     const balance = result && result.balance_after !== undefined && result.balance_after !== null
       ? result.balance_after
       : await getPointAccountBalance(env, stringValue(rule.channel_key) || POINT_OA1, userId, stringValue(rule.point_type) || "gift_money");
-    replyText = result.duplicate
+    if (result.readonly) {
+      replyText = `目前累積 ${formatPoint(balance)} K點。`;
+    } else {
+      replyText = result.duplicate
       ? `您今天已經簽到過，目前累積 ${formatPoint(balance)} K點。`
       : `簽到成功，已贈送 ${formatPoint(result.points)} K點。目前累積 ${formatPoint(balance)} K點。`;
+    }
   } catch (error) {
     result = { error: error && error.message ? error.message : String(error) };
     replyText = "簽到暫時失敗，請稍後再試。";
@@ -3588,10 +3592,12 @@ async function matchKeywordRule(env, floor, text) {
 
 async function applyDailyKeywordReward(env, rule, userId) {
   const rewardDate = taipeiDate();
-  const points = Number(rule.points || 0) || 5;
   const channelKey = stringValue(rule.channel_key) || POINT_OA1;
   const pointType = stringValue(rule.point_type) || "gift_money";
   const keyword = stringValue(rule.keyword);
+  const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10, {
+    shop_id: memberCheckinShopId(env),
+  });
   const existingSameDay = await env.DB.prepare(`
     SELECT id, keyword, points, balance_after, status
     FROM daily_keyword_rewards
@@ -3599,60 +3605,18 @@ async function applyDailyKeywordReward(env, rule, userId) {
     ORDER BY id ASC
     LIMIT 1
   `).bind(userId, channelKey, pointType, rewardDate).first();
-  if (existingSameDay) {
-    const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10);
-    return { duplicate: true, points: Number(existingSameDay.points || points), balance_after: snapshot.balance };
-  }
-  const insert = await env.DB.prepare(`
+  if (!existingSameDay) {
+    await env.DB.prepare(`
     INSERT OR IGNORE INTO daily_keyword_rewards (rule_id, keyword, line_user_id, channel_key, point_type, points, reward_date, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
-  const inserted = Boolean(insert && insert.meta && insert.meta.changes);
-  if (!inserted) {
-    const existing = await env.DB.prepare(`
-      SELECT points, balance_after, status
-      FROM daily_keyword_rewards
-      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
-    `).bind(rule.id, userId, rewardDate).first();
-    if (existing && existing.status === "failed") {
-      await env.DB.prepare(`
-        UPDATE daily_keyword_rewards
-        SET status = 'pending', message = '', updated_at = CURRENT_TIMESTAMP
-        WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
-      `).bind(rule.id, userId, rewardDate).run();
-    } else {
-      const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10);
-      return { duplicate: true, points: Number(existing && existing.points || points), balance_after: snapshot.balance };
-    }
+    VALUES (?, ?, ?, ?, ?, 0, ?, 'checked', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `).bind(rule.id, keyword, userId, channelKey, pointType, rewardDate).run();
   }
-
-  try {
-    const mutation = await pointMutation(env, {
-      channel_key: channelKey,
-      line_user_id: userId,
-      point_type: pointType,
-      points,
-      operator_id: `keyword:${keyword}`,
-      operator_name: "關鍵字自動贈K點",
-      event_name: keyword,
-      event_content: `每日簽到 ${rewardDate}`,
-      note: `每日簽到 ${rewardDate}`,
-      business_key: `keyword:${keyword}:${userId}:${rewardDate}`,
-    }, "grant");
-    await env.DB.prepare(`
-      UPDATE daily_keyword_rewards
-      SET status = 'success', point_ledger_id = ?, balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
-    `).bind(mutation.ledger_id || null, mutation.balance_after || null, "claimed", rule.id, userId, rewardDate).run();
-    return { duplicate: false, points, balance_after: mutation.balance_after };
-  } catch (error) {
-    await env.DB.prepare(`
-      UPDATE daily_keyword_rewards
-      SET status = 'failed', message = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
-    `).bind(error && error.message ? error.message : String(error), rule.id, userId, rewardDate).run();
-    throw error;
-  }
+  await env.DB.prepare(`
+    UPDATE daily_keyword_rewards
+    SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+  `).bind(snapshot.balance, "read_only_mother_site_query", rule.id, userId, rewardDate).run();
+  return { readonly: true, duplicate: Boolean(existingSameDay), points: 0, balance_after: snapshot.balance };
 }
 
 function normalizeTextKeyword(value) {
