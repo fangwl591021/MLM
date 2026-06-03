@@ -1262,10 +1262,11 @@ async function pointMutation(env, body, action) {
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
   if (chatLineUserId && chatLineUserId === lineUserId) {
     const resolved = await resolvePointIdentity(env, { chatLineUserId });
-    if (resolved && resolved.pointLineUserId) lineUserId = resolved.pointLineUserId;
+    const sourceLineUserId = resolved && resolved.channelLineUserIds ? stringValue(resolved.channelLineUserIds[channelKey]) : "";
+    if (sourceLineUserId) lineUserId = sourceLineUserId;
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
-    throw httpError("此聊天室 UID 尚未綁定母站 K點 UID，請先綁定後再贈扣。", 400);
+    throw httpError(`此聊天室尚未綁定${pointSourceMeta(channelKey)?.label || channelKey} K點 UID，請先綁定後再贈扣。`, 400);
   }
   const sourceMeta = pointSourceMeta(channelKey);
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
@@ -2747,15 +2748,12 @@ async function listPointBalances(env, url) {
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
-  if (channelKey && lineUserId) {
-    return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")] };
-  }
   if (lineUserId) {
-    const exactBalances = await livePointBalancesForUser(env, lineUserId);
-    if (exactBalances.length) return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" } };
     const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
-    if (resolved && resolved.pointLineUserId) {
-      const resolvedRows = await livePointBalancesForUser(env, resolved.pointLineUserId);
+    if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
+      const resolvedRows = channelKey
+        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, "gift_money")
+        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, "gift_money");
       return {
         balances: resolvedRows.map((row) => ({
           ...row,
@@ -2765,24 +2763,33 @@ async function listPointBalances(env, url) {
         })),
         resolved: {
           chat_line_user_id: lineUserId,
-          point_line_user_id: resolved.pointLineUserId,
+          point_line_user_id: resolved.channelLineUserIds[POINT_OA1] || resolved.channelLineUserIds[POINT_OA2] || "",
+          channel_line_user_ids: resolved.channelLineUserIds,
           member_ref: resolved.memberRef,
           name: resolved.name,
           source: resolved.source,
         },
       };
     }
+    if (channelKey) {
+      return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" } };
+    }
+    const exactBalances = await livePointBalancesForUser(env, lineUserId);
+    if (exactBalances.length) return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" } };
     return { balances: [], resolved: { chat_line_user_id: lineUserId, point_line_user_id: "", source: "not_found" } };
   }
   if (masterMemberRef) {
-    const rows = await env.DB.prepare(`
-      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
-      FROM point_accounts
-      WHERE master_member_ref = ?
-      ORDER BY channel_key, point_type
-      LIMIT ?
-    `).bind(masterMemberRef, limit).all();
-    return decoratePointBalances(rows.results || []);
+    const resolved = await resolvePointIdentity(env, { masterMemberRef });
+    if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
+      const rows = channelKey
+        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, "gift_money")
+        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, "gift_money");
+      return {
+        balances: rows.map((row) => ({ ...row, resolved_member_ref: resolved.memberRef, resolved_from_name: resolved.name })),
+        resolved: { member_ref: resolved.memberRef, name: resolved.name, channel_line_user_ids: resolved.channelLineUserIds, source: resolved.source },
+      };
+    }
+    return { balances: [], resolved: { member_ref: masterMemberRef, channel_line_user_ids: {}, source: "not_found" } };
   }
   if (channelKey) {
     const rows = await env.DB.prepare(`
@@ -2815,6 +2822,20 @@ async function livePointBalancesForUser(env, lineUserId) {
   return balances;
 }
 
+async function livePointBalancesForSourceUsers(env, channelLineUserIds, pointType) {
+  const balances = [];
+  for (const channelKey of [POINT_OA1, POINT_OA2]) {
+    const sourceLineUserId = stringValue(channelLineUserIds && channelLineUserIds[channelKey]);
+    if (!sourceLineUserId) continue;
+    try {
+      balances.push(await livePointBalanceRow(env, channelKey, sourceLineUserId, pointType));
+    } catch (_err) {
+      // Keep the other source usable when a source-specific UID is stale or unavailable.
+    }
+  }
+  return balances;
+}
+
 async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
   const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 20);
   return decoratePointBalances([{
@@ -2836,14 +2857,34 @@ function pointSourceMeta(channelKey) {
 
 async function resolvePointIdentity(env, input) {
   const chatLineUserId = stringValue(input.chatLineUserId);
+  const masterMemberRef = stringValue(input.masterMemberRef || input.master_member_ref);
   const userName = stringValue(input.userName).trim();
   if (!env.DB) return null;
+
+  if (masterMemberRef) {
+    const member = await env.DB.prepare(`
+      SELECT member_ref, name, source_json
+      FROM crm_members
+      WHERE member_ref = ?
+      LIMIT 1
+    `).bind(masterMemberRef).first();
+    const channelLineUserIds = await pointLineUserIdsForMember(env, masterMemberRef, member);
+    if (hasPointSourceLineUsers(channelLineUserIds)) {
+      return {
+        channelLineUserIds,
+        pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
+        memberRef: masterMemberRef,
+        name: member && member.name ? member.name : "",
+        source: "member_ref",
+      };
+    }
+  }
 
   if (chatLineUserId) {
     const linked = await env.DB.prepare(`
       SELECT master_member_ref, line_user_id
       FROM member_line_links
-      WHERE line_user_id = ?
+      WHERE channel_key = 'chat' AND line_user_id = ?
       LIMIT 1
     `).bind(chatLineUserId).first();
     if (linked && linked.master_member_ref) {
@@ -2853,33 +2894,61 @@ async function resolvePointIdentity(env, input) {
         WHERE member_ref = ?
         LIMIT 1
       `).bind(linked.master_member_ref).first();
-      const pointLineUserId = crmLineUserId(member) || await pointLineUserIdForMember(env, linked.master_member_ref);
-      if (pointLineUserId) return { pointLineUserId, memberRef: linked.master_member_ref, name: member && member.name ? member.name : "", source: "member_link" };
+      const channelLineUserIds = await pointLineUserIdsForMember(env, linked.master_member_ref, member);
+      if (hasPointSourceLineUsers(channelLineUserIds)) {
+        return {
+          channelLineUserIds,
+          pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
+          memberRef: linked.master_member_ref,
+          name: member && member.name ? member.name : "",
+          source: "member_link",
+        };
+      }
     }
   }
 
   if (!userName) return null;
-  const like = `%${userName}%`;
-  const rows = await env.DB.prepare(`
-    SELECT member_ref, name, source_json
-    FROM crm_members
-    WHERE name LIKE ? OR source_json LIKE ?
-    ORDER BY
-      CASE
-        WHEN name = ? THEN 0
-        WHEN name LIKE ? THEN 1
-        ELSE 2
-      END,
-      updated_at DESC
-    LIMIT 10
-  `).bind(like, like, userName, like).all();
-  for (const member of rows.results || []) {
-    const pointLineUserId = crmLineUserId(member);
-    if (pointLineUserId && pointLineUserId !== chatLineUserId) {
-      return { pointLineUserId, memberRef: member.member_ref, name: member.name, source: "crm_name" };
+  for (const nameQuery of pointIdentityNameQueries(userName)) {
+    const like = `%${nameQuery}%`;
+    const rows = await env.DB.prepare(`
+      SELECT member_ref, name, source_json
+      FROM crm_members
+      WHERE name LIKE ? OR source_json LIKE ?
+      ORDER BY
+        CASE
+          WHEN name = ? THEN 0
+          WHEN name LIKE ? THEN 1
+          ELSE 2
+        END,
+        updated_at DESC
+      LIMIT 10
+    `).bind(like, like, nameQuery, like).all();
+    for (const member of rows.results || []) {
+      const channelLineUserIds = await pointLineUserIdsForMember(env, member.member_ref, member);
+      if (hasPointSourceLineUsers(channelLineUserIds)) {
+        return {
+          channelLineUserIds,
+          pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
+          memberRef: member.member_ref,
+          name: member.name,
+          source: nameQuery === userName ? "crm_name" : "crm_name_fallback",
+        };
+      }
     }
   }
   return null;
+}
+
+function pointIdentityNameQueries(userName) {
+  const value = stringValue(userName);
+  if (!value) return [];
+  const queries = [value];
+  const chars = Array.from(value);
+  if (/[\u3400-\u9fff]/.test(value) && chars.length > 1) {
+    const withoutFirstChar = chars.slice(1).join("");
+    if (withoutFirstChar && !queries.includes(withoutFirstChar)) queries.push(withoutFirstChar);
+  }
+  return queries;
 }
 
 function crmLineUserId(member) {
@@ -2901,9 +2970,20 @@ function parseJsonObject(value) {
   }
 }
 
-async function pointLineUserIdForMember(env, memberRef) {
+async function pointLineUserIdForMember(env, memberRef, channelKey = "") {
   const ref = stringValue(memberRef);
   if (!ref) return "";
+  const sourceKey = stringValue(channelKey);
+  if (POINT_CHANNELS.has(sourceKey)) {
+    const linked = await env.DB.prepare(`
+      SELECT line_user_id
+      FROM member_line_links
+      WHERE master_member_ref = ? AND channel_key = ?
+      ORDER BY linked_at DESC
+      LIMIT 1
+    `).bind(ref, sourceKey).first();
+    if (linked && linked.line_user_id) return stringValue(linked.line_user_id);
+  }
   const linked = await env.DB.prepare(`
     SELECT line_user_id
     FROM member_line_links
@@ -2920,6 +3000,39 @@ async function pointLineUserIdForMember(env, memberRef) {
     LIMIT 1
   `).bind(ref).first();
   return row ? stringValue(row.line_user_id) : "";
+}
+
+async function pointLineUserIdsForMember(env, memberRef, member = null) {
+  const ref = stringValue(memberRef);
+  const result = {};
+  if (!ref || !env.DB) return result;
+  const links = await env.DB.prepare(`
+    SELECT channel_key, line_user_id
+    FROM member_line_links
+    WHERE master_member_ref = ? AND channel_key IN (?, ?)
+    ORDER BY linked_at DESC
+  `).bind(ref, POINT_OA1, POINT_OA2).all();
+  for (const link of links.results || []) {
+    const channelKey = stringValue(link.channel_key);
+    if (POINT_CHANNELS.has(channelKey) && !result[channelKey]) result[channelKey] = stringValue(link.line_user_id);
+  }
+  const accounts = await env.DB.prepare(`
+    SELECT channel_key, line_user_id
+    FROM point_accounts
+    WHERE master_member_ref = ? AND channel_key IN (?, ?)
+    ORDER BY updated_at DESC
+  `).bind(ref, POINT_OA1, POINT_OA2).all();
+  for (const account of accounts.results || []) {
+    const channelKey = stringValue(account.channel_key);
+    if (POINT_CHANNELS.has(channelKey) && !result[channelKey]) result[channelKey] = stringValue(account.line_user_id);
+  }
+  const crmUid = crmLineUserId(member);
+  if (crmUid && !result[POINT_OA1]) result[POINT_OA1] = crmUid;
+  return result;
+}
+
+function hasPointSourceLineUsers(channelLineUserIds) {
+  return POINT_CHANNELS.has(POINT_OA1) && Boolean(channelLineUserIds && (channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2]));
 }
 
 function decoratePointBalances(rows) {
@@ -2950,19 +3063,23 @@ function pointApiShopId(env, channelKey, override) {
 async function listPointLedger(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
+  const userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
-  if (channelKey && lineUserId) {
-    const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", limit);
-    return snapshot.rows.map((row) => wetwPointLedgerRow(channelKey, lineUserId, row));
-  }
   if (lineUserId) {
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     const ledgers = [];
-    for (const sourceKey of [POINT_OA1, POINT_OA2]) {
+    const sourceMap = resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)
+      ? resolved.channelLineUserIds
+      : { [POINT_OA1]: lineUserId, [POINT_OA2]: lineUserId };
+    const sourceKeys = channelKey ? [channelKey] : [POINT_OA1, POINT_OA2];
+    for (const sourceKey of sourceKeys) {
+      const sourceLineUserId = stringValue(sourceMap[sourceKey]);
+      if (!sourceLineUserId) continue;
       try {
-        const snapshot = await fetchWetwPointSnapshot(env, sourceKey, lineUserId, "gift_money", limit);
-        ledgers.push(...snapshot.rows.map((row) => wetwPointLedgerRow(sourceKey, lineUserId, row)));
+        const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, "gift_money", limit);
+        ledgers.push(...snapshot.rows.map((row) => wetwPointLedgerRow(sourceKey, sourceLineUserId, row)));
       } catch (_err) {
         // Some members only exist in one source.
       }
@@ -2970,6 +3087,22 @@ async function listPointLedger(env, url) {
     return ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
   }
   if (masterMemberRef) {
+    const resolved = await resolvePointIdentity(env, { masterMemberRef });
+    if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
+      const ledgers = [];
+      const sourceKeys = channelKey ? [channelKey] : [POINT_OA1, POINT_OA2];
+      for (const sourceKey of sourceKeys) {
+        const sourceLineUserId = stringValue(resolved.channelLineUserIds[sourceKey]);
+        if (!sourceLineUserId) continue;
+        try {
+          const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, "gift_money", limit);
+          ledgers.push(...snapshot.rows.map((row) => ({ ...wetwPointLedgerRow(sourceKey, sourceLineUserId, row), resolved_member_ref: resolved.memberRef })));
+        } catch (_err) {
+          // Some members only exist in one source.
+        }
+      }
+      return ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
+    }
     const rows = await env.DB.prepare(`
       SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
       FROM point_ledger
