@@ -3296,8 +3296,9 @@ async function listCrmMembers(env, url) {
 }
 
 async function syncCrmMembers(env, body) {
-  const members = Array.isArray(body.members) ? body.members : await fetchWetwArray(env, "members");
+  const members = Array.isArray(body.members) ? body.members : await fetchWetwArray(env, "members", body || {});
   let count = 0;
+  let links = 0;
   for (const item of members) {
     const member = normalizeCrmMember(item);
     if (!member.memberRef) continue;
@@ -3313,10 +3314,25 @@ async function syncCrmMembers(env, body) {
         source_json = excluded.source_json,
         updated_at = CURRENT_TIMESTAMP
     `).bind(member.memberRef, member.name, member.phone, member.email, member.level, member.source, JSON.stringify(item || {})).run();
+    const raw = item && typeof item === "object" ? item : {};
+    const sourceShopId = stringValue(raw.__source_shop_id || raw.shop_id || member.level);
+    const sourceKey = sourceKeyFromShopId(sourceShopId);
+    const lineUserId = stringValue(raw.LINE_user_id || raw.user_login || raw.line_user_id || raw.lineUserId);
+    if (sourceKey && lineUserId) {
+      await env.DB.prepare(`
+        INSERT INTO member_line_links (master_member_ref, channel_key, line_user_id, binding_code, linked_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(master_member_ref, channel_key) DO UPDATE SET
+          line_user_id = excluded.line_user_id,
+          binding_code = excluded.binding_code,
+          linked_at = CURRENT_TIMESTAMP
+      `).bind(member.memberRef, sourceKey, lineUserId, `sync:${sourceShopId}`).run();
+      links += 1;
+    }
     count += 1;
   }
   await writeCrmSyncLog(env, "members", count, "success", body.members ? "body" : "wetw");
-  return { count, source: body.members ? "body" : "wetw" };
+  return { count, links, source: body.members ? "body" : "wetw" };
 }
 
 async function syncCrmPoints(env, body) {
@@ -3398,36 +3414,61 @@ function sourceKeyFromShopId(shopId) {
 async function fetchWetwArray(env, type, options = {}) {
   const url = type === "members" ? env.WETW_MEMBERS_URL : (env.WETW_POINTS_URL || DEFAULT_WETW_POINT_QUERY_URL);
   if (!url) throw httpError(`${type === "members" ? "WETW_MEMBERS_URL" : "WETW_POINTS_URL"} is not configured. You can POST an array in the request body first.`, 400);
-  if (type === "members") return fetchWetwMembersFromWordPress(env, url);
+  if (type === "members") return fetchWetwMembersFromWordPress(env, url, options);
   return fetchWetwPointListFromWordPress(env, url, options);
 }
 
-async function fetchWetwMembersFromWordPress(env, url) {
+async function fetchWetwMembersFromWordPress(env, url, options = {}) {
   if (!env.POINT_API_KEY) throw httpError("POINT_API_KEY is not configured", 400);
-  const shopId = wetwShopId(env);
+  const shopIds = memberSyncShopIds(env, options);
+  const all = [];
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      api_key: env.POINT_API_KEY,
-      shop_id: shopId,
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const code = stringValue(data.code);
-    const message = stringValue(data.message);
-    throw httpError(`WETW members sync failed: ${response.status}${code ? ` ${code}` : ""}${message ? ` - ${message}` : ""}`, 502);
+  for (const shopId of shopIds) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        api_key: env.POINT_API_KEY,
+        shop_id: shopId,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const code = stringValue(data.code);
+      const message = stringValue(data.message);
+      throw httpError(`WETW members sync failed: ${response.status}${code ? ` ${code}` : ""}${message ? ` - ${message}` : ""}`, 502);
+    }
+    const list = data && data.data && Array.isArray(data.data.list) ? data.data.list : [];
+    const rows = Array.isArray(data.members) ? data.members : Array.isArray(data.data) ? data.data : Array.isArray(data.items) ? data.items : list;
+    for (const row of rows) {
+      all.push({ ...(row || {}), __source_shop_id: shopId });
+    }
   }
-  const list = data && data.data && Array.isArray(data.data.list) ? data.data.list : [];
-  if (Array.isArray(data.members)) return data.members;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data.items)) return data.items;
-  return list;
+  return all;
+}
+
+function memberSyncShopIds(env, options = {}) {
+  const explicit = options.shop_ids || options.shopIds || options.shop_id || options.shopId;
+  const values = [];
+  if (Array.isArray(explicit)) {
+    values.push(...explicit);
+  } else if (explicit !== undefined && explicit !== null && explicit !== "") {
+    values.push(...String(explicit).split(","));
+  } else if (env.WETW_MEMBER_SHOP_IDS) {
+    values.push(...String(env.WETW_MEMBER_SHOP_IDS).split(","));
+  } else {
+    values.push(env.WETW_SHOP_ID, POINT_SOURCE_META[POINT_OA1].shopId, POINT_SOURCE_META[POINT_OA2].shopId);
+  }
+  const normalized = [];
+  for (const value of values) {
+    const shopId = Number(value);
+    if (Number.isFinite(shopId) && shopId > 0 && !normalized.includes(shopId)) normalized.push(shopId);
+  }
+  if (!normalized.length) normalized.push(wetwShopId(env));
+  return normalized;
 }
 
 async function fetchWetwPointListFromWordPress(env, url, options = {}) {
