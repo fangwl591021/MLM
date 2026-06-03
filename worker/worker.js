@@ -190,6 +190,12 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/admin/crm/member-search" && request.method === "GET") {
+        assertPointAdminAuth(request, env);
+        const candidates = await searchCrmMemberCandidates(env, url);
+        return jsonResponse({ success: true, status: "success", candidates }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/admin/crm/sync-members" && request.method === "POST") {
         assertPointAdminAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
@@ -1161,11 +1167,25 @@ async function listPointMemberLinks(env, url) {
 async function bindPointLineUser(env, body) {
   if (!env.DB) throw httpError("DB is not configured", 500);
   const chatLineUserId = stringValue(body.chat_line_user_id || body.chatLineUserId || body.chat_user_id || body.chatUserId);
-  const pointLineUserId = stringValue(body.point_line_user_id || body.pointLineUserId || body.line_user_id || body.lineUserId);
+  let pointLineUserId = stringValue(body.point_line_user_id || body.pointLineUserId || body.line_user_id || body.lineUserId);
   const channelKey = stringValue(body.channel_key || body.channelKey || POINT_OA1);
   const userName = stringValue(body.user_name || body.userName || body.name);
-  if (!chatLineUserId || !pointLineUserId) throw httpError("chat_line_user_id and point_line_user_id are required", 400);
+  let masterMemberRef = stringValue(body.master_member_ref || body.masterMemberRef);
+  if (!chatLineUserId) throw httpError("chat_line_user_id is required", 400);
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
+
+  let member = null;
+  if (masterMemberRef) {
+    member = await env.DB.prepare(`
+      SELECT member_ref, name, source_json
+      FROM crm_members
+      WHERE member_ref = ?
+      LIMIT 1
+    `).bind(masterMemberRef).first();
+    if (!member) throw httpError("找不到指定母站會員，請先同步會員或重新搜尋。", 404);
+    pointLineUserId = pointLineUserId || crmLineUserId(member);
+  }
+  if (!pointLineUserId) throw httpError("找不到此會員的母站 LINE ID，請先同步母站會員資料。", 400);
 
   const existingSource = await env.DB.prepare(`
     SELECT master_member_ref
@@ -1174,9 +1194,9 @@ async function bindPointLineUser(env, body) {
     LIMIT 1
   `).bind(channelKey, pointLineUserId).first();
 
-  let masterMemberRef = existingSource && existingSource.master_member_ref
+  masterMemberRef = existingSource && existingSource.master_member_ref
     ? stringValue(existingSource.master_member_ref)
-    : stringValue(body.master_member_ref || body.masterMemberRef);
+    : masterMemberRef;
 
   let snapshot = null;
   if (!masterMemberRef) {
@@ -2872,6 +2892,15 @@ function crmLineUserId(member) {
   }
 }
 
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (_err) {
+    return {};
+  }
+}
+
 async function pointLineUserIdForMember(env, memberRef) {
   const ref = stringValue(memberRef);
   if (!ref) return "";
@@ -2995,6 +3024,48 @@ function wetwPointRowRankFromLedger(row) {
   return Number.isFinite(created) ? created : 0;
 }
 
+async function searchCrmMemberCandidates(env, url) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const q = stringValue(url.searchParams.get("q") || url.searchParams.get("query")).trim();
+  const limit = clampNumber(url.searchParams.get("limit") || 12, 1, 30);
+  if (!q) return [];
+  const lowered = q.toLowerCase();
+  const like = `%${lowered}%`;
+  const rows = await env.DB.prepare(`
+    SELECT member_ref, name, phone, email, level, source, source_json, updated_at
+    FROM crm_members
+    WHERE LOWER(member_ref) LIKE ?
+       OR LOWER(name) LIKE ?
+       OR LOWER(phone) LIKE ?
+       OR LOWER(email) LIKE ?
+       OR LOWER(source_json) LIKE ?
+    ORDER BY
+      CASE
+        WHEN LOWER(member_ref) = ? THEN 0
+        WHEN LOWER(phone) = ? THEN 1
+        WHEN LOWER(name) = ? THEN 2
+        WHEN LOWER(name) LIKE ? THEN 3
+        ELSE 4
+      END,
+      updated_at DESC
+    LIMIT ?
+  `).bind(like, like, like, like, like, lowered, lowered, lowered, like, limit).all();
+
+  return (rows.results || []).map((member) => {
+    const raw = parseJsonObject(member.source_json);
+    return {
+      member_ref: stringValue(member.member_ref),
+      name: stringValue(member.name || raw.display_name || raw.LINE_display_name),
+      phone: stringValue(member.phone || raw.phone),
+      line_user_id: crmLineUserId(member),
+      line_display_name: stringValue(raw.LINE_display_name || raw.display_name),
+      shop_id: stringValue(raw.shop_id || member.level),
+      source: stringValue(member.source),
+      updated_at: stringValue(member.updated_at),
+    };
+  }).filter((member) => member.member_ref);
+}
+
 async function listCrmMembers(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const q = stringValue(url.searchParams.get("q")).toLowerCase();
@@ -3006,8 +3077,8 @@ async function listCrmMembers(env, url) {
   const where = [];
   const bindings = [];
   if (q) {
-    where.push("(LOWER(member_ref) LIKE ? OR LOWER(name) LIKE ? OR LOWER(phone) LIKE ? OR LOWER(email) LIKE ?)");
-    bindings.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    where.push("(LOWER(member_ref) LIKE ? OR LOWER(name) LIKE ? OR LOWER(phone) LIKE ? OR LOWER(email) LIKE ? OR LOWER(source_json) LIKE ?)");
+    bindings.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
   if (where.length) sql += ` WHERE ${where.join(" AND ")}`;
   sql += " ORDER BY updated_at DESC LIMIT ?";
