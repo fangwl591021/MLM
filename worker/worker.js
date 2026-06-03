@@ -3029,6 +3029,18 @@ async function searchCrmMemberCandidates(env, url) {
   const q = stringValue(url.searchParams.get("q") || url.searchParams.get("query")).trim();
   const limit = clampNumber(url.searchParams.get("limit") || 12, 1, 30);
   if (!q) return [];
+  let rows = await queryCrmMemberCandidates(env, q, limit);
+  if (!rows.length) {
+    const chars = Array.from(q);
+    const hasCjk = /[\u3400-\u9fff]/.test(q);
+    if (hasCjk && chars.length > 1) {
+      rows = await queryCrmMemberCandidates(env, chars.slice(1).join(""), limit);
+    }
+  }
+  return rows;
+}
+
+async function queryCrmMemberCandidates(env, q, limit) {
   const lowered = q.toLowerCase();
   const like = `%${lowered}%`;
   const rows = await env.DB.prepare(`
