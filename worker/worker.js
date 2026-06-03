@@ -577,6 +577,7 @@ function getPointChannelConfig(env, channelKey) {
     channelSecret: stringValue(pointChannelEnv(env, channelKey, "SECRET") || channelConfig.channelSecret || provider.channelSecret),
     accessToken: stringValue(pointChannelEnv(env, channelKey, "ACCESS_TOKEN") || channelConfig.channelAccessToken || provider.accessToken),
     forwardUrl: stringValue(channelConfig.forwardUrl),
+    monitor: channelConfig.monitor === true,
   };
 }
 
@@ -663,7 +664,7 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     }
   }
 
-  if (monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
+  if (config.monitor && monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
 }
 
 function isSmartDailyRewardEvent(channelKey, event) {
@@ -982,7 +983,7 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
     monitorEvents.push(event);
   }
 
-  if (monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
+  if (config.monitor && monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
 
   let forwarded = null;
   if (config.forwardUrl) {
@@ -3675,7 +3676,7 @@ async function fetchDashboardData(env, floor = FLOOR_MAIN) {
 }
 
 async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
-  const { results } = await env.DB.prepare(`
+  let { results } = await env.DB.prepare(`
     SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
     LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
@@ -3683,6 +3684,8 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
   `).bind(floor, limit).all();
+  if (!results.length) return [];
+  results = await removePointGatewayOnlyThreads(env, results);
   if (!results.length) return [];
   const ids = results.map((row) => row.id);
   const messageResults = [];
@@ -3700,6 +3703,38 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
   return results
     .map((row) => threadFromD1(row, byThread.get(row.id) || []))
     .filter((thread) => thread.messages.length > 0);
+}
+
+async function removePointGatewayOnlyThreads(env, rows) {
+  const suspects = (rows || []).filter((row) => {
+    return !stringValue(row.display_name)
+      && !stringValue(row.picture_url)
+      && Number(row.profile_status || 0) === 404
+      && stringValue(row.user_id);
+  });
+  if (!suspects.length) return rows;
+
+  const gatewayUsers = new Set();
+  const userIds = Array.from(new Set(suspects.map((row) => stringValue(row.user_id)).filter(Boolean)));
+  for (const batch of chunkArray(userIds, D1_IN_QUERY_BATCH_SIZE)) {
+    const placeholders = batch.map(() => "?").join(",");
+    const eventRows = await env.DB.prepare(`
+      SELECT DISTINCT line_user_id
+      FROM webhook_events
+      WHERE channel_key IN (?, ?)
+        AND line_user_id IN (${placeholders})
+    `).bind(POINT_OA1, POINT_OA2, ...batch).all();
+    for (const eventRow of eventRows.results || []) gatewayUsers.add(stringValue(eventRow.line_user_id));
+  }
+  if (!gatewayUsers.size) return rows;
+  return rows.filter((row) => {
+    const userId = stringValue(row.user_id);
+    const isGatewayOnly = !stringValue(row.display_name)
+      && !stringValue(row.picture_url)
+      && Number(row.profile_status || 0) === 404
+      && gatewayUsers.has(userId);
+    return !isGatewayOnly;
+  });
 }
 
 function chunkArray(items, size) {
