@@ -194,6 +194,31 @@ CREATE TABLE IF NOT EXISTS daily_keyword_rewards (
 CREATE INDEX IF NOT EXISTS idx_daily_keyword_rewards_date
   ON daily_keyword_rewards(reward_date, keyword);
 
+CREATE TABLE IF NOT EXISTS reply_learning (
+  learning_key TEXT PRIMARY KEY,
+  floor_id TEXT NOT NULL DEFAULT 'main',
+  thread_id TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
+  user_name TEXT NOT NULL DEFAULT '',
+  user_message_id TEXT NOT NULL DEFAULT '',
+  user_text TEXT NOT NULL,
+  reply_message_id TEXT NOT NULL DEFAULT '',
+  reply_text TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT '',
+  tags TEXT NOT NULL DEFAULT '[]',
+  source TEXT NOT NULL DEFAULT 'admin_reply',
+  quality TEXT NOT NULL DEFAULT 'accepted',
+  use_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reply_learning_floor_updated
+  ON reply_learning(floor_id, updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_reply_learning_floor_category
+  ON reply_learning(floor_id, category);
+
 INSERT OR IGNORE INTO keyword_rules (
   floor_id, keyword, match_type, action, channel_key, point_type, points, active, priority, response_success, response_duplicate
 ) VALUES (

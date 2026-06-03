@@ -378,6 +378,21 @@ export default {
         return jsonResponse(result, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/reply-learning" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const limit = clampNumber(url.searchParams.get("limit") || 50, 1, 200);
+        const learning = await fetchReplyLearning(env, floor, limit);
+        return jsonResponse({ status: "success", ...learning }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/reply-learning/rebuild" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const limit = clampNumber(body.limit || 500, 1, 2000);
+        const result = await rebuildReplyLearning(env, floor, limit);
+        return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/conversation-meta" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
@@ -409,7 +424,7 @@ export default {
         }
 
         const now = Date.now();
-        await saveAdminMessage(env, { floor, userId, text, createdAt: now, status: STATUS_DONE });
+        await saveAdminMessage(env, { floor, userId, userName: stringValue(body.userName), text, createdAt: now, status: STATUS_DONE });
         ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
           data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u4eba\u5de5\u56de\u8986", status: STATUS_DONE },
@@ -425,7 +440,7 @@ export default {
         if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
 
         const now = Date.now();
-        await saveAdminMessage(env, { floor, userId, text, createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
+        await saveAdminMessage(env, { floor, userId, userName: stringValue(body.userName), text, createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
         ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
           data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u88dc\u8a18\u4e0d\u63a8\u9001", status: STATUS_DONE },
@@ -459,7 +474,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -4253,7 +4268,7 @@ async function saveAdminMessage(env, input) {
   const now = Number(input.createdAt || Date.now());
   const threadId = threadIdFor(floor, userId);
   const profile = await getProfile(env, floor, userId);
-  const name = profile && profile.display_name ? profile.display_name : "";
+  const name = profile && profile.display_name ? profile.display_name : stringValue(input.userName);
   const pictureUrl = profile && profile.picture_url ? profile.picture_url : "";
   const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ? AND floor_id = ?").bind(threadId, floor).first();
 
@@ -4267,10 +4282,130 @@ async function saveAdminMessage(env, input) {
       updated_at = excluded.updated_at
   `).bind(threadId, floor, userId, name, pictureUrl, text, input.status || STATUS_DONE, "low", current ? current.tags : "[]", current ? current.note : "", now, now, now).run();
 
+  const messageId = `admin:${threadId}:${now}:${crypto.randomUUID()}`;
   await env.DB.prepare(`
     INSERT INTO messages (id, floor_id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(`admin:${threadId}:${now}:${crypto.randomUUID()}`, floor, threadId, userId, ADMIN_ROLE, "text", text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", "{}", now).run();
+  `).bind(messageId, floor, threadId, userId, ADMIN_ROLE, "text", text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", "{}", now).run();
+
+  await learnFromAdminReply(env, {
+    floor,
+    threadId,
+    userId,
+    userName: name,
+    replyText: text,
+    replyMessageId: messageId,
+    category: input.category || "\u4eba\u5de5\u56de\u8986",
+    createdAt: now,
+    tags: current ? current.tags : "[]",
+  });
+}
+
+async function learnFromAdminReply(env, input) {
+  if (!env.DB) return null;
+  const replyText = stringValue(input.replyText).trim();
+  if (!replyText || replyText.length < 2) return null;
+  if (!isLearnableAdminReply(input.category, replyText)) return null;
+  await ensureReplyLearningSchema(env);
+  const previous = await env.DB.prepare(`
+    SELECT id, text, category, created_at
+    FROM messages
+    WHERE thread_id = ?
+      AND floor_id = ?
+      AND sender_role = ?
+      AND text IS NOT NULL
+      AND text <> ''
+      AND created_at <= ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).bind(input.threadId, input.floor || FLOOR_MAIN, USER_ROLE, Number(input.createdAt || Date.now())).first();
+  if (!previous || !stringValue(previous.text).trim()) return null;
+  const userText = stringValue(previous.text).trim();
+  const now = Date.now();
+  const learningKey = await learningFingerprint(input.floor || FLOOR_MAIN, userText, replyText);
+  await env.DB.prepare(`
+    INSERT INTO reply_learning (
+      learning_key, floor_id, thread_id, user_id, user_name, user_message_id, user_text,
+      reply_message_id, reply_text, category, tags, source, quality, use_count, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    ON CONFLICT(learning_key) DO UPDATE SET
+      thread_id = excluded.thread_id,
+      user_id = excluded.user_id,
+      user_name = CASE WHEN excluded.user_name != '' THEN excluded.user_name ELSE reply_learning.user_name END,
+      reply_message_id = excluded.reply_message_id,
+      category = excluded.category,
+      tags = excluded.tags,
+      updated_at = excluded.updated_at
+  `).bind(
+    learningKey,
+    input.floor || FLOOR_MAIN,
+    input.threadId,
+    input.userId,
+    stringValue(input.userName),
+    previous.id,
+    userText,
+    input.replyMessageId,
+    replyText,
+    stringValue(input.category || previous.category || "\u4eba\u5de5\u56de\u8986"),
+    stringValue(input.tags || "[]"),
+    "admin_reply",
+    "accepted",
+    now,
+    now,
+  ).run();
+  return { learningKey, userText, replyText };
+}
+
+function isLearnableAdminReply(category, replyText) {
+  const categoryText = stringValue(category);
+  const text = stringValue(replyText).trim();
+  if (!text || text.length < 6) return false;
+  if (categoryText.includes("\u95dc\u9375\u5b57") || categoryText.includes("\u81ea\u52d5")) return false;
+  const genericHoldPatterns = [
+    "\u9019\u500b\u554f\u984c\u6211\u5148\u70ba\u60a8\u78ba\u8a8d",
+    "\u7a0d\u5f8c\u7531\u5c08\u4eba\u56de\u8986",
+    "\u8acb\u7a0d\u5019",
+  ];
+  return !genericHoldPatterns.some((pattern) => text.includes(pattern));
+}
+
+async function ensureReplyLearningSchema(env) {
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS reply_learning (
+        learning_key TEXT PRIMARY KEY,
+        floor_id TEXT NOT NULL DEFAULT 'main',
+        thread_id TEXT NOT NULL DEFAULT '',
+        user_id TEXT NOT NULL DEFAULT '',
+        user_name TEXT NOT NULL DEFAULT '',
+        user_message_id TEXT NOT NULL DEFAULT '',
+        user_text TEXT NOT NULL,
+        reply_message_id TEXT NOT NULL DEFAULT '',
+        reply_text TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        tags TEXT NOT NULL DEFAULT '[]',
+        source TEXT NOT NULL DEFAULT 'admin_reply',
+        quality TEXT NOT NULL DEFAULT 'accepted',
+        use_count INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_reply_learning_floor_updated ON reply_learning(floor_id, updated_at)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_reply_learning_floor_category ON reply_learning(floor_id, category)"),
+  ]);
+}
+
+async function learningFingerprint(floor, userText, replyText) {
+  const value = `${floor}\n${normalizeLearningText(userText)}\n${normalizeLearningText(replyText)}`;
+  const data = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeLearningText(value) {
+  return stringValue(value).trim().replace(/\s+/g, " ").slice(0, 500);
 }
 
 async function updateConversationMeta(env, input) {
@@ -4496,13 +4631,14 @@ async function upsertProfile(env, input) {
 
 async function analyzeMessage(env, floor, text, userId, userName) {
   const local = await localKnowledgeSuggestion(env, floor, text);
+  const learned = await localReplyLearningSuggestion(env, floor, text);
   const important = isImportantText(text);
   const fallback = {
     isImportant: important,
-    category: local.category || (important ? "\u91cd\u8981\u8a0a\u606f" : "\u4e00\u822c\u8a0a\u606f"),
+    category: learned.category || local.category || (important ? "\u91cd\u8981\u8a0a\u606f" : "\u4e00\u822c\u8a0a\u606f"),
     sentiment: important ? "negative" : "neutral",
-    suggestions: local.suggestions.length ? local.suggestions : ["\u60a8\u597d\uff0c\u611f\u8b1d\u60a8\u7684\u7559\u8a00\u3002\u8acb\u554f\u60a8\u5177\u9ad4\u60f3\u4e86\u89e3\u54ea\u65b9\u9762\u7684\u8cc7\u8a0a\uff1f"],
-    summary: local.summary || "local fallback",
+    suggestions: uniqueSuggestions([...learned.suggestions, ...local.suggestions]).slice(0, 3).length ? uniqueSuggestions([...learned.suggestions, ...local.suggestions]).slice(0, 3) : ["\u60a8\u597d\uff0c\u611f\u8b1d\u60a8\u7684\u7559\u8a00\u3002\u8acb\u554f\u60a8\u5177\u9ad4\u60f3\u4e86\u89e3\u54ea\u65b9\u9762\u7684\u8cc7\u8a0a\uff1f"],
+    summary: learned.summary || local.summary || "local fallback",
     reportReason: important ? "\u542b\u5ba2\u8a34\u3001\u8ca0\u8a55\u6216\u9ad8\u98a8\u96aa\u95dc\u9375\u5b57" : "",
   };
 
@@ -4515,6 +4651,7 @@ async function analyzeMessage(env, floor, text, userId, userName) {
       `userName: ${userName}`,
       `message: ${text}`,
       `knowledge: ${JSON.stringify(local.matches.slice(0, 6))}`,
+      `learnedReplies: ${JSON.stringify(learned.matches.slice(0, 6))}`,
     ].join("\n");
     const generated = await callOpenAI(env, prompt);
     const parsed = JSON.parse(generated);
@@ -4545,6 +4682,107 @@ async function localKnowledgeSuggestion(env, floor, text) {
     suggestions: matches.slice(0, 2).map((item) => `\u60a8\u597d\uff0c\u95dc\u65bc${item.category}\uff0c${item.answer}`),
     summary: "local knowledge match",
   };
+}
+
+async function localReplyLearningSuggestion(env, floor, text) {
+  if (!env.DB) return { matches: [], suggestions: [] };
+  await ensureReplyLearningSchema(env);
+  const targetFloor = floor || FLOOR_MAIN;
+  const { results } = await env.DB.prepare(`
+    SELECT learning_key, floor_id, user_text, reply_text, category, tags, use_count, updated_at
+    FROM reply_learning
+    WHERE floor_id = ? OR floor_id = ?
+    ORDER BY updated_at DESC
+    LIMIT 500
+  `).bind(targetFloor, FLOOR_MAIN).all();
+  const terms = tokenize(text);
+  const matches = (results || []).map((item) => {
+    const haystack = `${item.category} ${item.user_text} ${item.reply_text}`;
+    const exactUserText = normalizeLearningText(item.user_text) === normalizeLearningText(text);
+    const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0)
+      + (exactUserText ? 8 : 0)
+      + Math.min(Number(item.use_count || 0), 5);
+    return { ...item, score };
+  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 6);
+  if (!matches.length) return { matches: [], suggestions: [] };
+  return {
+    matches: matches.map((item) => ({
+      userText: item.user_text,
+      replyText: item.reply_text,
+      category: item.category,
+      score: item.score,
+    })),
+    category: matches[0].category,
+    suggestions: uniqueSuggestions(matches.map((item) => item.reply_text)).slice(0, 3),
+    summary: "reply learning match",
+  };
+}
+
+function uniqueSuggestions(items) {
+  const output = [];
+  const seen = new Set();
+  for (const item of items || []) {
+    const text = stringValue(item).trim();
+    if (!text) continue;
+    const key = normalizeLearningText(text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(text);
+  }
+  return output;
+}
+
+async function fetchReplyLearning(env, floor = FLOOR_MAIN, limit = 50) {
+  if (!env.DB) return { count: 0, items: [] };
+  await ensureReplyLearningSchema(env);
+  const targetFloor = floor || FLOOR_MAIN;
+  const [countRow, rows] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS count FROM reply_learning WHERE floor_id = ?").bind(targetFloor).first(),
+    env.DB.prepare(`
+      SELECT learning_key, floor_id, user_name, user_text, reply_text, category, tags, source, quality, use_count, created_at, updated_at
+      FROM reply_learning
+      WHERE floor_id = ?
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).bind(targetFloor, limit).all(),
+  ]);
+  return { count: Number(countRow && countRow.count || 0), items: rows.results || [] };
+}
+
+async function rebuildReplyLearning(env, floor = FLOOR_MAIN, limit = 500) {
+  if (!env.DB) return { scanned: 0, learned: 0 };
+  await ensureReplyLearningSchema(env);
+  const targetFloor = floor || FLOOR_MAIN;
+  const rows = await env.DB.prepare(`
+    SELECT m.id, m.floor_id, m.thread_id, m.user_id, m.text, m.category, m.created_at, t.display_name, t.tags
+    FROM messages m
+    LEFT JOIN threads t ON t.id = m.thread_id AND t.floor_id = m.floor_id
+    WHERE m.floor_id = ?
+      AND m.sender_role = ?
+      AND m.text IS NOT NULL
+      AND m.text <> ''
+    ORDER BY m.created_at DESC
+    LIMIT ?
+  `).bind(targetFloor, ADMIN_ROLE, limit).all();
+  let learned = 0;
+  for (const row of rows.results || []) {
+    const before = await env.DB.prepare("SELECT COUNT(*) AS count FROM reply_learning WHERE reply_message_id = ?").bind(row.id).first();
+    if (Number(before && before.count || 0) > 0) continue;
+    const result = await learnFromAdminReply(env, {
+      floor: row.floor_id,
+      threadId: row.thread_id,
+      userId: row.user_id,
+      userName: row.display_name,
+      replyText: row.text,
+      replyMessageId: row.id,
+      category: row.category,
+      createdAt: row.created_at,
+      tags: row.tags || "[]",
+    });
+    if (result) learned += 1;
+  }
+  const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM reply_learning WHERE floor_id = ?").bind(targetFloor).first();
+  return { scanned: (rows.results || []).length, learned, count: Number(countRow && countRow.count || 0) };
 }
 
 async function callOpenAI(env, prompt) {
