@@ -4687,12 +4687,12 @@ function buildCorsHeaders(request, env) {
 }
 
 function assertDashboardAuth(request, env) {
-  if (!env.DASHBOARD_API_TOKEN) throw httpError("DASHBOARD_API_TOKEN is not configured", 500);
-  const expectedToken = String(env.DASHBOARD_API_TOKEN || "").trim();
+  const tokens = [env.DASHBOARD_API_TOKEN, env.ADMIN_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
+  if (!tokens.length) throw httpError("DASHBOARD_API_TOKEN or ADMIN_TOKEN is not configured", 500);
   const auth = String(request.headers.get("Authorization") || "").trim();
-  const directToken = String(request.headers.get("X-Dashboard-Token") || "").trim();
+  const directToken = String(request.headers.get("X-Dashboard-Token") || request.headers.get("X-Admin-Token") || "").trim();
   const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
-  if (bearerToken !== expectedToken && directToken !== expectedToken) throw httpError("Unauthorized dashboard request", 401);
+  if (!tokens.includes(bearerToken) && !tokens.includes(directToken)) throw httpError("Unauthorized dashboard request", 401);
 }
 
 function assertPointAdminAuth(request, env) {
