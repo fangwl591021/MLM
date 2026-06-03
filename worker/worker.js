@@ -325,8 +325,14 @@ export default {
         assertDashboardAuth(request, env);
         const userId = stringValue(url.searchParams.get("userId") || url.searchParams.get("uid"));
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
-        const stored = await getProfile(env, floor, userId);
-        const direct = await fetchLineProfileWithDetail(provider, userId);
+        const channelKey = stringValue(url.searchParams.get("channel") || url.searchParams.get("channel_key"));
+        const pointConfig = POINT_CHANNELS.has(channelKey) ? getPointChannelConfig(env, channelKey) : null;
+        const profileFloor = pointConfig ? pointConfig.floor : floor;
+        const profileProvider = pointConfig
+          ? { floor: pointConfig.floor, id: channelKey, label: pointConfig.label, channelSecret: pointConfig.channelSecret, accessToken: pointConfig.accessToken }
+          : provider;
+        const stored = await getProfile(env, profileFloor, userId);
+        const direct = await fetchLineProfileWithDetail(profileProvider, userId);
         return jsonResponse({
           status: "success",
           userId,
@@ -352,7 +358,11 @@ export default {
         assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const limit = clampNumber(body.limit || 100, 1, 300);
-        const results = await backfillProfiles(env, floor, provider, limit, { force: true });
+        const channelKey = stringValue(body.channel || body.channel_key || url.searchParams.get("channel") || url.searchParams.get("channel_key"));
+        const pointConfig = POINT_CHANNELS.has(channelKey) ? getPointChannelConfig(env, channelKey) : null;
+        const results = pointConfig
+          ? await backfillPointChannelProfiles(env, channelKey, { floor: pointConfig.floor, id: channelKey, label: pointConfig.label, channelSecret: pointConfig.channelSecret, accessToken: pointConfig.accessToken }, limit, { force: true })
+          : await backfillProfiles(env, floor, provider, limit, { force: true });
         return jsonResponse({ status: "success", scanned: results.length, results }, 200, corsHeaders);
       }
 
@@ -2745,11 +2755,12 @@ async function applyPointMutation(env, input) {
 async function listPointBalances(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
-  const userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
+  let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
   if (lineUserId) {
+    if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
     const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const resolvedRows = channelKey
@@ -2989,6 +3000,16 @@ async function resolvePointIdentity(env, input) {
       }
     }
   }
+  const profileResolved = await pointSourceLineUsersFromProfileName(env, userName);
+  if (hasPointSourceLineUsers(profileResolved.channelLineUserIds)) {
+    return {
+      channelLineUserIds: profileResolved.channelLineUserIds,
+      pointLineUserId: profileResolved.channelLineUserIds[POINT_OA1] || profileResolved.channelLineUserIds[POINT_OA2] || "",
+      memberRef: "",
+      name: profileResolved.name || userName,
+      source: "point_profile_name",
+    };
+  }
   return null;
 }
 
@@ -3088,6 +3109,67 @@ function hasPointSourceLineUsers(channelLineUserIds) {
   return POINT_CHANNELS.has(POINT_OA1) && Boolean(channelLineUserIds && (channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2]));
 }
 
+async function pointSourceLineUsersFromProfileName(env, userName) {
+  const name = stringValue(userName).trim();
+  if (!name || !env.DB) return { channelLineUserIds: {} };
+  const rows = await env.DB.prepare(`
+    SELECT e.channel_key, p.user_id, p.display_name, COUNT(*) AS events
+    FROM profiles p
+    JOIN webhook_events e ON e.line_user_id = p.user_id
+    WHERE p.display_name = ?
+      AND e.channel_key IN (?, ?)
+    GROUP BY e.channel_key, p.user_id, p.display_name
+    ORDER BY
+      CASE e.channel_key WHEN ? THEN 0 ELSE 1 END,
+      events DESC
+    LIMIT 10
+  `).bind(name, POINT_OA1, POINT_OA2, POINT_OA1).all();
+  const channelLineUserIds = {};
+  const ambiguous = new Set();
+  for (const row of rows.results || []) {
+    const channelKey = stringValue(row.channel_key);
+    const userId = stringValue(row.user_id);
+    if (!POINT_CHANNELS.has(channelKey) || !userId) continue;
+    if (channelLineUserIds[channelKey] && channelLineUserIds[channelKey] !== userId) {
+      delete channelLineUserIds[channelKey];
+      ambiguous.add(channelKey);
+      continue;
+    }
+    if (!ambiguous.has(channelKey)) channelLineUserIds[channelKey] = userId;
+  }
+  return { channelLineUserIds, name };
+}
+
+async function pointUserNameFromChatUserId(env, lineUserId) {
+  const userId = stringValue(lineUserId);
+  if (!userId || !env.DB) return "";
+  const thread = await env.DB.prepare(`
+    SELECT display_name
+    FROM threads
+    WHERE user_id = ?
+      AND display_name IS NOT NULL
+      AND display_name <> ''
+      AND display_name <> user_id
+      AND display_name NOT LIKE 'U%'
+    ORDER BY updated_at DESC, last_message_at DESC
+    LIMIT 1
+  `).bind(userId).first();
+  if (thread && thread.display_name) return stringValue(thread.display_name);
+
+  const profile = await env.DB.prepare(`
+    SELECT display_name
+    FROM profiles
+    WHERE user_id = ?
+      AND display_name IS NOT NULL
+      AND display_name <> ''
+      AND display_name <> user_id
+      AND display_name NOT LIKE 'U%'
+    ORDER BY updated_at DESC, last_profile_sync DESC
+    LIMIT 1
+  `).bind(userId).first();
+  return profile && profile.display_name ? stringValue(profile.display_name) : "";
+}
+
 function decoratePointBalances(rows) {
   return (rows || []).map((row) => {
     const meta = pointSourceMeta(row.channel_key) || {};
@@ -3108,6 +3190,10 @@ function pointApiShopId(env, channelKey, override) {
   const sourceEnv = channelKey === POINT_OA2 ? env.WETW_POINT_SHOP_ID_OA2 : env.WETW_POINT_SHOP_ID_OA1;
   const configured = Number(sourceEnv || 0);
   if (Number.isFinite(configured) && configured > 0) return configured;
+  if (channelKey === POINT_OA1) {
+    const checkinShopId = Number(env.WETW_MEMBER_CHECKIN_SHOP_ID || env.WETW_SHOP_ID || 0);
+    if (Number.isFinite(checkinShopId) && checkinShopId > 0) return checkinShopId;
+  }
   const metaShopId = Number(POINT_SOURCE_META[channelKey] && POINT_SOURCE_META[channelKey].shopId);
   if (Number.isFinite(metaShopId) && metaShopId > 0) return metaShopId;
   return wetwShopId(env);
@@ -3116,11 +3202,12 @@ function pointApiShopId(env, channelKey, override) {
 async function listPointLedger(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
-  const userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
+  let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
   if (lineUserId) {
+    if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
     const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     const ledgers = [];
     const sourceMap = resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)
@@ -4276,6 +4363,62 @@ async function backfillProfiles(env, floor, provider, limit, options = {}) {
         pictureUrl: "",
         sourceType: row.source_type,
         sourceId: row.source_id,
+        profileStatus: profile.status || 0,
+        profileError: result.error,
+        now: Date.now(),
+      });
+    }
+    output.push(result);
+  }
+  return output;
+}
+
+async function backfillPointChannelProfiles(env, channelKey, provider, limit, options = {}) {
+  const sourceKey = stringValue(channelKey);
+  if (!POINT_CHANNELS.has(sourceKey)) throw httpError("Unsupported point source", 400);
+  const force = Boolean(options.force);
+  const staleBefore = Date.now() - Number(options.staleMs || 86400000);
+  const staleClause = force ? "" : "AND (p.profile_status IS NULL OR p.last_profile_sync IS NULL OR p.last_profile_sync < ?)";
+  const bindings = force ? [sourceKey, limit] : [sourceKey, staleBefore, limit];
+  const rows = await env.DB.prepare(`
+    SELECT e.line_user_id AS user_id, MAX(e.id) AS latest_event_id
+    FROM webhook_events e
+    LEFT JOIN profiles p ON p.user_id = e.line_user_id
+    WHERE e.channel_key = ?
+      AND e.line_user_id IS NOT NULL
+      AND e.line_user_id <> ''
+      ${staleClause}
+    GROUP BY e.line_user_id
+    ORDER BY latest_event_id DESC
+    LIMIT ?
+  `).bind(...bindings).all();
+  const output = [];
+  for (const row of rows.results || []) {
+    const profile = await fetchLineProfileWithDetail(provider, row.user_id);
+    const result = { userId: row.user_id, channelKey: sourceKey, profileStatus: profile.status, updated: false };
+    if (profile.ok && profile.data && (profile.data.displayName || profile.data.pictureUrl)) {
+      await upsertProfile(env, {
+        floor: provider.floor || POINT_CHANNEL_FLOORS[sourceKey] || FLOOR_MAIN,
+        userId: row.user_id,
+        displayName: profile.data.displayName,
+        pictureUrl: profile.data.pictureUrl,
+        sourceType: "user",
+        sourceId: row.user_id,
+        profileStatus: profile.status,
+        now: Date.now(),
+      });
+      result.updated = true;
+      result.displayName = profile.data.displayName || "";
+      result.pictureUrl = profile.data.pictureUrl || "";
+    } else {
+      result.error = profile.detail || profile.error || "LINE profile unavailable";
+      await upsertProfile(env, {
+        floor: provider.floor || POINT_CHANNEL_FLOORS[sourceKey] || FLOOR_MAIN,
+        userId: row.user_id,
+        displayName: "",
+        pictureUrl: "",
+        sourceType: "user",
+        sourceId: row.user_id,
         profileStatus: profile.status || 0,
         profileError: result.error,
         now: Date.now(),
