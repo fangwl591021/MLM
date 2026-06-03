@@ -96,7 +96,7 @@
           <label>來源<select id="pointSource"></select></label>
           <label>K點類型<select id="pointType"><option value="gift_money">K點</option></select></label>
           <label>K點數量<input id="pointAmount" type="number" value="1" min="0.01" step="0.01" /></label>
-          <label>操作人UID<input id="pointOperatorId" placeholder="例如：U管理員UID" /></label>
+          <input id="pointOperatorId" type="hidden" />
           <label>操作人名稱<input id="pointOperator" placeholder="例如：黃慧君" /></label>
           <label>備註<input id="pointNote" placeholder="例如：KLINK API +1 測試" /></label>
         </div>
@@ -124,7 +124,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointBind: $("pointBind"), pointBindSource: $("pointBindSource"), pointBindQuery: $("pointBindQuery"), pointBindSearch: $("pointBindSearch"), pointBindResults: $("pointBindResults"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperatorId: $("pointOperatorId"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage"), pointLedgerList: $("pointLedgerList"), pointLedgerCount: $("pointLedgerCount")
     };
-    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [] };
+    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -175,7 +175,6 @@
     els.pointSource.addEventListener("change", updatePointActionState);
     els.pointBindSearch.addEventListener("click", searchPointMember);
     els.pointBindQuery.addEventListener("keydown", (e) => { if (e.key === "Enter") searchPointMember(); });
-    els.pointOperatorId.addEventListener("change", () => localStorage.setItem("line_ai_operator_uid", els.pointOperatorId.value.trim()));
     els.pointOperator.addEventListener("change", () => localStorage.setItem("line_ai_operator_name", els.pointOperator.value.trim()));
     els.pointGrant.addEventListener("click", () => submitPointMutation("grant"));
     els.pointDeduct.addEventListener("click", () => submitPointMutation("deduct"));
@@ -542,6 +541,7 @@
       state.pointLedger = [];
       state.pointNeedsBind = false;
       state.pointBindCandidates = [];
+      state.pointChannelUserIds = {};
       els.pointBind.classList.remove("show");
       els.pointBindQuery.value = group && group.hasRealName ? group.displayName : "";
       els.pointBindResults.innerHTML = "";
@@ -569,10 +569,14 @@
         if (!res.ok || json.status !== "success") throw new Error(json.message || "K點讀取失敗");
         state.pointBalances = Array.isArray(json.balances) ? json.balances : [];
         state.pointResolved = json.resolved || null;
+        state.pointChannelUserIds = state.pointResolved && state.pointResolved.channel_line_user_ids ? state.pointResolved.channel_line_user_ids : {};
+        state.pointBalances.forEach((row) => {
+          if (row.channel_key && row.line_user_id && !state.pointChannelUserIds[row.channel_key]) state.pointChannelUserIds[row.channel_key] = row.line_user_id;
+        });
         state.pointNeedsBind = !state.pointBalances.length && state.pointResolved && state.pointResolved.source === "not_found";
         state.pointMutationUserId = state.pointResolved && state.pointResolved.point_line_user_id ? state.pointResolved.point_line_user_id : (state.pointBalances[0] && state.pointBalances[0].line_user_id) || state.pointUserId;
         els.pointSubtitle.textContent = state.pointMutationUserId && state.pointMutationUserId !== state.pointUserId
-          ? `聊天室ID ${state.pointUserId} · K點ID ${state.pointMutationUserId}`
+          ? `聊天室ID ${state.pointUserId} · 已解析母站會員`
           : `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣K點`;
         renderPointSources();
         renderPointBind();
@@ -624,14 +628,14 @@
       return Number.isInteger(number) ? String(number) : number.toFixed(2);
     }
     async function loadPointLedger() {
-      const lineUserId = state.pointMutationUserId || state.pointUserId;
+      const lineUserId = state.pointUserId;
       if (!lineUserId) {
         state.pointLedger = [];
         renderPointLedger();
         return;
       }
       try {
-        const res = await fetch(apiUrl(`/admin/points/ledger?line_user_id=${encodeURIComponent(lineUserId)}&limit=80`), { headers: authJsonHeaders() });
+        const res = await fetch(apiUrl(`/admin/points/ledger?line_user_id=${encodeURIComponent(lineUserId)}&user_name=${encodeURIComponent(state.pointUserName || "")}&limit=80`), { headers: authJsonHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "K點流水讀取失敗");
         const rows = Array.isArray(json.ledger) ? json.ledger : (Array.isArray(json.data) ? json.data : []);
@@ -737,24 +741,22 @@
     async function submitPointMutation(action) {
       const source = POINT_SOURCES.find((item) => item.key === els.pointSource.value) || POINT_SOURCES[0];
       const amount = Math.abs(Number(els.pointAmount.value || 0));
-      const operatorId = els.pointOperatorId.value.trim();
       const operatorName = els.pointOperator.value.trim();
+      const sourceLineUserId = state.pointChannelUserIds[source.key] || (state.pointResolved && state.pointResolved.source === "exact_wetw" ? state.pointUserId : "");
       if (!state.pointUserId) { els.pointMessage.textContent = "尚未選擇用戶。"; return; }
-      if (state.pointNeedsBind || !state.pointMutationUserId || state.pointMutationUserId === state.pointUserId && !(state.pointResolved && state.pointResolved.source === "exact_wetw")) { els.pointMessage.textContent = "請先綁定母站 K點 UID。"; return; }
+      if (state.pointNeedsBind || !sourceLineUserId) { els.pointMessage.textContent = `${source.name} 尚未綁定母站會員 UID，請先搜尋並選擇會員。`; return; }
       if (!amount) { els.pointMessage.textContent = "請輸入K點數量。"; return; }
-      if (!operatorId) { els.pointMessage.textContent = "請填寫操作人UID，權限與 log 會以 UID 追蹤。"; els.pointOperatorId.focus(); return; }
       if (action === "grant" && source.canGrant === false) { els.pointMessage.textContent = "康立全球只能扣K點，不能贈K點。"; return; }
       const note = els.pointNote.value.trim();
-      localStorage.setItem("line_ai_operator_uid", operatorId);
       localStorage.setItem("line_ai_operator_name", operatorName);
       const payload = {
         channel_key: source.key,
-        line_user_id: state.pointMutationUserId || state.pointUserId,
+        line_user_id: sourceLineUserId,
         chat_line_user_id: state.pointUserId,
         point_type: els.pointType.value || "gift_money",
         points: amount,
-        operator_name: operatorName || operatorId,
-        operator_id: operatorId,
+        operator_name: operatorName || "後台客服",
+        operator_id: operatorName ? `dashboard:${operatorName}` : "dashboard",
         note,
         event_name: `${source.name}${action === "grant" ? "贈K點" : "扣K點"}`,
         event_content: note || "由 KLINK 客服系統操作",

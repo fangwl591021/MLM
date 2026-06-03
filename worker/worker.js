@@ -2905,6 +2905,58 @@ async function resolvePointIdentity(env, input) {
         };
       }
     }
+
+    const sourceLinked = await env.DB.prepare(`
+      SELECT master_member_ref, channel_key, line_user_id
+      FROM member_line_links
+      WHERE channel_key IN (?, ?) AND line_user_id = ?
+      ORDER BY linked_at DESC
+      LIMIT 1
+    `).bind(POINT_OA1, POINT_OA2, chatLineUserId).first();
+    if (sourceLinked && sourceLinked.master_member_ref) {
+      const member = await env.DB.prepare(`
+        SELECT member_ref, name, source_json
+        FROM crm_members
+        WHERE member_ref = ?
+        LIMIT 1
+      `).bind(sourceLinked.master_member_ref).first();
+      const channelLineUserIds = await pointLineUserIdsForMember(env, sourceLinked.master_member_ref, member);
+      if (hasPointSourceLineUsers(channelLineUserIds)) {
+        return {
+          channelLineUserIds,
+          pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
+          memberRef: sourceLinked.master_member_ref,
+          name: member && member.name ? member.name : "",
+          source: "source_member_link",
+        };
+      }
+    }
+
+    const account = await env.DB.prepare(`
+      SELECT master_member_ref
+      FROM point_accounts
+      WHERE line_user_id = ? AND master_member_ref IS NOT NULL AND master_member_ref <> ''
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(chatLineUserId).first();
+    if (account && account.master_member_ref) {
+      const member = await env.DB.prepare(`
+        SELECT member_ref, name, source_json
+        FROM crm_members
+        WHERE member_ref = ?
+        LIMIT 1
+      `).bind(account.master_member_ref).first();
+      const channelLineUserIds = await pointLineUserIdsForMember(env, account.master_member_ref, member);
+      if (hasPointSourceLineUsers(channelLineUserIds)) {
+        return {
+          channelLineUserIds,
+          pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
+          memberRef: account.master_member_ref,
+          name: member && member.name ? member.name : "",
+          source: "point_account",
+        };
+      }
+    }
   }
 
   if (!userName) return null;
