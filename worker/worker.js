@@ -471,8 +471,8 @@ function getProvider(env, floor) {
       floor,
       id: FLOOR_ADMIN,
       label: "\u884c\u653f\u5ba2\u670d",
-      channelSecret: env.LINE_ADMIN_CHANNEL_SECRET || "",
-      accessToken: env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN || "",
+      channelSecret: env.LINE_OA2_CHANNEL_SECRET || env.LINE_GLOBAL_CHANNEL_SECRET || env.LINE_ADMIN_CHANNEL_SECRET || "",
+      accessToken: env.LINE_OA2_CHANNEL_ACCESS_TOKEN || env.LINE_GLOBAL_CHANNEL_ACCESS_TOKEN || env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN || "",
     };
   }
   return {
