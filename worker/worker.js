@@ -222,6 +222,13 @@ export default {
         return jsonResponse({ success: true, status: "success", links }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/admin/points/bind-line-user" && request.method === "POST") {
+        assertPointAdminAuth(request, env);
+        const body = await safeJson(request);
+        const result = await bindPointLineUser(env, body);
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/admin/points/balance" && request.method === "GET") {
         assertPointAdminAuth(request, env);
         const result = await listPointBalances(env, url);
@@ -1151,12 +1158,95 @@ async function listPointMemberLinks(env, url) {
   return rows.results || [];
 }
 
+async function bindPointLineUser(env, body) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const chatLineUserId = stringValue(body.chat_line_user_id || body.chatLineUserId || body.chat_user_id || body.chatUserId);
+  const pointLineUserId = stringValue(body.point_line_user_id || body.pointLineUserId || body.line_user_id || body.lineUserId);
+  const channelKey = stringValue(body.channel_key || body.channelKey || POINT_OA1);
+  const userName = stringValue(body.user_name || body.userName || body.name);
+  if (!chatLineUserId || !pointLineUserId) throw httpError("chat_line_user_id and point_line_user_id are required", 400);
+  if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
+
+  const existingSource = await env.DB.prepare(`
+    SELECT master_member_ref
+    FROM member_line_links
+    WHERE channel_key = ? AND line_user_id = ?
+    LIMIT 1
+  `).bind(channelKey, pointLineUserId).first();
+
+  let masterMemberRef = existingSource && existingSource.master_member_ref
+    ? stringValue(existingSource.master_member_ref)
+    : stringValue(body.master_member_ref || body.masterMemberRef);
+
+  let snapshot = null;
+  if (!masterMemberRef) {
+    try {
+      snapshot = await fetchWetwPointSnapshot(env, channelKey, pointLineUserId, "gift_money", 5);
+      const first = Array.isArray(snapshot.rows) ? snapshot.rows.find((row) => row && (row.user_id || row.member_ref || row.master_member_ref)) : null;
+      masterMemberRef = stringValue(first && (first.user_id || first.member_ref || first.master_member_ref));
+    } catch (_err) {
+      // Manual binding is still allowed. Some valid members have no point rows yet.
+    }
+  }
+  if (!masterMemberRef) masterMemberRef = `manual:${shortHash(`${channelKey}:${pointLineUserId}`)}`;
+
+  await env.DB.prepare(`
+    DELETE FROM member_line_links
+    WHERE channel_key = 'chat' AND line_user_id = ? AND master_member_ref <> ?
+  `).bind(chatLineUserId, masterMemberRef).run();
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO member_line_links (master_member_ref, channel_key, line_user_id, binding_code, linked_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(master_member_ref, channel_key) DO UPDATE SET
+        line_user_id = excluded.line_user_id,
+        binding_code = excluded.binding_code,
+        linked_at = CURRENT_TIMESTAMP
+    `).bind(masterMemberRef, "chat", chatLineUserId, `manual-chat:${channelKey}`),
+    env.DB.prepare(`
+      INSERT INTO member_line_links (master_member_ref, channel_key, line_user_id, binding_code, linked_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(master_member_ref, channel_key) DO UPDATE SET
+        line_user_id = excluded.line_user_id,
+        binding_code = excluded.binding_code,
+        linked_at = CURRENT_TIMESTAMP
+    `).bind(masterMemberRef, channelKey, pointLineUserId, `manual-point:${chatLineUserId}`),
+  ]);
+
+  if (userName) {
+    await env.DB.prepare(`
+      INSERT INTO crm_members (member_ref, name, source, source_json, created_at, updated_at)
+      VALUES (?, ?, 'manual-bind', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(member_ref) DO UPDATE SET
+        name = CASE WHEN crm_members.name IS NULL OR crm_members.name = '' THEN excluded.name ELSE crm_members.name END,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(masterMemberRef, userName, JSON.stringify({ LINE_user_id: pointLineUserId, chat_line_user_id: chatLineUserId, channel_key: channelKey })).run();
+  }
+
+  return {
+    master_member_ref: masterMemberRef,
+    chat_line_user_id: chatLineUserId,
+    point_line_user_id: pointLineUserId,
+    channel_key: channelKey,
+    checked_rows: snapshot && Array.isArray(snapshot.rows) ? snapshot.rows.length : null,
+  };
+}
+
 async function pointMutation(env, body, action) {
   const channelKey = stringValue(body.channel_key || body.channelKey);
-  const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
+  let lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
+  const chatLineUserId = stringValue(body.chat_line_user_id || body.chatLineUserId);
   const points = Math.abs(Number(body.points || body.point_delta || body.pointDelta));
   if (!channelKey || !lineUserId || !points) throw httpError("channel_key, line_user_id, and points are required", 400);
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
+  if (chatLineUserId && chatLineUserId === lineUserId) {
+    const resolved = await resolvePointIdentity(env, { chatLineUserId });
+    if (resolved && resolved.pointLineUserId) lineUserId = resolved.pointLineUserId;
+  }
+  if (chatLineUserId && chatLineUserId === lineUserId) {
+    throw httpError("此聊天室 UID 尚未綁定母站 K點 UID，請先綁定後再贈扣。", 400);
+  }
   const sourceMeta = pointSourceMeta(channelKey);
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
     throw httpError(`${sourceMeta.label} 來源只允許扣K點，不允許贈K點`, 400);
@@ -2785,6 +2875,14 @@ function crmLineUserId(member) {
 async function pointLineUserIdForMember(env, memberRef) {
   const ref = stringValue(memberRef);
   if (!ref) return "";
+  const linked = await env.DB.prepare(`
+    SELECT line_user_id
+    FROM member_line_links
+    WHERE master_member_ref = ? AND channel_key IN (?, ?)
+    ORDER BY CASE channel_key WHEN ? THEN 0 ELSE 1 END, linked_at DESC
+    LIMIT 1
+  `).bind(ref, POINT_OA1, POINT_OA2, POINT_OA1).first();
+  if (linked && linked.line_user_id) return stringValue(linked.line_user_id);
   const row = await env.DB.prepare(`
     SELECT line_user_id
     FROM point_accounts
