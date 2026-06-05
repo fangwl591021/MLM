@@ -124,6 +124,10 @@ export default {
       const floor = resolveFloor(request);
       const provider = getProvider(env, floor);
 
+      if (requiresFloorAccess(url.pathname)) {
+        await assertFloorAccess(request, env, floor);
+      }
+
       if (url.pathname === "/api/console/summary" && request.method === "GET") {
         assertDashboardAuth(request, env);
         const data = await fetchConsoleSummary(env);
@@ -378,6 +382,20 @@ export default {
         return jsonResponse(result, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/floor-whitelist" && request.method === "GET") {
+        assertDashboardAuth(request, env);
+        const data = await fetchFloorWhitelist(env);
+        return jsonResponse({ status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/floor-whitelist" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const targetFloor = FLOOR_IDS.has(stringValue(body.floor || body.floor_id)) ? stringValue(body.floor || body.floor_id) : floor;
+        const result = await saveFloorWhitelist(env, targetFloor, body.entries || parseWhitelistLines(body.lines || body.text || ""));
+        return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/reply-learning" && request.method === "GET") {
         assertDashboardAuth(request, env);
         const limit = clampNumber(url.searchParams.get("limit") || 50, 1, 200);
@@ -474,7 +492,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -583,6 +601,119 @@ async function fetchConsoleSummary(env) {
     events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins },
     pointCrm: { members: crmMembers, pointAccounts, ledgerToday: pointLedgerToday },
   };
+}
+
+function requiresFloorAccess(pathname) {
+  const path = stringValue(pathname);
+  if (path === "/api/floor-whitelist") return false;
+  if (path === "/api/data") return true;
+  if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
+  if (path === "/api/knowledge" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild") return true;
+  if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
+  if (path.startsWith("/admin/points/")) return true;
+  return false;
+}
+
+async function assertFloorAccess(request, env, floor) {
+  assertDashboardAuth(request, env);
+  if (!env.DB) return;
+  await ensureFloorAccessSchema(env);
+  const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
+  const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM floor_access_whitelist WHERE floor_id = ? AND active = 1").bind(targetFloor).first();
+  if (Number(countRow && countRow.count || 0) <= 0) return;
+  const operatorId = normalizedOperatorId(request.headers.get("X-Operator-Id") || request.headers.get("X-User-Id") || request.headers.get("X-Admin-User"));
+  if (!operatorId) throw httpError(`此樓層已啟用白名單，請先填寫操作人 ID`, 403);
+  const allowed = await env.DB.prepare(`
+    SELECT operator_id
+    FROM floor_access_whitelist
+    WHERE floor_id = ? AND operator_id = ? AND active = 1
+    LIMIT 1
+  `).bind(targetFloor, operatorId).first();
+  if (!allowed) throw httpError(`操作人 ${operatorId} 不在 ${floorLabel(targetFloor)} 白名單`, 403);
+}
+
+function floorLabel(floor) {
+  return floor === FLOOR_ADMIN ? "\u884c\u653f\u5ba2\u670d" : "\u7522\u54c1\u5ba2\u670d";
+}
+
+function normalizedOperatorId(value) {
+  return stringValue(value).trim();
+}
+
+async function ensureFloorAccessSchema(env) {
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS floor_access_whitelist (
+        floor_id TEXT NOT NULL,
+        operator_id TEXT NOT NULL,
+        operator_name TEXT NOT NULL DEFAULT '',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY(floor_id, operator_id)
+      )
+    `),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_floor_access_whitelist_floor_active ON floor_access_whitelist(floor_id, active)"),
+  ]);
+}
+
+async function fetchFloorWhitelist(env) {
+  if (!env.DB) return { floors: {} };
+  await ensureFloorAccessSchema(env);
+  const rows = await env.DB.prepare(`
+    SELECT floor_id, operator_id, operator_name, active, updated_at
+    FROM floor_access_whitelist
+    ORDER BY floor_id ASC, operator_id ASC
+  `).all();
+  const floors = { [FLOOR_MAIN]: [], [FLOOR_ADMIN]: [] };
+  for (const row of rows.results || []) {
+    const floorId = FLOOR_IDS.has(row.floor_id) ? row.floor_id : FLOOR_MAIN;
+    floors[floorId].push({
+      floorId,
+      operatorId: row.operator_id,
+      operatorName: row.operator_name,
+      active: Number(row.active || 0) === 1,
+      updatedAt: row.updated_at,
+    });
+  }
+  return { floors };
+}
+
+async function saveFloorWhitelist(env, floor, entries) {
+  if (!env.DB) return { floor, count: 0 };
+  await ensureFloorAccessSchema(env);
+  const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
+  const now = Date.now();
+  const normalized = normalizeWhitelistEntries(entries);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM floor_access_whitelist WHERE floor_id = ?").bind(targetFloor),
+    ...normalized.map((entry) => env.DB.prepare(`
+      INSERT INTO floor_access_whitelist (floor_id, operator_id, operator_name, active, created_at, updated_at)
+      VALUES (?, ?, ?, 1, ?, ?)
+    `).bind(targetFloor, entry.operatorId, entry.operatorName, now, now)),
+  ]);
+  return { floor: targetFloor, count: normalized.length, entries: normalized };
+}
+
+function parseWhitelistLines(value) {
+  return stringValue(value).split(/\r?\n/).map((line) => {
+    const clean = line.trim();
+    if (!clean) return null;
+    const parts = clean.split(/[,，\t]/).map((part) => part.trim()).filter(Boolean);
+    return { operatorId: parts[0] || "", operatorName: parts.slice(1).join(" ") || "" };
+  }).filter(Boolean);
+}
+
+function normalizeWhitelistEntries(entries) {
+  const output = [];
+  const seen = new Set();
+  for (const item of Array.isArray(entries) ? entries : []) {
+    const operatorId = normalizedOperatorId(item.operatorId || item.operator_id || item.id || item.uid);
+    if (!operatorId || seen.has(operatorId)) continue;
+    seen.add(operatorId);
+    output.push({ operatorId, operatorName: stringValue(item.operatorName || item.operator_name || item.name).trim() });
+  }
+  return output;
 }
 
 function getPointChannelConfig(env, channelKey) {

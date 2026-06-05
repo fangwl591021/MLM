@@ -219,6 +219,19 @@ CREATE INDEX IF NOT EXISTS idx_reply_learning_floor_updated
 CREATE INDEX IF NOT EXISTS idx_reply_learning_floor_category
   ON reply_learning(floor_id, category);
 
+CREATE TABLE IF NOT EXISTS floor_access_whitelist (
+  floor_id TEXT NOT NULL,
+  operator_id TEXT NOT NULL,
+  operator_name TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(floor_id, operator_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_floor_access_whitelist_floor_active
+  ON floor_access_whitelist(floor_id, active);
+
 INSERT OR IGNORE INTO keyword_rules (
   floor_id, keyword, match_type, action, channel_key, point_type, points, active, priority, response_success, response_duplicate
 ) VALUES (

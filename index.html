@@ -9,7 +9,7 @@
     *{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;color:var(--ink);font-family:Inter,"Noto Sans TC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}
     .app{display:grid;grid-template-columns:370px minmax(620px,1fr) 390px;height:100vh;background:#fff}.left{border-right:1px solid var(--border);min-height:0}.chat{display:grid;grid-template-rows:70px auto auto minmax(0,1fr) auto;height:100vh;min-height:0;overflow:hidden}.assist{border-left:1px solid var(--border);background:#fbfcfe;min-height:0}
     .brand,.head,.assistHead{height:70px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);background:#fff}.brand{justify-content:flex-start}.oa{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:var(--line);color:#fff;font-weight:900}.brand h1,.room h2,.assist h2{margin:0;font-size:17px;line-height:1.2;font-weight:900}.brand p,.room p,.assist p{margin:4px 0 0;color:var(--sub);font-size:12px}.room{min-width:0;flex:1}.room h2,.room p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .config{display:grid;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border);background:#f8fafc}.config label{color:#5d6675;font-size:12px;font-weight:800}.config input,.search input,textarea,.noteInput,.tagInput{width:100%;border:1px solid #d8dee8;background:#fff;outline:none}.config input{height:38px;border-radius:8px;padding:0 11px}.config input[type=file]{height:auto;padding:8px}.config button,.outlineBtn{height:36px;border:1px solid #b6ecc8;border-radius:8px;background:#effcf4;color:#067a35;font-weight:900}.secondaryBtn{border-color:#d8dee8!important;background:#fff!important;color:#344054!important}.knowledgeStatus{min-height:16px;color:#6b7280;font-size:12px;line-height:1.35}.search{padding:14px 16px;border-bottom:1px solid var(--border)}.search input{height:40px;border-radius:999px;padding:0 15px;background:#f4f7fa}.config input:focus,.search input:focus,textarea:focus,.noteInput:focus,.tagInput:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}
+    .config{display:grid;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border);background:#f8fafc;max-height:54vh;overflow:auto}.config label{color:#5d6675;font-size:12px;font-weight:800}.config input,.search input,textarea,.noteInput,.tagInput{width:100%;border:1px solid #d8dee8;background:#fff;outline:none}.config input{height:38px;border-radius:8px;padding:0 11px}.config input[type=file]{height:auto;padding:8px}.config button,.outlineBtn{height:36px;border:1px solid #b6ecc8;border-radius:8px;background:#effcf4;color:#067a35;font-weight:900}.secondaryBtn{border-color:#d8dee8!important;background:#fff!important;color:#344054!important}.whitelistBox{display:grid;gap:8px;margin-top:6px;padding:10px;border:1px solid #e5edf7;border-radius:10px;background:#fff}.whitelistBox h3{margin:0;color:#172033;font-size:14px}.whitelistBox textarea{min-height:58px;max-height:96px;border-radius:8px;font-size:13px}.whitelistHint{color:#667085;font-size:12px;line-height:1.35}.knowledgeStatus{min-height:16px;color:#6b7280;font-size:12px;line-height:1.35}.search{padding:14px 16px;border-bottom:1px solid var(--border)}.search input{height:40px;border-radius:999px;padding:0 15px;background:#f4f7fa}.config input:focus,.search input:focus,textarea:focus,.noteInput:focus,.tagInput:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}
     .list{height:calc(100vh - 70px - 294px - 69px);overflow:auto}.item{width:100%;display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px;padding:16px;border:0;border-bottom:1px solid #edf1f5;background:#fff;text-align:left}.item:hover,.item.active{background:#ebfbf3}.item.active{box-shadow:inset 4px 0 0 var(--line)}.avatar{width:48px;height:48px;display:grid;place-items:center;border-radius:50%;background:#e4ebf3;color:#233044;font-weight:900;overflow:hidden}.avatar.named{background:#dff8e9;color:#057a36}.avatar img{width:100%;height:100%;display:block;border-radius:50%;object-fit:cover}.line{display:flex;justify-content:space-between;gap:8px;min-width:0}.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:900}.time{color:var(--sub);font-size:11px;white-space:nowrap}.uid{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7a8492;font-size:11px}.preview{margin-top:5px;overflow:hidden;color:#4b5563;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.label{border-radius:999px;padding:4px 9px;background:#eef2f7;color:#536072;font-size:11px;font-weight:850}.label.hot{background:#fff1f3;color:#c01048}.label.nameWait{background:#fff7ed;color:#9a3412}
     .state{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:7px 12px;color:#fff!important;font-size:13px;font-weight:950;line-height:1;letter-spacing:.03em;box-shadow:0 2px 8px rgba(17,24,39,.18)}.item .state{padding:6px 11px;font-size:12px}.state.danger{background:var(--danger)}.state.warn{background:var(--warn)}.state.dark{background:var(--dark)}.state.neutral{background:#475467}
     .roomActions{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:max-content}.statusBtn{height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #778199;border-radius:2px;background:#fff;color:#4b5563;padding:0 14px;font-weight:850;white-space:nowrap}.statusBtn:hover,.statusBtn.active{border-color:#3d4a63;background:#f3f6fb}.pill{border:1px solid #b6ecc8;border-radius:999px;padding:6px 10px;background:#effcf4;color:#07833b;font-size:12px;font-weight:900;white-space:nowrap}.pill.bad{border-color:#fecdd3;background:#fff1f3;color:var(--danger)}.refresh{width:38px;height:38px;border:1px solid #d8dee8;border-radius:10px;background:#fff;color:#4b5563;flex:0 0 auto}
@@ -37,6 +37,14 @@
       <section class="config">
         <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
         <label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入後同步聊天室" />
+        <label for="operatorId">操作人 ID</label><input id="operatorId" placeholder="例：tony 或管理員 LINE UID" />
+        <section class="whitelistBox">
+          <h3>樓層白名單</h3>
+          <div class="whitelistHint">每行一位：操作人ID, 名稱。白名單留空時該樓層不鎖權限。</div>
+          <label for="whitelistMain">1F 產品客服</label><textarea id="whitelistMain" placeholder="tony, Tonyfang"></textarea>
+          <label for="whitelistAdmin">2F 行政客服</label><textarea id="whitelistAdmin" placeholder="admin001, 行政主管"></textarea>
+          <button id="saveWhitelist" type="button">儲存樓層白名單</button>
+        </section>
         <label for="knowledgeFile">知識庫 JSON</label><input id="knowledgeFile" type="file" accept=".json,application/json" />
         <button id="uploadKnowledge" type="button">上傳知識庫</button>
         <button id="backfillProfiles" type="button" class="secondaryBtn">補抓名稱頭像</button>
@@ -117,7 +125,7 @@
     ];
     const $ = (id) => document.getElementById(id);
     const els = {
-      apiBase: $("apiBase"), apiToken: $("apiToken"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
+      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), whitelistMain: $("whitelistMain"), whitelistAdmin: $("whitelistAdmin"), saveWhitelist: $("saveWhitelist"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
       searchBox: $("searchBox"), chatList: $("chatList"), messages: $("messages"), suggestions: $("suggestions"), sideSuggestions: $("sideSuggestions"), suggestionCount: $("suggestionCount"),
       replyText: $("replyText"), sendButton: $("sendButton"), sendMenuButton: $("sendMenuButton"), sendMenu: $("sendMenu"), logButton: $("logButton"), refreshButton: $("refreshButton"),
       pendingButton: $("pendingButton"), doneButton: $("doneButton"), searchButton: $("searchButton"), searchBottomButton: $("searchBottomButton"), activeTitle: $("activeTitle"), activeSubtitle: $("activeSubtitle"), activeAvatar: $("activeAvatar"),
@@ -129,9 +137,12 @@
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
+    els.operatorId.value = localStorage.getItem("line_ai_operator_id") || localStorage.getItem("line_ai_operator_name") || "";
     els.apiBase.addEventListener("change", saveSettings);
     els.apiToken.addEventListener("change", saveSettings);
+    els.operatorId.addEventListener("change", saveOperatorId);
     els.settingsButton.addEventListener("click", toggleSettings);
+    els.saveWhitelist.addEventListener("click", saveFloorWhitelist);
     els.searchBox.addEventListener("input", render);
     document.querySelectorAll("[data-floor]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -195,8 +206,13 @@
       els.apiBase.value = sanitizeApiBase(els.apiBase.value);
       localStorage.setItem("line_ai_api_base", els.apiBase.value);
       localStorage.setItem("line_ai_api_token", els.apiToken.value.trim());
+      saveOperatorId();
       setSettingsOpen(false);
       sync();
+    }
+
+    function saveOperatorId() {
+      localStorage.setItem("line_ai_operator_id", els.operatorId.value.trim());
     }
 
     function toggleSettings() {
@@ -207,6 +223,61 @@
       document.querySelector(".left").classList.toggle("config-open", Boolean(open));
       els.settingsButton.classList.toggle("active", Boolean(open));
       els.settingsButton.textContent = open ? "關閉" : "設定";
+      if (open && els.apiToken.value.trim()) loadFloorWhitelist();
+    }
+
+    async function loadFloorWhitelist() {
+      try {
+        const res = await fetch(apiUrl("/api/floor-whitelist"), { headers: authHeaders() });
+        const json = await res.json();
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "白名單讀取失敗");
+        const floors = json.data && json.data.floors ? json.data.floors : {};
+        els.whitelistMain.value = whitelistToText(floors.main || []);
+        els.whitelistAdmin.value = whitelistToText(floors.admin || []);
+      } catch (err) {
+        els.knowledgeStatus.textContent = err.message || String(err);
+      }
+    }
+
+    async function saveFloorWhitelist() {
+      saveOperatorId();
+      try {
+        const main = await saveSingleFloorWhitelist("main", els.whitelistMain.value);
+        const admin = await saveSingleFloorWhitelist("admin", els.whitelistAdmin.value);
+        els.knowledgeStatus.textContent = `白名單已儲存：1F ${main.count || 0} 位，2F ${admin.count || 0} 位`;
+        sync();
+      } catch (err) {
+        els.knowledgeStatus.textContent = err.message || String(err);
+        showError(err.message || String(err));
+      }
+    }
+
+    async function saveSingleFloorWhitelist(floor, text) {
+      const res = await fetch(apiUrl("/api/floor-whitelist"), {
+        method: "POST",
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ floor, entries: parseWhitelistText(text) })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== "success") throw new Error(json.message || "白名單儲存失敗");
+      return json;
+    }
+
+    function parseWhitelistText(text) {
+      return String(text || "").split(/\r?\n/).map((line) => {
+        const clean = line.trim();
+        if (!clean) return null;
+        const parts = clean.split(/[,，\t]/).map((part) => part.trim()).filter(Boolean);
+        return { operatorId: parts[0] || "", operatorName: parts.slice(1).join(" ") || "" };
+      }).filter(Boolean);
+    }
+
+    function whitelistToText(rows) {
+      return (rows || []).filter((row) => row.active !== false).map((row) => {
+        const id = row.operatorId || row.operator_id || "";
+        const name = row.operatorName || row.operator_name || "";
+        return name ? `${id}, ${name}` : id;
+      }).filter(Boolean).join("\n");
     }
 
     function initialFloor() {
@@ -233,7 +304,7 @@
       }
       try {
         setStatus("同步中");
-        const res = await fetch(apiUrl("/api/data"), { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(apiUrl("/api/data"), { headers: authHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         state.chats = Array.isArray(json.data.chats) ? json.data.chats : [];
@@ -328,7 +399,7 @@
 
     async function debugActiveProfile() {
       try {
-        const res = await fetch(apiUrl(`/api/profile-debug?userId=${encodeURIComponent(state.activeUserId)}`), { headers: { Authorization: `Bearer ${els.apiToken.value.trim()}` } });
+        const res = await fetch(apiUrl(`/api/profile-debug?userId=${encodeURIComponent(state.activeUserId)}`), { headers: authHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") return;
         const direct = json.profileChecks && json.profileChecks.direct ? json.profileChecks.direct : {};
@@ -893,10 +964,13 @@
         return url.origin + url.pathname.replace(/\/+$/, "");
       } catch (_err) { return DEFAULT_API_BASE; }
     }
-    function authJsonHeaders() { return { "Content-Type": "application/json", Authorization: `Bearer ${els.apiToken.value.trim()}` }; }
+    function authHeaders() {
+      return { Authorization: `Bearer ${els.apiToken.value.trim()}`, "X-Operator-Id": els.operatorId.value.trim() };
+    }
+    function authJsonHeaders() { return { "Content-Type": "application/json", ...authHeaders() }; }
     function setStatus(text, bad) { els.syncStatus.textContent = text; els.syncStatus.className = bad ? "pill bad" : "pill"; }
     function showError(text) {
-      if (text && /Unauthorized|DASHBOARD_API_TOKEN|Token/i.test(text)) setSettingsOpen(true);
+      if (text && /Unauthorized|DASHBOARD_API_TOKEN|Token|白名單|操作人/i.test(text)) setSettingsOpen(true);
       els.errorBox.innerHTML = text ? `<p class="error">${esc(text)}</p>` : "";
     }
     function clearError() { showError(""); }
