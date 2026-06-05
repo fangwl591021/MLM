@@ -623,14 +623,14 @@ async function assertFloorAccess(request, env, floor) {
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM floor_access_whitelist WHERE floor_id = ? AND active = 1").bind(targetFloor).first();
   if (Number(countRow && countRow.count || 0) <= 0) return;
   const operatorId = normalizedOperatorId(request.headers.get("X-Operator-Id") || request.headers.get("X-User-Id") || request.headers.get("X-Admin-User"));
-  if (!operatorId) throw httpError(`此樓層已啟用白名單，請先填寫操作人 ID`, 403);
+  if (!operatorId) throw httpError(`此樓層已啟用白名單，請先填寫管理員 UID`, 403);
   const allowed = await env.DB.prepare(`
     SELECT operator_id
     FROM floor_access_whitelist
     WHERE floor_id = ? AND operator_id = ? AND active = 1
     LIMIT 1
   `).bind(targetFloor, operatorId).first();
-  if (!allowed) throw httpError(`操作人 ${operatorId} 不在 ${floorLabel(targetFloor)} 白名單`, 403);
+  if (!allowed) throw httpError(`管理員 UID ${operatorId} 不在 ${floorLabel(targetFloor)} 白名單`, 403);
 }
 
 function floorLabel(floor) {

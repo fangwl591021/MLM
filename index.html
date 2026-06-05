@@ -37,13 +37,12 @@
       <section class="config">
         <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
         <label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入後同步聊天室" />
-        <label for="operatorId">操作人 ID</label><input id="operatorId" placeholder="例：tony 或管理員 LINE UID" />
+        <label for="operatorId">管理員 UID</label><input id="operatorId" placeholder="例：管理員 LINE UID" />
         <section class="whitelistBox">
           <h3>樓層白名單</h3>
-          <div class="whitelistHint">每行一位：操作人ID, 名稱。白名單留空時該樓層不鎖權限。</div>
-          <label for="whitelistMain">1F 產品客服</label><textarea id="whitelistMain" placeholder="tony, Tonyfang"></textarea>
-          <label for="whitelistAdmin">2F 行政客服</label><textarea id="whitelistAdmin" placeholder="admin001, 行政主管"></textarea>
-          <button id="saveWhitelist" type="button">儲存樓層白名單</button>
+          <div class="whitelistHint">每行一位：管理員 LINE UID, 名稱。白名單留空時該樓層不鎖權限。</div>
+          <label id="floorWhitelistLabel" for="floorWhitelist">目前樓層</label><textarea id="floorWhitelist" placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, Tonyfang"></textarea>
+          <button id="saveWhitelist" type="button">儲存目前樓層白名單</button>
         </section>
         <label for="knowledgeFile">知識庫 JSON</label><input id="knowledgeFile" type="file" accept=".json,application/json" />
         <button id="uploadKnowledge" type="button">上傳知識庫</button>
@@ -125,7 +124,7 @@
     ];
     const $ = (id) => document.getElementById(id);
     const els = {
-      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), whitelistMain: $("whitelistMain"), whitelistAdmin: $("whitelistAdmin"), saveWhitelist: $("saveWhitelist"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
+      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), floorWhitelistLabel: $("floorWhitelistLabel"), floorWhitelist: $("floorWhitelist"), saveWhitelist: $("saveWhitelist"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
       searchBox: $("searchBox"), chatList: $("chatList"), messages: $("messages"), suggestions: $("suggestions"), sideSuggestions: $("sideSuggestions"), suggestionCount: $("suggestionCount"),
       replyText: $("replyText"), sendButton: $("sendButton"), sendMenuButton: $("sendMenuButton"), sendMenu: $("sendMenu"), logButton: $("logButton"), refreshButton: $("refreshButton"),
       pendingButton: $("pendingButton"), doneButton: $("doneButton"), searchButton: $("searchButton"), searchBottomButton: $("searchBottomButton"), activeTitle: $("activeTitle"), activeSubtitle: $("activeSubtitle"), activeAvatar: $("activeAvatar"),
@@ -152,6 +151,8 @@
         state.activeUserId = "";
         state.loaded = false;
         document.querySelectorAll("[data-floor]").forEach((item) => item.classList.toggle("active", item === button));
+        updateWhitelistFloorLabel();
+        if (document.querySelector(".left").classList.contains("config-open") && els.apiToken.value.trim()) loadFloorWhitelist();
         render();
         sync();
       });
@@ -199,6 +200,7 @@
     setSettingsOpen(!els.apiToken.value.trim());
 
     render();
+    updateWhitelistFloorLabel();
     sync();
     setInterval(sync, 5000);
 
@@ -228,12 +230,12 @@
 
     async function loadFloorWhitelist() {
       try {
+        updateWhitelistFloorLabel();
         const res = await fetch(apiUrl("/api/floor-whitelist"), { headers: authHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "白名單讀取失敗");
         const floors = json.data && json.data.floors ? json.data.floors : {};
-        els.whitelistMain.value = whitelistToText(floors.main || []);
-        els.whitelistAdmin.value = whitelistToText(floors.admin || []);
+        els.floorWhitelist.value = whitelistToText(floors[state.floor] || []);
       } catch (err) {
         els.knowledgeStatus.textContent = err.message || String(err);
       }
@@ -242,9 +244,8 @@
     async function saveFloorWhitelist() {
       saveOperatorId();
       try {
-        const main = await saveSingleFloorWhitelist("main", els.whitelistMain.value);
-        const admin = await saveSingleFloorWhitelist("admin", els.whitelistAdmin.value);
-        els.knowledgeStatus.textContent = `白名單已儲存：1F ${main.count || 0} 位，2F ${admin.count || 0} 位`;
+        const saved = await saveSingleFloorWhitelist(state.floor, els.floorWhitelist.value);
+        els.knowledgeStatus.textContent = `${FLOORS[state.floor] || "目前樓層"} 白名單已儲存：${saved.count || 0} 位`;
         sync();
       } catch (err) {
         els.knowledgeStatus.textContent = err.message || String(err);
@@ -278,6 +279,10 @@
         const name = row.operatorName || row.operator_name || "";
         return name ? `${id}, ${name}` : id;
       }).filter(Boolean).join("\n");
+    }
+
+    function updateWhitelistFloorLabel() {
+      if (els.floorWhitelistLabel) els.floorWhitelistLabel.textContent = `${FLOORS[state.floor] || "目前樓層"} 白名單`;
     }
 
     function initialFloor() {
