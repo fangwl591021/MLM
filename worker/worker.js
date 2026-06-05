@@ -616,6 +616,7 @@ function requiresFloorAccess(pathname) {
 
 async function assertFloorAccess(request, env, floor) {
   assertDashboardAuth(request, env);
+  if (isAdminRequest(request, env)) return;
   if (!env.DB) return;
   await ensureFloorAccessSchema(env);
   const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
@@ -638,6 +639,15 @@ function floorLabel(floor) {
 
 function normalizedOperatorId(value) {
   return stringValue(value).trim();
+}
+
+function isAdminRequest(request, env) {
+  const adminToken = String(env.ADMIN_TOKEN || "").trim();
+  if (!adminToken) return false;
+  const auth = String(request.headers.get("Authorization") || "").trim();
+  const directToken = String(request.headers.get("X-Admin-Token") || request.headers.get("X-Dashboard-Token") || "").trim();
+  const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
+  return bearerToken === adminToken || directToken === adminToken;
 }
 
 async function ensureFloorAccessSchema(env) {
@@ -5268,7 +5278,7 @@ function buildCorsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Operator-Id, X-User-Id, X-Admin-User",
     "Access-Control-Max-Age": "86400",
     ...JSON_HEADERS,
   };
