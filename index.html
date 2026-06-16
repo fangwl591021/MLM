@@ -37,11 +37,11 @@
       <section class="config">
         <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
         <label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入後同步聊天室" />
-        <label for="operatorId">管理員 UID</label><input id="operatorId" placeholder="例：管理員 LINE UID" />
+        <label for="operatorId">操作人代號</label><input id="operatorId" placeholder="例：tony 或 U 開頭 LINE UID" />
         <section class="whitelistBox">
           <h3>樓層白名單</h3>
-          <div class="whitelistHint">每行一位：管理員 LINE UID, 名稱。白名單留空時該樓層不鎖權限。</div>
-          <label id="floorWhitelistLabel" for="floorWhitelist">目前樓層</label><textarea id="floorWhitelist" placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx, Tonyfang"></textarea>
+          <div class="whitelistHint">每行一位：操作人代號, 名稱。第一欄要和上方「操作人代號」完全相同；白名單留空時該樓層不鎖權限。</div>
+          <label id="floorWhitelistLabel" for="floorWhitelist">目前樓層</label><textarea id="floorWhitelist" placeholder="tony, Tonyfang"></textarea>
           <button id="saveWhitelist" type="button">儲存目前樓層白名單</button>
         </section>
         <label for="knowledgeFile">知識庫 JSON</label><input id="knowledgeFile" type="file" accept=".json,application/json" />
