@@ -1440,9 +1440,8 @@ async function pointMutation(env, body, action) {
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
     throw httpError(`${sourceMeta.label} 來源只允許扣K點，不允許贈K點`, 400);
   }
-  const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId);
-  const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName) || operatorId;
-  if (!operatorId) throw httpError("請填寫操作人UID", 400);
+  const operatorName = stringValue(body.operator_name || body.operatorName || body.operator || body.admin_name || body.adminName) || "dashboard";
+  const operatorId = stringValue(body.operator_id || body.operatorId || body.admin_id || body.adminId) || `dashboard:${operatorName}`;
   const delta = action === "grant" ? points : -points;
   const input = {
     channelKey,
@@ -2885,26 +2884,15 @@ async function applyPointMutation(env, input) {
   `).bind(input.channelKey, input.lineUserId).first();
   const masterMemberRef = link && link.master_member_ref ? link.master_member_ref : null;
 
-  const existing = await env.DB.prepare("SELECT balance FROM point_accounts WHERE account_key = ?").bind(accountKey).first();
   const explicitBalanceAfter = Number(input.balanceAfter ?? input.balance_after);
   const balanceAfter = Number.isFinite(explicitBalanceAfter)
     ? explicitBalanceAfter
-    : Number(existing && existing.balance || 0) + Number(input.pointDelta || 0);
+    : Number(input.pointDelta || 0);
 
-  await env.DB.batch([
-    env.DB.prepare(`
-      INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(account_key) DO UPDATE SET
-        master_member_ref = excluded.master_member_ref,
-        balance = excluded.balance,
-        updated_at = CURRENT_TIMESTAMP
-    `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, pointType, balanceAfter),
-    env.DB.prepare(`
-      INSERT INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, source_event_id, business_key, operator_id, operator_name, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, input.action, pointType, Number(input.pointDelta || 0), balanceAfter, input.source, input.sourceEventId || null, businessKey, input.operatorId || "", input.operatorName || "", input.note || null),
-  ]);
+  await env.DB.prepare(`
+    INSERT INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, source_event_id, business_key, operator_id, operator_name, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, input.action, pointType, Number(input.pointDelta || 0), balanceAfter, input.source, input.sourceEventId || null, businessKey, input.operatorId || "", input.operatorName || "", input.note || null).run();
 
   return { account_key: accountKey, master_member_ref: masterMemberRef, balance_after: balanceAfter };
 }
@@ -2962,23 +2950,11 @@ async function listPointBalances(env, url) {
     }
     return { balances: [], resolved: { member_ref: masterMemberRef, channel_line_user_ids: {}, source: "not_found" } };
   }
-  if (channelKey) {
-    const rows = await env.DB.prepare(`
-      SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
-      FROM point_accounts
-      WHERE channel_key = ?
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `).bind(channelKey, limit).all();
-    return decoratePointBalances(rows.results || []);
-  }
-  const rows = await env.DB.prepare(`
-    SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
-    FROM point_accounts
-    ORDER BY updated_at DESC
-    LIMIT ?
-  `).bind(limit).all();
-  return decoratePointBalances(rows.results || []);
+  return {
+    balances: [],
+    resolved: { source: "missing_line_user_id", message: "K點餘額只允許依明確聊天室或母站 LINE UID 即時查詢母站。" },
+    alternatives: [],
+  };
 }
 
 async function livePointBalancesForUser(env, lineUserId) {
@@ -3169,32 +3145,6 @@ async function resolvePointIdentity(env, input) {
       }
     }
 
-    const account = await env.DB.prepare(`
-      SELECT master_member_ref
-      FROM point_accounts
-      WHERE line_user_id = ? AND master_member_ref IS NOT NULL AND master_member_ref <> ''
-      ORDER BY updated_at DESC
-      LIMIT 1
-    `).bind(chatLineUserId).first();
-    if (account && account.master_member_ref) {
-      const member = await env.DB.prepare(`
-        SELECT member_ref, name, source_json
-        FROM crm_members
-        WHERE member_ref = ?
-        LIMIT 1
-      `).bind(account.master_member_ref).first();
-      const channelLineUserIds = await pointLineUserIdsForMember(env, account.master_member_ref, member);
-      if (hasPointSourceLineUsers(channelLineUserIds)) {
-        return {
-          channelLineUserIds,
-          pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
-          memberRef: account.master_member_ref,
-          name: member && member.name ? member.name : "",
-          source: "point_account",
-        };
-      }
-    }
-
     if (userName) {
       const profileResolved = await pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName);
       if (hasPointSourceLineUsers(profileResolved.channelLineUserIds)) {
@@ -3209,45 +3159,8 @@ async function resolvePointIdentity(env, input) {
     }
   }
 
-  if (!userName) return null;
-  for (const nameQuery of pointIdentityNameQueries(userName)) {
-    const like = `%${nameQuery}%`;
-    const rows = await env.DB.prepare(`
-      SELECT member_ref, name, source_json
-      FROM crm_members
-      WHERE name LIKE ? OR source_json LIKE ?
-      ORDER BY
-        CASE
-          WHEN name = ? THEN 0
-          WHEN name LIKE ? THEN 1
-          ELSE 2
-        END,
-        updated_at DESC
-      LIMIT 10
-    `).bind(like, like, nameQuery, like).all();
-    for (const member of rows.results || []) {
-      const channelLineUserIds = await pointLineUserIdsForMember(env, member.member_ref, member);
-      if (hasPointSourceLineUsers(channelLineUserIds)) {
-        return {
-          channelLineUserIds,
-          pointLineUserId: channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "",
-          memberRef: member.member_ref,
-          name: member.name,
-          source: nameQuery === userName ? "crm_name" : "crm_name_fallback",
-        };
-      }
-    }
-  }
-  const profileResolved = await pointSourceLineUsersFromProfileName(env, userName);
-  if (hasPointSourceLineUsers(profileResolved.channelLineUserIds)) {
-    return {
-      channelLineUserIds: profileResolved.channelLineUserIds,
-      pointLineUserId: profileResolved.channelLineUserIds[POINT_OA1] || profileResolved.channelLineUserIds[POINT_OA2] || "",
-      memberRef: "",
-      name: profileResolved.name || userName,
-      source: "point_profile_name",
-    };
-  }
+  // Do not auto-bind by name only. Same display names exist across LINE channels,
+  // and point balances must not be read from the wrong mother-site UID.
   return null;
 }
 
@@ -3304,14 +3217,7 @@ async function pointLineUserIdForMember(env, memberRef, channelKey = "") {
     LIMIT 1
   `).bind(ref, POINT_OA1, POINT_OA2, POINT_OA1).first();
   if (linked && linked.line_user_id) return stringValue(linked.line_user_id);
-  const row = await env.DB.prepare(`
-    SELECT line_user_id
-    FROM point_accounts
-    WHERE master_member_ref = ?
-    ORDER BY updated_at DESC
-    LIMIT 1
-  `).bind(ref).first();
-  return row ? stringValue(row.line_user_id) : "";
+  return "";
 }
 
 async function pointLineUserIdsForMember(env, memberRef, member = null) {
@@ -3327,16 +3233,6 @@ async function pointLineUserIdsForMember(env, memberRef, member = null) {
   for (const link of links.results || []) {
     const channelKey = stringValue(link.channel_key);
     if (POINT_CHANNELS.has(channelKey) && !result[channelKey]) result[channelKey] = stringValue(link.line_user_id);
-  }
-  const accounts = await env.DB.prepare(`
-    SELECT channel_key, line_user_id
-    FROM point_accounts
-    WHERE master_member_ref = ? AND channel_key IN (?, ?)
-    ORDER BY updated_at DESC
-  `).bind(ref, POINT_OA1, POINT_OA2).all();
-  for (const account of accounts.results || []) {
-    const channelKey = stringValue(account.channel_key);
-    if (POINT_CHANNELS.has(channelKey) && !result[channelKey]) result[channelKey] = stringValue(account.line_user_id);
   }
   const crmUid = crmLineUserId(member);
   if (crmUid && !result[POINT_OA1]) result[POINT_OA1] = crmUid;
@@ -3559,22 +3455,9 @@ async function listPointLedger(env, url) {
       }
       return ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
     }
-    const rows = await env.DB.prepare(`
-      SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
-      FROM point_ledger
-      WHERE master_member_ref = ?
-      ORDER BY id DESC
-      LIMIT ?
-    `).bind(masterMemberRef, limit).all();
-    return rows.results || [];
+    return [];
   }
-  const rows = await env.DB.prepare(`
-    SELECT id, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_id, operator_name, note, created_at
-    FROM point_ledger
-    ORDER BY id DESC
-    LIMIT ?
-  `).bind(limit).all();
-  return rows.results || [];
+  return [];
 }
 
 function wetwPointLedgerRow(channelKey, lineUserId, row) {
