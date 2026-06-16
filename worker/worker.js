@@ -2906,10 +2906,41 @@ async function listPointBalances(env, url) {
 
   if (lineUserId) {
     if (channelKey) {
-      return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
+      try {
+        return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
+      } catch (_err) {
+        // Continue to an explicit chat->mother-site binding when the clicked chat UID is not a mother-site UID.
+      }
     }
     const exactBalances = await livePointBalancesForUser(env, lineUserId);
-    return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
+    if (exactBalances.length) {
+      return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
+    }
+    if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
+      const resolvedRows = channelKey
+        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, "gift_money")
+        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, "gift_money");
+      return {
+        balances: resolvedRows.map((row) => ({
+          ...row,
+          chat_line_user_id: lineUserId,
+          resolved_from_name: resolved.name,
+          resolved_member_ref: resolved.memberRef,
+        })),
+        resolved: {
+          chat_line_user_id: lineUserId,
+          point_line_user_id: resolved.channelLineUserIds[POINT_OA1] || resolved.channelLineUserIds[POINT_OA2] || "",
+          channel_line_user_ids: resolved.channelLineUserIds,
+          member_ref: resolved.memberRef,
+          name: resolved.name,
+          source: `chat_uid_${resolved.source}`,
+        },
+        alternatives: [],
+      };
+    }
+    return { balances: [], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid_not_found" }, alternatives: [] };
   }
   if (masterMemberRef) {
     const resolved = await resolvePointIdentity(env, { masterMemberRef });
@@ -3406,7 +3437,25 @@ async function listPointLedger(env, url) {
         // Some members only exist in one source.
       }
     }
-    return ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
+    const exactLedgers = ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
+    if (exactLedgers.length) return exactLedgers;
+    if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
+      const mappedLedgers = [];
+      for (const sourceKey of sourceKeys) {
+        const sourceLineUserId = stringValue(resolved.channelLineUserIds[sourceKey]);
+        if (!sourceLineUserId) continue;
+        try {
+          const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, "gift_money", limit);
+          mappedLedgers.push(...snapshot.rows.map((row) => ({ ...wetwPointLedgerRow(sourceKey, sourceLineUserId, row), chat_line_user_id: lineUserId, resolved_member_ref: resolved.memberRef })));
+        } catch (_err) {
+          // Some members only exist in one source.
+        }
+      }
+      return mappedLedgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
+    }
+    return [];
   }
   if (masterMemberRef) {
     const resolved = await resolvePointIdentity(env, { masterMemberRef });

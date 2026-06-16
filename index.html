@@ -690,7 +690,9 @@
         });
         state.pointNeedsBind = !state.pointBalances.length && state.pointResolved && state.pointResolved.source === "not_found";
         state.pointMutationUserId = state.pointResolved && state.pointResolved.point_line_user_id ? state.pointResolved.point_line_user_id : (state.pointBalances[0] && state.pointBalances[0].line_user_id) || state.pointUserId;
-        els.pointSubtitle.textContent = `聊天室UID ${state.pointUserId || "未選擇"} · 直接用此 UID 查母站`;
+        els.pointSubtitle.textContent = state.pointMutationUserId && state.pointMutationUserId !== state.pointUserId
+          ? `聊天室UID ${state.pointUserId} · 綁定母站UID ${state.pointMutationUserId}`
+          : `聊天室UID ${state.pointUserId || "未選擇"} · 直接用此 UID 查母站`;
         renderPointBind();
         const priority = POINT_SOURCES.find((source) => source.deductPriority && pointSourceTotal(source.key) > 0);
         const funded = POINT_SOURCES.find((source) => pointSourceTotal(source.key) > 0);
@@ -743,8 +745,12 @@
     function renderPointIdentityPanel() {
       const alternatives = Array.isArray(state.pointAlternatives) ? state.pointAlternatives : [];
       const resolved = state.pointResolved || {};
-      const currentPointUid = state.pointUserId || resolved.point_line_user_id || state.pointMutationUserId || "";
-      let html = `<div class="pointIdentity"><div><strong>目前讀取</strong><span>直接查詢聊天室 UID ${esc(shortUid(currentPointUid || "未解析"))} · ${esc(pointResolveLabel(resolved.source))}</span></div></div>`;
+      const currentPointUid = state.pointUserId || "";
+      const mappedPointUid = resolved.point_line_user_id || state.pointMutationUserId || "";
+      const relation = mappedPointUid && mappedPointUid !== currentPointUid
+        ? `聊天室 ${shortUid(currentPointUid)} → 母站 ${shortUid(mappedPointUid)}`
+        : `直接查詢聊天室 UID ${shortUid(currentPointUid || "未解析")}`;
+      let html = `<div class="pointIdentity"><div><strong>目前讀取</strong><span>${esc(relation)} · ${esc(pointResolveLabel(resolved.source))}</span></div></div>`;
       if (alternatives.length) {
         const title = state.pointNeedsBind ? "請選擇正確母站會員" : "同名候選";
         html += `<div class="pointIdentity warn"><strong>${esc(title)}</strong><div class="pointAltGrid">${alternatives.map((alt, index) => {
@@ -767,6 +773,10 @@
         point_account: "本地點數帳戶",
         exact_wetw: "直接用此UID",
         exact_chat_uid: "直接用聊天室UID",
+        exact_chat_uid_not_found: "聊天室UID母站查無資料",
+        chat_uid_member_link: "由聊天室綁定讀取",
+        chat_uid_source_member_link: "由來源綁定讀取",
+        chat_uid_point_profile_picture: "由頭像比對讀取",
         not_found: "未解析"
       };
       return map[value] || value || "未解析";
