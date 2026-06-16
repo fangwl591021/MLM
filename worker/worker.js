@@ -3125,6 +3125,19 @@ async function resolvePointIdentity(env, input) {
         };
       }
     }
+
+    if (userName) {
+      const profileResolved = await pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName);
+      if (hasPointSourceLineUsers(profileResolved.channelLineUserIds)) {
+        return {
+          channelLineUserIds: profileResolved.channelLineUserIds,
+          pointLineUserId: profileResolved.channelLineUserIds[POINT_OA1] || profileResolved.channelLineUserIds[POINT_OA2] || "",
+          memberRef: profileResolved.memberRef || "",
+          name: profileResolved.name || userName,
+          source: profileResolved.source || "point_profile_picture",
+        };
+      }
+    }
   }
 
   if (!userName) return null;
@@ -3294,6 +3307,84 @@ async function pointSourceLineUsersFromProfileName(env, userName) {
     if (!ambiguous.has(channelKey)) channelLineUserIds[channelKey] = userId;
   }
   return { channelLineUserIds, name };
+}
+
+async function pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName) {
+  const chatUserId = stringValue(chatLineUserId);
+  const name = stringValue(userName).trim();
+  if (!chatUserId || !name || !env.DB) return { channelLineUserIds: {} };
+  const chatProfile = await env.DB.prepare(`
+    SELECT picture_url, display_name
+    FROM profiles
+    WHERE user_id = ?
+      AND picture_url IS NOT NULL
+      AND picture_url <> ''
+    ORDER BY updated_at DESC, last_profile_sync DESC
+    LIMIT 1
+  `).bind(chatUserId).first();
+  const chatPictureKey = linePictureKey(chatProfile && chatProfile.picture_url);
+  if (!chatPictureKey) return { channelLineUserIds: {} };
+  const rows = await env.DB.prepare(`
+    SELECT p.user_id, p.display_name, p.picture_url, p.updated_at
+    FROM profiles p
+    WHERE p.user_id <> ?
+      AND p.display_name = ?
+      AND p.picture_url IS NOT NULL
+      AND p.picture_url <> ''
+    ORDER BY p.updated_at DESC
+    LIMIT 20
+  `).bind(chatUserId, name).all();
+  const candidates = [];
+  for (const row of rows.results || []) {
+    const pictureKey = linePictureKey(row.picture_url);
+    if (!pictureKey || pictureKey !== chatPictureKey) continue;
+    const sourceRows = await env.DB.prepare(`
+      SELECT e.channel_key, COUNT(*) AS events
+      FROM webhook_events e
+      WHERE e.line_user_id = ?
+        AND e.channel_key IN (?, ?)
+      GROUP BY e.channel_key
+      ORDER BY events DESC
+    `).bind(row.user_id, POINT_OA1, POINT_OA2).all();
+    for (const source of sourceRows.results || []) {
+      const channelKey = stringValue(source.channel_key);
+      if (!POINT_CHANNELS.has(channelKey)) continue;
+      candidates.push({ channelKey, userId: stringValue(row.user_id), events: Number(source.events || 0) });
+    }
+  }
+  const channelLineUserIds = {};
+  const ambiguous = new Set();
+  for (const candidate of candidates.sort((a, b) => b.events - a.events)) {
+    if (channelLineUserIds[candidate.channelKey] && channelLineUserIds[candidate.channelKey] !== candidate.userId) {
+      delete channelLineUserIds[candidate.channelKey];
+      ambiguous.add(candidate.channelKey);
+      continue;
+    }
+    if (!ambiguous.has(candidate.channelKey)) channelLineUserIds[candidate.channelKey] = candidate.userId;
+  }
+  const sourceUserId = channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2] || "";
+  let memberRef = "";
+  if (sourceUserId) {
+    const account = await env.DB.prepare(`
+      SELECT master_member_ref
+      FROM point_accounts
+      WHERE line_user_id = ?
+        AND master_member_ref IS NOT NULL
+        AND master_member_ref <> ''
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(sourceUserId).first();
+    memberRef = stringValue(account && account.master_member_ref);
+  }
+  return { channelLineUserIds, memberRef, name, source: "point_profile_picture" };
+}
+
+function linePictureKey(url) {
+  const value = stringValue(url);
+  if (!value) return "";
+  const token = value.split("/").filter(Boolean).pop() || "";
+  if (token.length < 50) return token;
+  return token.slice(10, -10);
 }
 
 async function pointUserNameFromChatUserId(env, lineUserId) {
