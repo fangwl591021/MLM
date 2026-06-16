@@ -1434,7 +1434,10 @@ async function pointMutation(env, body, action) {
     if (sourceLineUserId) lineUserId = sourceLineUserId;
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
-    throw httpError(`此聊天室尚未綁定${pointSourceMeta(channelKey)?.label || channelKey} K點 UID，請先綁定後再贈扣。`, 400);
+    const exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, stringValue(body.point_type || body.pointType) || "gift_money", 1, body).catch(() => null);
+    if (!exactSnapshot || !Array.isArray(exactSnapshot.rows) || !exactSnapshot.rows.length) {
+      throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
+    }
   }
   const sourceMeta = pointSourceMeta(channelKey);
   if (action === "grant" && sourceMeta && sourceMeta.canGrant === false) {
