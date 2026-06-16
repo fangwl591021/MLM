@@ -2905,37 +2905,11 @@ async function listPointBalances(env, url) {
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
   if (lineUserId) {
-    if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
-    const alternatives = userName ? await pointIdentityAlternatives(env, lineUserId, userName, "gift_money") : [];
-    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
-    if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
-      const resolvedRows = channelKey
-        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, "gift_money")
-        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, "gift_money");
-      return {
-        balances: resolvedRows.map((row) => ({
-          ...row,
-          chat_line_user_id: lineUserId,
-          resolved_from_name: resolved.name,
-          resolved_member_ref: resolved.memberRef,
-        })),
-        resolved: {
-          chat_line_user_id: lineUserId,
-          point_line_user_id: resolved.channelLineUserIds[POINT_OA1] || resolved.channelLineUserIds[POINT_OA2] || "",
-          channel_line_user_ids: resolved.channelLineUserIds,
-          member_ref: resolved.memberRef,
-          name: resolved.name,
-          source: resolved.source,
-        },
-        alternatives,
-      };
-    }
     if (channelKey) {
-      return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" }, alternatives };
+      return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
     }
     const exactBalances = await livePointBalancesForUser(env, lineUserId);
-    if (exactBalances.length) return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" }, alternatives };
-    return { balances: [], resolved: { chat_line_user_id: lineUserId, point_line_user_id: "", source: "not_found" }, alternatives };
+    return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
   }
   if (masterMemberRef) {
     const resolved = await resolvePointIdentity(env, { masterMemberRef });
@@ -3419,12 +3393,8 @@ async function listPointLedger(env, url) {
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
 
   if (lineUserId) {
-    if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
-    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     const ledgers = [];
-    const sourceMap = resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)
-      ? resolved.channelLineUserIds
-      : { [POINT_OA1]: lineUserId, [POINT_OA2]: lineUserId };
+    const sourceMap = { [POINT_OA1]: lineUserId, [POINT_OA2]: lineUserId };
     const sourceKeys = channelKey ? [channelKey] : [POINT_OA1, POINT_OA2];
     for (const sourceKey of sourceKeys) {
       const sourceLineUserId = stringValue(sourceMap[sourceKey]);
