@@ -17,7 +17,7 @@
     .messages{min-height:0;overflow:auto;padding:24px 34px;background:linear-gradient(rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.10) 1px,transparent 1px),var(--chat);background-size:36px 36px}.day{width:max-content;margin:0 auto 18px;border-radius:999px;padding:6px 13px;background:rgba(255,255,255,.58);color:#45505d;font-size:12px;font-weight:900}.msg{display:flex;margin:0 0 16px}.msg.admin{justify-content:flex-end}.wrap{max-width:min(680px,78%)}.bubble{padding:11px 14px;border-radius:6px 18px 18px 18px;background:#fff;color:#111827;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(20,30,45,.08)}.admin .bubble{border-radius:18px 6px 18px 18px;background:var(--admin)}.meta{margin-top:5px;color:rgba(31,35,41,.68);font-size:11px;font-weight:700}.admin .meta{text-align:right}.empty{display:grid;place-items:center;height:100%;padding:24px;text-align:center;color:#475467}.empty strong{display:block;margin-bottom:6px;color:#111827;font-size:17px}
     .composer{border-top:1px solid var(--border);background:#fff}.suggestions{display:flex;gap:8px;min-height:50px;padding:10px 16px;overflow-x:auto;border-bottom:1px solid #edf1f5;background:#f8fcf9}.suggestions button{flex:0 0 auto;max-width:520px;border:1px solid #91deb0;border-radius:999px;padding:8px 13px;background:#fff;color:#067a35;font-size:13px;font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sendrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:12px 16px 6px;align-items:end}textarea{min-height:52px;max-height:140px;resize:vertical;border-radius:12px;padding:12px;background:#fbfcfd;line-height:1.45}.sendGroup{position:relative;display:flex;align-items:stretch}.sendPrimary{height:48px;border:0;border-radius:4px 0 0 4px;background:var(--line);color:#fff;padding:0 17px;font-weight:900}.sendSplit{width:34px;height:48px;border:0;border-left:1px solid rgba(255,255,255,.5);border-radius:0 4px 4px 0;background:var(--line-dark);color:#fff;font-weight:900}.sendMenu{position:absolute;right:0;bottom:54px;width:150px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.16);overflow:hidden;z-index:5}.sendMenu[hidden]{display:none}.sendMenu button{width:100%;height:38px;border:0;background:#fff;color:#273142;text-align:left;padding:0 12px}.composerTools{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px 10px;color:#7b8798}.toolLeft{display:flex;gap:10px}.roundTool{width:34px;height:34px;border:0;background:#fff;color:#52627a;font-size:20px}
     .assistBody{height:calc(100vh - 70px);overflow:auto;padding:16px}.card{margin-bottom:13px;border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}.cardTitle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border-bottom:1px solid #edf1f5;font-size:14px;font-weight:900}.cardBody{padding:13px 14px}.sideList{display:grid;gap:9px}.sideBtn{border:1px solid #d9f2e2;border-radius:10px;padding:11px;background:#fbfffc;color:#26303d;line-height:1.48;text-align:left}.profileGrid{display:grid;gap:9px}.profileGrid input{width:100%;height:36px;border:1px solid #d8dee8;border-radius:8px;padding:0 10px;outline:none}.profileActions{display:grid;grid-template-columns:minmax(0,1fr) 86px;gap:8px;margin-top:10px}.tagGrid{display:flex;flex-wrap:wrap;gap:8px}.tagChoice{height:32px;border:1px solid #d8dee8;border-radius:999px;background:#fff;color:#536072;padding:0 11px;font-weight:800}.tagChoice.active{border-color:#75d997;background:#effcf4;color:#057a36}.tagAdd{display:grid;grid-template-columns:minmax(0,1fr) 62px;gap:8px;margin-top:10px}.tagInput,.noteInput{height:36px;border-radius:8px;padding:0 10px}.noteInput{height:64px;padding:8px 10px;resize:vertical}.alert{margin-bottom:10px;border:1px solid #ffd9b2;border-left:4px solid #f79009;border-radius:10px;padding:11px;background:#fff7ed}.alert strong{display:block;margin-bottom:6px;color:#9a3412;font-size:13px}.alert p{margin:0 0 8px;color:#374151;line-height:1.45}.muted{color:var(--sub);font-size:12px;line-height:1.55}
-    .pointLabel{background:#ecfdf3;color:#067a35}.pointLabel.restricted{background:#fff7ed;color:#9a3412}.pointModal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.42);padding:24px}.pointModal.show{display:flex}.pointDialog{width:min(860px,96vw);max-height:92vh;overflow:auto;border-radius:18px;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.28)}.pointHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 20px;border-bottom:1px solid var(--border)}.pointHead h3{margin:0;font-size:20px}.pointClose{width:38px;height:38px;border:1px solid #d8dee8;border-radius:10px;background:#fff;color:#344054;font-weight:900}.pointBody{padding:18px 20px;display:grid;gap:14px}.pointSources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.pointSource{position:relative;border:1px solid var(--border);border-radius:14px;padding:14px;background:#fbfcfe;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s,background .15s}.pointSource:hover{border-color:#9adfb1;box-shadow:0 8px 24px rgba(15,23,42,.08)}.pointSource.selected{border-color:#08bf5b;background:#f2fff7;box-shadow:0 0 0 3px rgba(8,191,91,.14)}.pointSource.empty{opacity:.74}.pointSource.priority{border-color:#ffcf99;background:#fffaf3}.pointSource.priority.selected{border-color:#f79009;background:#fff7ed;box-shadow:0 0 0 3px rgba(247,144,9,.14)}.pointSource h4{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:15px}.pointRows{display:grid;gap:7px}.pointRow{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #edf1f5}.pointPick{margin-top:10px;color:#067a35;font-size:12px;font-weight:900}.pointBind{display:none;grid-template-columns:160px minmax(0,1fr) auto;gap:10px;align-items:end;padding:14px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed}.pointBind.show{display:grid}.pointBind label{display:grid;gap:5px;color:#9a3412;font-size:12px;font-weight:900}.pointBind select,.pointBind input{height:38px;border:1px solid #fdba74;border-radius:8px;padding:0 10px;background:#fff}.pointBind button{height:38px;border:0;border-radius:8px;background:#18243a;color:#fff;padding:0 14px;font-weight:900}.pointCandidates{grid-column:1/-1;display:grid;gap:8px}.pointCandidate{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #fed7aa;border-radius:10px;background:#fff;color:#172033;padding:10px 12px;text-align:left}.pointCandidate strong{display:block}.pointCandidate span{display:block;color:#667085;font-size:12px}.pointForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid var(--border);border-radius:14px;background:#fff}.pointForm label{display:grid;gap:5px;color:#5d6675;font-size:12px;font-weight:900}.pointForm select,.pointForm input{height:38px;border:1px solid #d8dee8;border-radius:8px;padding:0 10px}.pointActions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.pointActions button{height:40px;border:0;border-radius:10px;padding:0 14px;color:#fff;font-weight:900}.pointActions button:disabled{opacity:.48;cursor:not-allowed}.pointGrant{background:var(--line)}.pointDeduct{background:var(--warn)}.pointRefresh{background:#18243a}.pointMessage{min-height:18px;color:#667085;font-size:12px}.pointLedger{border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden}.pointLedger h4{display:flex;justify-content:space-between;margin:0;padding:12px 14px;border-bottom:1px solid #edf1f5;font-size:15px}.ledgerList{display:grid;max-height:220px;overflow:auto}.ledgerRow{display:flex;justify-content:space-between;gap:14px;padding:11px 14px;border-bottom:1px solid #f0f3f7}.ledgerRow:last-child{border-bottom:0}.ledgerRow p{margin:4px 0 0;color:#667085;font-size:12px}.ledgerAmount{display:grid;gap:4px;text-align:right;white-space:nowrap}.ledgerAmount .positive{color:#059669}.ledgerAmount .negative{color:#dc2626}.ledgerAmount span{color:#667085;font-size:12px}.pointWarn{color:#9a3412;font-weight:900}@media(max-width:760px){.pointSources,.pointForm,.pointBind{grid-template-columns:1fr}.ledgerRow{display:grid}.ledgerAmount{text-align:left}}
+    .pointLabel{background:#ecfdf3;color:#067a35}.pointLabel.restricted{background:#fff7ed;color:#9a3412}.pointModal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.42);padding:24px}.pointModal.show{display:flex}.pointDialog{width:min(860px,96vw);max-height:92vh;overflow:auto;border-radius:18px;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.28)}.pointHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 20px;border-bottom:1px solid var(--border)}.pointHead h3{margin:0;font-size:20px}.pointClose{width:38px;height:38px;border:1px solid #d8dee8;border-radius:10px;background:#fff;color:#344054;font-weight:900}.pointBody{padding:18px 20px;display:grid;gap:14px}.pointSources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.pointIdentity{grid-column:1/-1;border:1px solid #d8dee8;border-radius:12px;background:#f8fafc;padding:10px 12px;color:#172033}.pointIdentity strong{display:block;margin-bottom:4px}.pointIdentity span,.pointIdentity small{color:#667085;font-size:12px}.pointIdentity.warn{border-color:#fdba74;background:#fff7ed}.pointAltGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px}.pointAlt{border:1px solid #fed7aa;border-radius:10px;background:#fff;padding:9px 10px;text-align:left;display:grid;gap:4px;color:#172033}.pointAlt.active{border-color:#08bf5b;background:#f2fff7}.pointAlt span,.pointAlt small{font-size:12px;color:#667085}.pointAlt strong{font-size:15px}.pointSource{position:relative;border:1px solid var(--border);border-radius:14px;padding:14px;background:#fbfcfe;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s,background .15s}.pointSource:hover{border-color:#9adfb1;box-shadow:0 8px 24px rgba(15,23,42,.08)}.pointSource.selected{border-color:#08bf5b;background:#f2fff7;box-shadow:0 0 0 3px rgba(8,191,91,.14)}.pointSource.empty{opacity:.74}.pointSource.priority{border-color:#ffcf99;background:#fffaf3}.pointSource.priority.selected{border-color:#f79009;background:#fff7ed;box-shadow:0 0 0 3px rgba(247,144,9,.14)}.pointSource h4{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:15px}.pointRows{display:grid;gap:7px}.pointRow{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #edf1f5}.pointRow small{color:#98a2b3}.pointPick{margin-top:10px;color:#067a35;font-size:12px;font-weight:900}.pointBind{display:none;grid-template-columns:160px minmax(0,1fr) auto;gap:10px;align-items:end;padding:14px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed}.pointBind.show{display:grid}.pointBind label{display:grid;gap:5px;color:#9a3412;font-size:12px;font-weight:900}.pointBind select,.pointBind input{height:38px;border:1px solid #fdba74;border-radius:8px;padding:0 10px;background:#fff}.pointBind button{height:38px;border:0;border-radius:8px;background:#18243a;color:#fff;padding:0 14px;font-weight:900}.pointCandidates{grid-column:1/-1;display:grid;gap:8px}.pointCandidate{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #fed7aa;border-radius:10px;background:#fff;color:#172033;padding:10px 12px;text-align:left}.pointCandidate strong{display:block}.pointCandidate span{display:block;color:#667085;font-size:12px}.pointForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid var(--border);border-radius:14px;background:#fff}.pointForm label{display:grid;gap:5px;color:#5d6675;font-size:12px;font-weight:900}.pointForm select,.pointForm input{height:38px;border:1px solid #d8dee8;border-radius:8px;padding:0 10px}.pointActions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.pointActions button{height:40px;border:0;border-radius:10px;padding:0 14px;color:#fff;font-weight:900}.pointActions button:disabled{opacity:.48;cursor:not-allowed}.pointGrant{background:var(--line)}.pointDeduct{background:var(--warn)}.pointRefresh{background:#18243a}.pointMessage{min-height:18px;color:#667085;font-size:12px}.pointLedger{border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden}.pointLedger h4{display:flex;justify-content:space-between;margin:0;padding:12px 14px;border-bottom:1px solid #edf1f5;font-size:15px}.ledgerList{display:grid;max-height:220px;overflow:auto}.ledgerRow{display:flex;justify-content:space-between;gap:14px;padding:11px 14px;border-bottom:1px solid #f0f3f7}.ledgerRow:last-child{border-bottom:0}.ledgerRow p{margin:4px 0 0;color:#667085;font-size:12px}.ledgerAmount{display:grid;gap:4px;text-align:right;white-space:nowrap}.ledgerAmount .positive{color:#059669}.ledgerAmount .negative{color:#dc2626}.ledgerAmount span{color:#667085;font-size:12px}.pointWarn{color:#9a3412;font-weight:900}@media(max-width:760px){.pointSources,.pointForm,.pointBind{grid-template-columns:1fr}.ledgerRow{display:grid}.ledgerAmount{text-align:left}}
     .chat{grid-template-rows:70px auto auto auto minmax(0,1fr) auto}.composer{display:grid;grid-template-rows:auto auto;border-top:1px solid var(--border);background:#fff;min-height:0}.suggestions{height:36px;min-height:0;padding:5px 16px;overflow-x:auto;overflow-y:hidden}.suggestions:empty{display:none}.suggestions button{padding:4px 10px;font-size:12px}.sendrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:end;min-height:0;padding:8px 14px}.sendrow::before{content:"☺  ⌘  ＋  ⌕";align-self:center;color:#52627a;font-size:18px;letter-spacing:10px;white-space:nowrap}textarea{height:46px;min-height:46px;max-height:118px;resize:none;line-height:1.45;padding:11px 12px;border-radius:10px;overflow:auto}.sendPrimary{height:46px;min-width:66px}.sendSplit{height:46px;width:34px}.sendMenu{bottom:calc(100% + 8px)}.composerTools{display:none}.roundTool{width:28px;height:28px;font-size:18px}
     .app{grid-template-columns:400px minmax(640px,1fr) 450px}.config{display:none}.brand,.assistHead{height:112px;padding:22px 26px}.brand h1,.assist h2{font-size:24px}.brand p,.assist p{font-size:15px}.oa{width:60px;height:60px;font-size:20px}.search{padding:20px 24px;border-bottom:1px solid var(--border)}.search::before{content:"聊天室搜尋";display:block;margin-bottom:10px;font-weight:900;color:#111827}.search input{height:46px;border-radius:12px;font-size:16px}.filterTabs{display:flex;gap:12px;margin-top:18px}.filterTab{height:42px;border:0;border-radius:999px;background:#f3f6fa;color:#0f172a;padding:0 18px;font-weight:900}.filterTab.active{background:#061536;color:#fff}.list{height:calc(100vh - 112px - 153px);overflow:auto}.head{height:126px;padding:20px 28px}.activeAvatar{width:72px;height:72px;display:grid;place-items:center;border-radius:50%;background:#e4ebf3;color:#061536;font-size:18px;font-weight:900;overflow:hidden;flex:0 0 auto}.activeAvatar.named{background:#dff8e9;color:#057a36}.activeAvatar img{width:100%;height:100%;object-fit:cover}.room h2{font-size:30px}.room p{font-size:16px;white-space:normal}.roomActions{display:grid;grid-template-columns:repeat(3,auto);gap:10px}.statusBtn{height:48px;border-radius:10px;color:#111827;font-size:16px;padding:0 18px}.refresh{height:48px;width:48px;border-radius:12px}.pill{height:48px;display:inline-flex;align-items:center;border-radius:12px;font-size:16px}.chat{grid-template-rows:126px 48px auto auto minmax(0,1fr) auto}.manage{min-height:48px;padding:7px 28px;background:#f8fafc}.manualBar{padding:10px 28px;font-size:17px;font-weight:900}.messages{padding:28px 40px;background-color:#c8d7e6}.bubble{border-radius:6px 18px 18px 18px;padding:16px 20px;font-size:16px}.wrap{max-width:min(520px,72%)}.composer{grid-template-rows:50px 112px}.suggestions{height:50px;padding:8px 22px;background:#fff}.suggestions button{font-size:16px;padding:7px 16px;max-width:720px}.sendrow{grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:8px 22px 12px}.sendrow::before{display:none}textarea{height:96px;min-height:96px;border-radius:10px;font-size:16px}.sendPrimary{height:96px;min-width:108px;font-size:18px}.sendSplit{height:96px;width:44px}.assistBody{height:calc(100vh - 112px);padding:0}.card{margin:0;border-width:0 0 1px 0;border-radius:0}.cardTitle{padding:20px 24px;font-size:17px}.cardBody{padding:18px 24px}.sideBtn{font-size:16px;padding:18px;border-radius:12px;background:#effcf4}.noteInput{height:138px}
     @media(max-width:1100px){body{overflow:auto}.app{grid-template-columns:350px minmax(620px,1fr);width:max-content}.assist{display:none}}
@@ -132,7 +132,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointBind: $("pointBind"), pointBindSource: $("pointBindSource"), pointBindQuery: $("pointBindQuery"), pointBindSearch: $("pointBindSearch"), pointBindResults: $("pointBindResults"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperatorId: $("pointOperatorId"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage"), pointLedgerList: $("pointLedgerList"), pointLedgerCount: $("pointLedgerCount")
     };
-    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [] };
+    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -651,6 +651,7 @@
       state.pointLedger = [];
       state.pointNeedsBind = false;
       state.pointBindCandidates = [];
+      state.pointAlternatives = [];
       state.pointChannelUserIds = {};
       els.pointBind.classList.remove("show");
       els.pointBindQuery.value = group && group.hasRealName ? group.displayName : "";
@@ -679,6 +680,7 @@
         if (!res.ok || json.status !== "success") throw new Error(json.message || "K點讀取失敗");
         state.pointBalances = Array.isArray(json.balances) ? json.balances : [];
         state.pointResolved = json.resolved || null;
+        state.pointAlternatives = Array.isArray(json.alternatives) ? json.alternatives : [];
         state.pointChannelUserIds = state.pointResolved && state.pointResolved.channel_line_user_ids ? state.pointResolved.channel_line_user_ids : {};
         state.pointBalances.forEach((row) => {
           if (row.channel_key && row.line_user_id && !state.pointChannelUserIds[row.channel_key]) state.pointChannelUserIds[row.channel_key] = row.line_user_id;
@@ -686,7 +688,7 @@
         state.pointNeedsBind = !state.pointBalances.length && state.pointResolved && state.pointResolved.source === "not_found";
         state.pointMutationUserId = state.pointResolved && state.pointResolved.point_line_user_id ? state.pointResolved.point_line_user_id : (state.pointBalances[0] && state.pointBalances[0].line_user_id) || state.pointUserId;
         els.pointSubtitle.textContent = state.pointMutationUserId && state.pointMutationUserId !== state.pointUserId
-          ? `聊天室ID ${state.pointUserId} · 已解析母站會員`
+          ? `聊天室ID ${state.pointUserId} · 母站ID ${state.pointMutationUserId} · ${pointResolveLabel(state.pointResolved && state.pointResolved.source)}`
           : `用戶ID ${state.pointUserId || "未選擇"} · 康立全球只允許扣K點`;
         renderPointBind();
         const priority = POINT_SOURCES.find((source) => source.deductPriority && pointSourceTotal(source.key) > 0);
@@ -698,6 +700,7 @@
       } catch (err) {
         els.pointSources.innerHTML = `<div class="muted">${esc(err.message || String(err))}</div>`;
         state.pointNeedsBind = false;
+        state.pointAlternatives = [];
         renderPointBind();
         state.pointLedger = [];
         renderPointLedger();
@@ -708,13 +711,14 @@
         els.pointSources.innerHTML = `<div class="muted pointWarn">此聊天室尚未綁定母站 K點會員。請用姓名、手機或會員編號搜尋會員，選擇後再讀取與贈扣。</div>`;
         return;
       }
-      els.pointSources.innerHTML = POINT_SOURCES.map((source) => {
+      const identityPanel = renderPointIdentityPanel();
+      els.pointSources.innerHTML = identityPanel + POINT_SOURCES.map((source) => {
         const rows = state.pointBalances.filter((row) => row.channel_key === source.key && row.point_type === "gift_money");
         const total = pointSourceTotal(source.key);
         const selected = els.pointSource.value === source.key;
         const linked = Boolean(state.pointChannelUserIds[source.key]);
         const rowHtml = rows.length
-          ? rows.map((row) => `<div class="pointRow"><span>${esc(pointTypeName(row.point_type))}</span><strong>${esc(formatPoint(row.balance))}</strong></div>`).join("")
+          ? rows.map((row) => `<div class="pointRow"><span>${esc(pointTypeName(row.point_type))}<small> ${esc(shortUid(row.line_user_id))}</small></span><strong>${esc(formatPoint(row.balance))}</strong></div>`).join("")
           : '<div class="pointRow"><span>目前沒有K點資料</span><strong>0</strong></div>';
         return `<button type="button" class="pointSource ${source.deductPriority ? "priority" : ""} ${selected ? "selected" : ""} ${linked ? "" : "empty"}" data-point-source="${esc(source.key)}"><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K點" : "只能扣K點"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>K點合計</span><strong>${esc(formatPoint(total))}</strong></div></div><div class="pointPick">${selected ? "目前操作此平台" : "點選切換到此平台"}</div></button>`;
       }).join("");
@@ -725,6 +729,42 @@
           updatePointActionState();
         };
       });
+      document.querySelectorAll("[data-point-alt]").forEach((button) => {
+        button.onclick = () => bindPointAlternative(state.pointAlternatives[Number(button.dataset.pointAlt)]);
+      });
+    }
+    function renderPointIdentityPanel() {
+      const alternatives = Array.isArray(state.pointAlternatives) ? state.pointAlternatives : [];
+      const resolved = state.pointResolved || {};
+      const currentPointUid = resolved.point_line_user_id || state.pointMutationUserId || "";
+      let html = `<div class="pointIdentity"><div><strong>目前讀取</strong><span>聊天室 ${esc(shortUid(state.pointUserId))} → 母站 ${esc(shortUid(currentPointUid || "未解析"))} · ${esc(pointResolveLabel(resolved.source))}</span></div></div>`;
+      if (alternatives.length > 1) {
+        html += `<div class="pointIdentity warn"><strong>同名候選</strong><div class="pointAltGrid">${alternatives.map((alt, index) => {
+          const active = alt.line_user_id === currentPointUid || alt.line_user_id === state.pointUserId;
+          const match = alt.picture_match ? "頭像相符" : "同名";
+          const balance = alt.balance === null || alt.balance === undefined ? "讀取失敗" : `${formatPoint(alt.balance)} K點`;
+          return `<button type="button" class="pointAlt ${active ? "active" : ""}" data-point-alt="${index}"><span>${esc(alt.source_label || alt.channel_key)} · ${esc(shortUid(alt.line_user_id))}</span><strong>${esc(balance)}</strong><small>${esc(match)}${active ? " · 目前" : " · 點選綁定"}</small></button>`;
+        }).join("")}</div></div>`;
+      }
+      return html;
+    }
+    function pointResolveLabel(value) {
+      const map = {
+        member_link: "已人工綁定",
+        point_profile_picture: "頭像比對",
+        point_profile_name: "名稱比對",
+        crm_name: "CRM姓名",
+        crm_name_fallback: "CRM模糊姓名",
+        point_account: "本地點數帳戶",
+        exact_wetw: "直接用此UID",
+        not_found: "未解析"
+      };
+      return map[value] || value || "未解析";
+    }
+    function shortUid(value) {
+      const uid = String(value || "");
+      if (!uid) return "";
+      return uid.length > 16 ? `${uid.slice(0, 8)}...${uid.slice(-6)}` : uid;
     }
     function renderPointBind() {
       els.pointBind.classList.toggle("show", Boolean(state.pointNeedsBind));
@@ -844,6 +884,7 @@
           body: JSON.stringify({
             chat_line_user_id: state.pointUserId,
             master_member_ref: member.member_ref,
+            point_line_user_id: member.line_user_id,
             channel_key: channelKey,
             user_name: state.pointUserName || ""
           })
@@ -856,6 +897,33 @@
         els.pointMessage.textContent = err.message || String(err);
       } finally {
         els.pointBindSearch.disabled = false;
+      }
+    }
+    async function bindPointAlternative(alt) {
+      if (!alt || !alt.line_user_id || !alt.channel_key) return;
+      if (alt.line_user_id === state.pointMutationUserId) {
+        els.pointMessage.textContent = "目前已使用這筆母站 UID。";
+        return;
+      }
+      try {
+        els.pointMessage.textContent = "正在切換同名會員來源...";
+        const res = await fetch(apiUrl("/admin/points/bind-line-user"), {
+          method: "POST",
+          headers: authJsonHeaders(),
+          body: JSON.stringify({
+            chat_line_user_id: state.pointUserId,
+            point_line_user_id: alt.line_user_id,
+            master_member_ref: alt.master_member_ref || "",
+            channel_key: alt.channel_key,
+            user_name: state.pointUserName || alt.display_name || ""
+          })
+        });
+        const json = await res.json();
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "綁定失敗");
+        els.pointMessage.textContent = "同名會員來源已切換，正在重新讀取。";
+        await loadPointBalances();
+      } catch (err) {
+        els.pointMessage.textContent = err.message || String(err);
       }
     }
     async function submitPointMutation(action) {

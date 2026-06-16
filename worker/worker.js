@@ -244,7 +244,8 @@ export default {
         const result = await listPointBalances(env, url);
         const balances = Array.isArray(result) ? result : result.balances;
         const resolved = Array.isArray(result) ? null : result.resolved;
-        return jsonResponse({ success: true, status: "success", balances, resolved }, 200, corsHeaders);
+        const alternatives = Array.isArray(result) ? [] : (result.alternatives || []);
+        return jsonResponse({ success: true, status: "success", balances, resolved, alternatives }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/ledger" && request.method === "GET") {
@@ -2917,6 +2918,7 @@ async function listPointBalances(env, url) {
 
   if (lineUserId) {
     if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
+    const alternatives = userName ? await pointIdentityAlternatives(env, lineUserId, userName, "gift_money") : [];
     const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const resolvedRows = channelKey
@@ -2937,14 +2939,15 @@ async function listPointBalances(env, url) {
           name: resolved.name,
           source: resolved.source,
         },
+        alternatives,
       };
     }
     if (channelKey) {
-      return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" } };
+      return { balances: [await livePointBalanceRow(env, channelKey, lineUserId, "gift_money")], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" }, alternatives };
     }
     const exactBalances = await livePointBalancesForUser(env, lineUserId);
-    if (exactBalances.length) return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" } };
-    return { balances: [], resolved: { chat_line_user_id: lineUserId, point_line_user_id: "", source: "not_found" } };
+    if (exactBalances.length) return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_wetw" }, alternatives };
+    return { balances: [], resolved: { chat_line_user_id: lineUserId, point_line_user_id: "", source: "not_found" }, alternatives };
   }
   if (masterMemberRef) {
     const resolved = await resolvePointIdentity(env, { masterMemberRef });
@@ -3017,6 +3020,72 @@ async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
     query_shop_id: snapshot.shop_id,
     live_rows: Array.isArray(snapshot.rows) ? snapshot.rows.length : 0,
   }])[0];
+}
+
+async function pointIdentityAlternatives(env, chatLineUserId, userName, pointType = "gift_money") {
+  const chatUserId = stringValue(chatLineUserId);
+  const name = stringValue(userName).trim();
+  if (!env.DB || !name) return [];
+  const chatProfile = chatUserId ? await env.DB.prepare(`
+    SELECT picture_url
+    FROM profiles
+    WHERE user_id = ?
+    ORDER BY updated_at DESC, last_profile_sync DESC
+    LIMIT 1
+  `).bind(chatUserId).first() : null;
+  const chatPictureKey = linePictureKey(chatProfile && chatProfile.picture_url);
+  const rows = await env.DB.prepare(`
+    SELECT p.user_id, p.display_name, p.picture_url, e.channel_key, COUNT(*) AS events
+    FROM profiles p
+    JOIN webhook_events e ON e.line_user_id = p.user_id
+    WHERE p.display_name = ?
+      AND e.channel_key IN (?, ?)
+    GROUP BY p.user_id, p.display_name, p.picture_url, e.channel_key
+    ORDER BY
+      CASE WHEN p.user_id = ? THEN 0 ELSE 1 END,
+      events DESC,
+      p.updated_at DESC
+    LIMIT 12
+  `).bind(name, POINT_OA1, POINT_OA2, chatUserId).all();
+  const seen = new Set();
+  const alternatives = [];
+  for (const row of rows.results || []) {
+    const channelKey = stringValue(row.channel_key);
+    const userId = stringValue(row.user_id);
+    if (!POINT_CHANNELS.has(channelKey) || !userId) continue;
+    const key = `${channelKey}:${userId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let balance = null;
+    let liveRows = 0;
+    try {
+      const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10);
+      balance = snapshot.balance;
+      liveRows = Array.isArray(snapshot.rows) ? snapshot.rows.length : 0;
+    } catch (_err) {
+      balance = null;
+    }
+    const account = await env.DB.prepare(`
+      SELECT master_member_ref
+      FROM point_accounts
+      WHERE channel_key = ? AND line_user_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(channelKey, userId).first();
+    alternatives.push({
+      channel_key: channelKey,
+      line_user_id: userId,
+      display_name: stringValue(row.display_name),
+      picture_url: stringValue(row.picture_url),
+      picture_match: Boolean(chatPictureKey && linePictureKey(row.picture_url) === chatPictureKey),
+      selected: userId === chatUserId,
+      balance,
+      live_rows: liveRows,
+      master_member_ref: stringValue(account && account.master_member_ref),
+      source_label: pointSourceMeta(channelKey)?.label || channelKey,
+    });
+  }
+  return alternatives;
 }
 
 function pointSourceMeta(channelKey) {
