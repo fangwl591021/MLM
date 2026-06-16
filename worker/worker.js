@@ -15,7 +15,9 @@ const ADMIN_ROLE = "admin";
 const USER_ROLE = "user";
 const FLOOR_MAIN = "main";
 const FLOOR_ADMIN = "admin";
+const FLOOR_SUPER_ADMIN = "admin_all";
 const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN]);
+const ACCESS_LIST_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SUPER_ADMIN]);
 const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
@@ -392,7 +394,8 @@ export default {
       if (url.pathname === "/api/floor-whitelist" && request.method === "POST") {
         assertDashboardAuth(request, env);
         const body = await safeJson(request);
-        const targetFloor = FLOOR_IDS.has(stringValue(body.floor || body.floor_id)) ? stringValue(body.floor || body.floor_id) : floor;
+        const requestedFloor = stringValue(body.floor || body.floor_id);
+        const targetFloor = ACCESS_LIST_IDS.has(requestedFloor) ? requestedFloor : floor;
         const result = await saveFloorWhitelist(env, targetFloor, body.entries || parseWhitelistLines(body.lines || body.text || ""));
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
@@ -625,6 +628,13 @@ async function assertFloorAccess(request, env, floor) {
   if (Number(countRow && countRow.count || 0) <= 0) return;
   const operatorId = normalizedOperatorId(request.headers.get("X-Operator-Id") || request.headers.get("X-User-Id") || request.headers.get("X-Admin-User"));
   if (!operatorId) throw httpError(`此樓層已啟用白名單，請先填寫操作人代號`, 403);
+  const adminAllowed = await env.DB.prepare(`
+    SELECT operator_id
+    FROM floor_access_whitelist
+    WHERE floor_id = ? AND operator_id = ? AND active = 1
+    LIMIT 1
+  `).bind(FLOOR_SUPER_ADMIN, operatorId).first();
+  if (adminAllowed) return;
   const allowed = await env.DB.prepare(`
     SELECT operator_id
     FROM floor_access_whitelist
@@ -676,10 +686,11 @@ async function fetchFloorWhitelist(env) {
     FROM floor_access_whitelist
     ORDER BY floor_id ASC, operator_id ASC
   `).all();
-  const floors = { [FLOOR_MAIN]: [], [FLOOR_ADMIN]: [] };
+  const floors = { [FLOOR_MAIN]: [], [FLOOR_ADMIN]: [], adminAll: [] };
   for (const row of rows.results || []) {
-    const floorId = FLOOR_IDS.has(row.floor_id) ? row.floor_id : FLOOR_MAIN;
-    floors[floorId].push({
+    const floorId = row.floor_id === FLOOR_SUPER_ADMIN ? FLOOR_SUPER_ADMIN : (FLOOR_IDS.has(row.floor_id) ? row.floor_id : FLOOR_MAIN);
+    const listKey = floorId === FLOOR_SUPER_ADMIN ? "adminAll" : floorId;
+    floors[listKey].push({
       floorId,
       operatorId: row.operator_id,
       operatorName: row.operator_name,
@@ -693,7 +704,7 @@ async function fetchFloorWhitelist(env) {
 async function saveFloorWhitelist(env, floor, entries) {
   if (!env.DB) return { floor, count: 0 };
   await ensureFloorAccessSchema(env);
-  const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
+  const targetFloor = ACCESS_LIST_IDS.has(floor) ? floor : FLOOR_MAIN;
   const now = Date.now();
   const normalized = normalizeWhitelistEntries(entries);
   await env.DB.batch([
