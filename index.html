@@ -9,7 +9,7 @@
     *{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;color:var(--ink);font-family:Inter,"Noto Sans TC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}
     .app{display:grid;grid-template-columns:370px minmax(620px,1fr) 390px;height:100vh;background:#fff}.left{border-right:1px solid var(--border);min-height:0}.chat{display:grid;grid-template-rows:70px auto auto minmax(0,1fr) auto;height:100vh;min-height:0;overflow:hidden}.assist{border-left:1px solid var(--border);background:#fbfcfe;min-height:0}
     .brand,.head,.assistHead{height:70px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);background:#fff}.brand{justify-content:flex-start}.oa{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:var(--line);color:#fff;font-weight:900}.brand h1,.room h2,.assist h2{margin:0;font-size:17px;line-height:1.2;font-weight:900}.brand p,.room p,.assist p{margin:4px 0 0;color:var(--sub);font-size:12px}.room{min-width:0;flex:1}.room h2,.room p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .config{display:grid;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border);background:#f8fafc;max-height:54vh;overflow:auto}.config label{color:#5d6675;font-size:12px;font-weight:800}.config input,.search input,textarea,.noteInput,.tagInput{width:100%;border:1px solid #d8dee8;background:#fff;outline:none}.config input{height:38px;border-radius:8px;padding:0 11px}.config input[type=file]{height:auto;padding:8px}.config button,.outlineBtn{height:36px;border:1px solid #b6ecc8;border-radius:8px;background:#effcf4;color:#067a35;font-weight:900}.secondaryBtn{border-color:#d8dee8!important;background:#fff!important;color:#344054!important}.whitelistBox{display:grid;gap:8px;margin-top:6px;padding:10px;border:1px solid #e5edf7;border-radius:10px;background:#fff}.whitelistBox h3{margin:0;color:#172033;font-size:14px}.whitelistBox textarea{min-height:58px;max-height:96px;border-radius:8px;font-size:13px}.whitelistHint{color:#667085;font-size:12px;line-height:1.35}.knowledgeStatus{min-height:16px;color:#6b7280;font-size:12px;line-height:1.35}.search{padding:14px 16px;border-bottom:1px solid var(--border)}.search input{height:40px;border-radius:999px;padding:0 15px;background:#f4f7fa}.config input:focus,.search input:focus,textarea:focus,.noteInput:focus,.tagInput:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}
+    .config{display:grid;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);background:#f8fafc;max-height:54vh;overflow:auto}.config label{color:#5d6675;font-size:12px;font-weight:800}.config input,.search input,textarea,.noteInput,.tagInput{width:100%;border:1px solid #d8dee8;background:#fff;outline:none}.config input{height:38px;border-radius:8px;padding:0 11px}.config input[type=file]{height:auto;padding:8px}.config button,.outlineBtn{height:36px;border:1px solid #b6ecc8;border-radius:8px;background:#effcf4;color:#067a35;font-weight:900}.secondaryBtn{border-color:#d8dee8!important;background:#fff!important;color:#344054!important}.settingsPanel,.whitelistBox{display:grid;gap:9px;padding:12px;border:1px solid #e5edf7;border-radius:12px;background:#fff}.settingsPanel h3,.whitelistBox h3{margin:0;color:#172033;font-size:14px}.settingTitle{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.roleBadge{border-radius:999px;background:#eef2f7;color:#344054;padding:4px 8px;font-size:11px;font-weight:900;white-space:nowrap}.roleNote{border:1px solid #d9f2e2;border-radius:10px;background:#fbfffc;color:#344054;padding:9px 10px;font-size:12px;line-height:1.45}.roleNote strong{color:#067a35}.whitelistGrid{display:grid;gap:10px}.whitelistFloor{display:grid!important;gap:6px;color:#344054!important}.whitelistFloor span{font-size:12px;font-weight:900;color:#172033}.whitelistBox textarea{min-height:68px;max-height:110px;border-radius:8px;font-size:13px;padding:9px 10px;resize:vertical}.whitelistHint{color:#667085;font-size:12px;line-height:1.35}.knowledgeStatus{min-height:16px;color:#6b7280;font-size:12px;line-height:1.35}.search{padding:14px 16px;border-bottom:1px solid var(--border)}.search input{height:40px;border-radius:999px;padding:0 15px;background:#f4f7fa}.config input:focus,.search input:focus,textarea:focus,.noteInput:focus,.tagInput:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}
     .list{height:calc(100vh - 70px - 294px - 69px);overflow:auto}.item{width:100%;display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px;padding:16px;border:0;border-bottom:1px solid #edf1f5;background:#fff;text-align:left}.item:hover,.item.active{background:#ebfbf3}.item.active{box-shadow:inset 4px 0 0 var(--line)}.avatar{width:48px;height:48px;display:grid;place-items:center;border-radius:50%;background:#e4ebf3;color:#233044;font-weight:900;overflow:hidden}.avatar.named{background:#dff8e9;color:#057a36}.avatar img{width:100%;height:100%;display:block;border-radius:50%;object-fit:cover}.line{display:flex;justify-content:space-between;gap:8px;min-width:0}.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:900}.time{color:var(--sub);font-size:11px;white-space:nowrap}.uid{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7a8492;font-size:11px}.preview{margin-top:5px;overflow:hidden;color:#4b5563;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.label{border-radius:999px;padding:4px 9px;background:#eef2f7;color:#536072;font-size:11px;font-weight:850}.label.hot{background:#fff1f3;color:#c01048}.label.nameWait{background:#fff7ed;color:#9a3412}
     .state{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:7px 12px;color:#fff!important;font-size:13px;font-weight:950;line-height:1;letter-spacing:.03em;box-shadow:0 2px 8px rgba(17,24,39,.18)}.item .state{padding:6px 11px;font-size:12px}.state.danger{background:var(--danger)}.state.warn{background:var(--warn)}.state.dark{background:var(--dark)}.state.neutral{background:#475467}
     .roomActions{display:flex;align-items:center;gap:8px;flex:0 0 auto;min-width:max-content}.statusBtn{height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #778199;border-radius:2px;background:#fff;color:#4b5563;padding:0 14px;font-weight:850;white-space:nowrap}.statusBtn:hover,.statusBtn.active{border-color:#3d4a63;background:#f3f6fb}.pill{border:1px solid #b6ecc8;border-radius:999px;padding:6px 10px;background:#effcf4;color:#07833b;font-size:12px;font-weight:900;white-space:nowrap}.pill.bad{border-color:#fecdd3;background:#fff1f3;color:var(--danger)}.refresh{width:38px;height:38px;border:1px solid #d8dee8;border-radius:10px;background:#fff;color:#4b5563;flex:0 0 auto}
@@ -35,14 +35,21 @@
       <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="console.html">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
       <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">1F 產品客服</button><button type="button" class="floorTab" data-floor="admin">2F 行政客服</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
       <section class="config">
-        <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
-        <label for="apiToken">Dashboard Token</label><input id="apiToken" type="password" placeholder="輸入後同步聊天室" />
-        <label for="operatorId">操作人代號</label><input id="operatorId" placeholder="例：tony 或 U 開頭 LINE UID" />
+        <section class="settingsPanel">
+          <div class="settingTitle"><h3>登入身份</h3><span class="roleBadge">Token 僅存在本機</span></div>
+          <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
+          <label for="apiToken">後台 Token</label><input id="apiToken" type="password" placeholder="總管理員或樓層管理員 Token" />
+          <label for="operatorId">操作人代號</label><input id="operatorId" placeholder="例：tony、admin001 或 U 開頭 LINE UID" />
+          <div class="roleNote"><strong>總管理員</strong>：使用 Admin Token，可進入所有樓層。<br><strong>樓層管理員</strong>：使用一般 Token，操作人代號必須列在該樓層白名單。</div>
+        </section>
         <section class="whitelistBox">
-          <h3>樓層白名單</h3>
-          <div class="whitelistHint">每行一位：操作人代號, 名稱。第一欄要和上方「操作人代號」完全相同；白名單留空時該樓層不鎖權限。</div>
-          <label id="floorWhitelistLabel" for="floorWhitelist">目前樓層</label><textarea id="floorWhitelist" placeholder="tony, Tonyfang"></textarea>
-          <button id="saveWhitelist" type="button">儲存目前樓層白名單</button>
+          <div class="settingTitle"><h3>樓層白名單</h3><span class="roleBadge">依樓層分開</span></div>
+          <div class="whitelistHint">每行一位：操作人代號, 名稱。第一欄要和上方「操作人代號」完全相同；該樓層留空時不鎖權限。</div>
+          <div class="whitelistGrid">
+            <label class="whitelistFloor" for="mainWhitelist"><span>1F 產品客服</span><textarea id="mainWhitelist" placeholder="tony, Tonyfang"></textarea></label>
+            <label class="whitelistFloor" for="adminWhitelist"><span>2F 行政客服</span><textarea id="adminWhitelist" placeholder="admin001, 行政主管"></textarea></label>
+          </div>
+          <button id="saveWhitelists" type="button">儲存樓層白名單</button>
         </section>
         <label for="knowledgeFile">知識庫 JSON</label><input id="knowledgeFile" type="file" accept=".json,application/json" />
         <button id="uploadKnowledge" type="button">上傳知識庫</button>
@@ -124,7 +131,7 @@
     ];
     const $ = (id) => document.getElementById(id);
     const els = {
-      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), floorWhitelistLabel: $("floorWhitelistLabel"), floorWhitelist: $("floorWhitelist"), saveWhitelist: $("saveWhitelist"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
+      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), mainWhitelist: $("mainWhitelist"), adminWhitelist: $("adminWhitelist"), saveWhitelists: $("saveWhitelists"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
       searchBox: $("searchBox"), chatList: $("chatList"), messages: $("messages"), suggestions: $("suggestions"), sideSuggestions: $("sideSuggestions"), suggestionCount: $("suggestionCount"),
       replyText: $("replyText"), sendButton: $("sendButton"), sendMenuButton: $("sendMenuButton"), sendMenu: $("sendMenu"), logButton: $("logButton"), refreshButton: $("refreshButton"),
       pendingButton: $("pendingButton"), doneButton: $("doneButton"), searchButton: $("searchButton"), searchBottomButton: $("searchBottomButton"), activeTitle: $("activeTitle"), activeSubtitle: $("activeSubtitle"), activeAvatar: $("activeAvatar"),
@@ -141,7 +148,7 @@
     els.apiToken.addEventListener("change", saveSettings);
     els.operatorId.addEventListener("change", saveOperatorId);
     els.settingsButton.addEventListener("click", toggleSettings);
-    els.saveWhitelist.addEventListener("click", saveFloorWhitelist);
+    els.saveWhitelists.addEventListener("click", saveFloorWhitelists);
     els.searchBox.addEventListener("input", render);
     document.querySelectorAll("[data-floor]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -151,7 +158,6 @@
         state.activeUserId = "";
         state.loaded = false;
         document.querySelectorAll("[data-floor]").forEach((item) => item.classList.toggle("active", item === button));
-        updateWhitelistFloorLabel();
         if (document.querySelector(".left").classList.contains("config-open") && els.apiToken.value.trim()) loadFloorWhitelist();
         render();
         sync();
@@ -200,7 +206,6 @@
     setSettingsOpen(!els.apiToken.value.trim());
 
     render();
-    updateWhitelistFloorLabel();
     sync();
     setInterval(sync, 5000);
 
@@ -230,22 +235,23 @@
 
     async function loadFloorWhitelist() {
       try {
-        updateWhitelistFloorLabel();
         const res = await fetch(apiUrl("/api/floor-whitelist"), { headers: authHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "白名單讀取失敗");
         const floors = json.data && json.data.floors ? json.data.floors : {};
-        els.floorWhitelist.value = whitelistToText(floors[state.floor] || []);
+        els.mainWhitelist.value = whitelistToText(floors.main || []);
+        els.adminWhitelist.value = whitelistToText(floors.admin || []);
       } catch (err) {
         els.knowledgeStatus.textContent = err.message || String(err);
       }
     }
 
-    async function saveFloorWhitelist() {
+    async function saveFloorWhitelists() {
       saveOperatorId();
       try {
-        const saved = await saveSingleFloorWhitelist(state.floor, els.floorWhitelist.value);
-        els.knowledgeStatus.textContent = `${FLOORS[state.floor] || "目前樓層"} 白名單已儲存：${saved.count || 0} 位`;
+        const mainSaved = await saveSingleFloorWhitelist("main", els.mainWhitelist.value);
+        const adminSaved = await saveSingleFloorWhitelist("admin", els.adminWhitelist.value);
+        els.knowledgeStatus.textContent = `樓層白名單已儲存：1F ${mainSaved.count || 0} 位，2F ${adminSaved.count || 0} 位`;
         sync();
       } catch (err) {
         els.knowledgeStatus.textContent = err.message || String(err);
@@ -279,10 +285,6 @@
         const name = row.operatorName || row.operator_name || "";
         return name ? `${id}, ${name}` : id;
       }).filter(Boolean).join("\n");
-    }
-
-    function updateWhitelistFloorLabel() {
-      if (els.floorWhitelistLabel) els.floorWhitelistLabel.textContent = `${FLOORS[state.floor] || "目前樓層"} 白名單`;
     }
 
     function initialFloor() {
