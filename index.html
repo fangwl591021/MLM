@@ -33,7 +33,7 @@
   <div class="app">
     <aside class="left">
       <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="console.html">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
-      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">1F 產品客服</button><button type="button" class="floorTab" data-floor="admin">2F 行政客服</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
+      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
       <section class="config">
         <section class="settingsPanel">
           <div class="settingTitle"><h3>登入身份</h3><span class="roleBadge">Token 僅存在本機</span></div>
@@ -46,8 +46,8 @@
           <div class="settingTitle"><h3>樓層白名單</h3><span class="roleBadge">依樓層分開</span></div>
           <div class="whitelistHint">每行一位：操作人代號, 名稱。第一欄要和上方「操作人代號」完全相同；該樓層留空時不鎖權限。</div>
           <div class="whitelistGrid">
-            <label class="whitelistFloor" for="mainWhitelist"><span>1F 產品客服</span><textarea id="mainWhitelist" placeholder="tony, Tonyfang"></textarea></label>
-            <label class="whitelistFloor" for="adminWhitelist"><span>2F 行政客服</span><textarea id="adminWhitelist" placeholder="admin001, 行政主管"></textarea></label>
+            <label class="whitelistFloor" for="mainWhitelist"><span>產品客服</span><textarea id="mainWhitelist" placeholder="tony, Tonyfang"></textarea></label>
+            <label class="whitelistFloor" for="adminWhitelist"><span>行政客服</span><textarea id="adminWhitelist" placeholder="admin001, 行政主管"></textarea></label>
           </div>
           <button id="saveWhitelists" type="button">儲存樓層白名單</button>
         </section>
@@ -124,7 +124,7 @@
   <script>
     const DEFAULT_API_BASE = "https://mlm.fangwl591021.workers.dev";
     const TAG_OPTIONS = ["產品問題", "行政問題", "訂單物流", "退換貨", "客訴", "負評", "建議", "待追蹤", "VIP"];
-    const FLOORS = { main: "1F 產品客服", admin: "2F 行政客服" };
+    const FLOORS = { main: "產品客服", admin: "行政客服" };
     const POINT_SOURCES = [
       { key: "oa2", name: "康立全球", loginId: "1584", canGrant: false, deductPriority: true },
       { key: "oa1", name: "康立智能", loginId: "1086", canGrant: true }
@@ -251,7 +251,7 @@
       try {
         const mainSaved = await saveSingleFloorWhitelist("main", els.mainWhitelist.value);
         const adminSaved = await saveSingleFloorWhitelist("admin", els.adminWhitelist.value);
-        els.knowledgeStatus.textContent = `樓層白名單已儲存：1F ${mainSaved.count || 0} 位，2F ${adminSaved.count || 0} 位`;
+        els.knowledgeStatus.textContent = `白名單已儲存：產品客服 ${mainSaved.count || 0} 位，行政客服 ${adminSaved.count || 0} 位`;
         sync();
       } catch (err) {
         els.knowledgeStatus.textContent = err.message || String(err);

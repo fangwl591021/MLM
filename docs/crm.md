@@ -19,7 +19,7 @@
 - `POST /line-webhook/oa1`
 - `POST /line-webhook/oa2`
 
-`oa1` 預設對應 `1F 產品客服`，`oa2` 預設對應 `2F 行政客服`。
+`oa1` 預設對應 `產品客服`，`oa2` 預設對應 `行政客服`。
 
 點數來源標示：
 
