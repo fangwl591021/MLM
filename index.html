@@ -708,9 +708,12 @@
     }
     function renderPointSources() {
       if (state.pointNeedsBind) {
-        els.pointSources.innerHTML = `<div class="muted pointWarn">此聊天室尚未綁定母站 K點會員。請用姓名、手機或會員編號搜尋會員，選擇後再讀取與贈扣。</div>`;
+        els.pointSources.innerHTML = renderPointIdentityPanel() + `<div class="pointIdentity warn"><strong>尚未綁定</strong><span>請先從同名候選或下方搜尋結果選擇正確母站會員。選定前不開放贈扣，避免寫錯人。</span></div>`;
+        setPointOperationVisible(false);
+        attachPointAlternativeHandlers();
         return;
       }
+      setPointOperationVisible(true);
       const identityPanel = renderPointIdentityPanel();
       els.pointSources.innerHTML = identityPanel + POINT_SOURCES.map((source) => {
         const rows = state.pointBalances.filter((row) => row.channel_key === source.key && row.point_type === "gift_money");
@@ -729,6 +732,9 @@
           updatePointActionState();
         };
       });
+      attachPointAlternativeHandlers();
+    }
+    function attachPointAlternativeHandlers() {
       document.querySelectorAll("[data-point-alt]").forEach((button) => {
         button.onclick = () => bindPointAlternative(state.pointAlternatives[Number(button.dataset.pointAlt)]);
       });
@@ -738,8 +744,9 @@
       const resolved = state.pointResolved || {};
       const currentPointUid = resolved.point_line_user_id || state.pointMutationUserId || "";
       let html = `<div class="pointIdentity"><div><strong>目前讀取</strong><span>聊天室 ${esc(shortUid(state.pointUserId))} → 母站 ${esc(shortUid(currentPointUid || "未解析"))} · ${esc(pointResolveLabel(resolved.source))}</span></div></div>`;
-      if (alternatives.length > 1) {
-        html += `<div class="pointIdentity warn"><strong>同名候選</strong><div class="pointAltGrid">${alternatives.map((alt, index) => {
+      if (alternatives.length) {
+        const title = state.pointNeedsBind ? "請選擇正確母站會員" : "同名候選";
+        html += `<div class="pointIdentity warn"><strong>${esc(title)}</strong><div class="pointAltGrid">${alternatives.map((alt, index) => {
           const active = alt.line_user_id === currentPointUid || alt.line_user_id === state.pointUserId;
           const match = alt.picture_match ? "頭像相符" : "同名";
           const balance = alt.balance === null || alt.balance === undefined ? "讀取失敗" : `${formatPoint(alt.balance)} K點`;
@@ -760,6 +767,12 @@
         not_found: "未解析"
       };
       return map[value] || value || "未解析";
+    }
+    function setPointOperationVisible(visible) {
+      const form = document.querySelector("#pointModal .pointForm");
+      const actions = document.querySelector("#pointModal .pointActions");
+      if (form) form.style.display = visible ? "grid" : "none";
+      if (actions) actions.style.display = visible ? "flex" : "none";
     }
     function shortUid(value) {
       const uid = String(value || "");
