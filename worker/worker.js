@@ -85,6 +85,9 @@ export default {
             WETW_SHOP_ID: Boolean(env.WETW_SHOP_ID),
             GATEWAY_FORWARD_TOKEN: Boolean(env.GATEWAY_FORWARD_TOKEN || env.MLM_FORWARD_TOKEN),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
+            GOOGLE_CALENDAR_ID: Boolean(env.GOOGLE_CALENDAR_ID || env.REWARD_GOOGLE_CALENDAR_ID),
+            GOOGLE_SERVICE_ACCOUNT_EMAIL: Boolean(env.GOOGLE_SERVICE_ACCOUNT_EMAIL),
+            GOOGLE_PRIVATE_KEY: Boolean(env.GOOGLE_PRIVATE_KEY),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
         }, 200, corsHeaders);
@@ -134,6 +137,12 @@ export default {
         assertDashboardAuth(request, env);
         const data = await fetchConsoleSummary(env);
         return jsonResponse({ status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/calendar/import-image" && request.method === "POST") {
+        assertDashboardAuth(request, env);
+        const result = await importCalendarImageToGoogle(env, request);
+        return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/reward/config" && request.method === "GET") {
@@ -496,7 +505,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/health", "/api/console/summary", "/api/calendar/import-image", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -2609,6 +2618,298 @@ async function fetchRewardCalendarEvents(env) {
   return parseIcsEvents(text)
     .filter((event) => event.startsAt && event.endsAt)
     .sort((a, b) => a.startsAt - b.startsAt);
+}
+
+async function importCalendarImageToGoogle(env, request) {
+  const missing = [];
+  if (!env.OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
+  if (!calendarWriteId(env)) missing.push("GOOGLE_CALENDAR_ID or REWARD_GOOGLE_CALENDAR_ID");
+  if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL) missing.push("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+  if (!env.GOOGLE_PRIVATE_KEY) missing.push("GOOGLE_PRIVATE_KEY");
+  if (missing.length) throw httpError(`Missing required config: ${missing.join(", ")}`, 500);
+
+  const form = await request.formData();
+  const file = form.get("image");
+  if (!file || typeof file.arrayBuffer !== "function") throw httpError("image file is required", 400);
+  const mimeType = stringValue(file.type || "image/jpeg");
+  if (!mimeType.startsWith("image/")) throw httpError("Only image files are supported", 400);
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > 10 * 1024 * 1024) throw httpError("Image is too large; max 10MB", 400);
+
+  const fileName = stringValue(form.get("fileName") || file.name || "calendar-image");
+  const imageDataUrl = `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`;
+  const extracted = await extractCalendarEventsFromImage(env, imageDataUrl, fileName);
+  const normalized = normalizeCalendarImportEvents(extracted.events || extracted, fileName);
+  if (!normalized.length) {
+    return { imported: 0, skipped: 0, events: [], message: "No timed calendar events were found in the image." };
+  }
+
+  const accessToken = await getGoogleCalendarAccessToken(env);
+  const calendarId = calendarWriteId(env);
+  const results = [];
+  let imported = 0;
+  let skipped = 0;
+  for (const event of normalized) {
+    try {
+      const duplicate = await findGoogleCalendarDuplicate(accessToken, calendarId, event);
+      if (duplicate) {
+        skipped += 1;
+        results.push({ ...event, status: "skipped", reason: "duplicate" });
+        continue;
+      }
+      const inserted = await insertGoogleCalendarEvent(accessToken, calendarId, event);
+      imported += 1;
+      results.push({ ...event, status: "imported", googleEventId: inserted.id || "" });
+    } catch (err) {
+      skipped += 1;
+      results.push({ ...event, status: "skipped", reason: err && err.message ? err.message : String(err) });
+    }
+  }
+  return { imported, skipped, events: results };
+}
+
+async function extractCalendarEventsFromImage(env, imageDataUrl, fileName) {
+  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
+  const model = env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-5-mini";
+  const prompt = [
+    "你是行事曆圖片資料擷取工具。請從康立 K-LINK 月曆圖片擷取可報到的活動。",
+    "只輸出 JSON，不要說明。格式：",
+    "{\"events\":[{\"date\":\"YYYY-MM-DD\",\"startTime\":\"HH:mm\",\"endTime\":\"HH:mm\",\"summary\":\"活動名稱\",\"speaker\":\"講師或負責人\",\"locationName\":\"台北總公司|台中營業處|高雄營業處|其他\",\"location\":\"完整地址\",\"description\":\"補充資訊\"}]}",
+    "規則：",
+    "1. 只保留有明確日期與時間的活動；沒有時間的假日、旅遊、空白格不要輸出。",
+    "2. 年份與月份請從圖片標題判斷，例如 MAY 2026 或 5月份行事曆。",
+    "3. 台北總公司地址固定為：台北市南京東路五段108號8樓。",
+    "4. 台中營業處地址固定為：台中市西屯區市政路500號4樓之6。",
+    "5. 高雄營業處地址固定為：高雄市苓雅區光華一路206號24樓之1。",
+    "6. description 請放講師、地點、報名限制、K點等文字；若圖片沒有 K點，系統會用預設 5 K點。",
+    `fileName: ${fileName}`,
+  ].join("\n");
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      input: [{
+        role: "user",
+        content: [
+          { type: "input_text", text: prompt },
+          { type: "input_image", image_url: imageDataUrl },
+        ],
+      }],
+      text: { format: { type: "json_object" } },
+      max_output_tokens: 4000,
+    }),
+  });
+  const body = await response.text();
+  if (!response.ok) throw httpError(`OpenAI image parse failed ${response.status}: ${body}`, 502);
+  return parseStrictJsonObject(extractOpenAIText(JSON.parse(body)));
+}
+
+function normalizeCalendarImportEvents(payload, fileName) {
+  const rawEvents = Array.isArray(payload) ? payload : [];
+  const events = [];
+  for (const raw of rawEvents) {
+    const date = normalizeIsoDate(raw && raw.date);
+    const startTime = normalizeClockTime(raw && (raw.startTime || raw.start_time));
+    const endTime = normalizeClockTime(raw && (raw.endTime || raw.end_time)) || addMinutesToClock(startTime, 90);
+    const summary = stringValue(raw && (raw.summary || raw.title || raw.name)).trim();
+    if (!date || !startTime || !endTime || !summary) continue;
+    const locationName = normalizeCalendarLocationName(raw && (raw.locationName || raw.location_name || raw.venue));
+    const location = normalizeCalendarLocation(raw && raw.location, locationName);
+    const speaker = stringValue(raw && raw.speaker).trim();
+    const descriptionParts = [
+      stringValue(raw && raw.description).trim(),
+      speaker ? `講師/負責人：${speaker}` : "",
+      locationName ? `地點：${locationName}` : "",
+      `匯入來源：${fileName}`,
+      `K點：5`,
+    ].filter(Boolean);
+    events.push({
+      date,
+      startTime,
+      endTime,
+      summary,
+      speaker,
+      locationName,
+      location,
+      description: uniqueSuggestions(descriptionParts).join("\n"),
+      sourceHash: shortHash(`${date}|${startTime}|${endTime}|${summary}|${location}`),
+    });
+  }
+  return events.sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
+}
+
+function normalizeCalendarLocationName(value) {
+  const text = stringValue(value).replace(/臺/g, "台");
+  if (text.includes("台北") || text.includes("南京東路")) return "台北總公司";
+  if (text.includes("台中") || text.includes("市政路")) return "台中營業處";
+  if (text.includes("高雄") || text.includes("光華一路")) return "高雄營業處";
+  return text || "其他";
+}
+
+function normalizeCalendarLocation(value, locationName) {
+  const text = stringValue(value).trim();
+  if (text.includes("南京東路五段108") || locationName === "台北總公司") return "台北市南京東路五段108號8樓";
+  if (text.includes("市政路500") || locationName === "台中營業處") return "台中市西屯區市政路500號4樓之6";
+  if (text.includes("光華一路206") || locationName === "高雄營業處") return "高雄市苓雅區光華一路206號24樓之1";
+  return text || locationName || "";
+}
+
+function normalizeIsoDate(value) {
+  const text = stringValue(value).trim();
+  const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (!match) return "";
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d) || m < 1 || m > 12 || d < 1 || d > 31) return "";
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function normalizeClockTime(value) {
+  const text = stringValue(value).trim().replace(/[：]/g, ":");
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "";
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return "";
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function addMinutesToClock(clock, minutes) {
+  const normalized = normalizeClockTime(clock);
+  if (!normalized) return "";
+  const [h, m] = normalized.split(":").map(Number);
+  const total = h * 60 + m + Number(minutes || 0);
+  const next = ((total % 1440) + 1440) % 1440;
+  return `${String(Math.floor(next / 60)).padStart(2, "0")}:${String(next % 60).padStart(2, "0")}`;
+}
+
+function calendarWriteId(env) {
+  return stringValue(env.GOOGLE_CALENDAR_ID || env.REWARD_GOOGLE_CALENDAR_ID || DEFAULT_REWARD_CALENDAR_ID);
+}
+
+async function getGoogleCalendarAccessToken(env) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = {
+    iss: stringValue(env.GOOGLE_SERVICE_ACCOUNT_EMAIL),
+    scope: "https://www.googleapis.com/auth/calendar.events",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now,
+  };
+  const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
+  const key = await importGooglePrivateKey(env.GOOGLE_PRIVATE_KEY);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(signingInput));
+  const assertion = `${signingInput}.${base64UrlBytes(new Uint8Array(signature))}`;
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  const tokenBody = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok || !tokenBody.access_token) {
+    throw httpError(`Google service account auth failed: ${JSON.stringify(tokenBody)}`, 502);
+  }
+  return tokenBody.access_token;
+}
+
+async function importGooglePrivateKey(privateKey) {
+  const pem = stringValue(privateKey).replace(/\\n/g, "\n").trim();
+  const base64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return crypto.subtle.importKey(
+    "pkcs8",
+    bytes.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+}
+
+async function findGoogleCalendarDuplicate(accessToken, calendarId, event) {
+  const dayStart = `${event.date}T00:00:00+08:00`;
+  const dayEnd = `${dateAddDays(event.date, 1)}T00:00:00+08:00`;
+  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
+  url.searchParams.set("singleEvents", "true");
+  url.searchParams.set("maxResults", "10");
+  url.searchParams.set("timeMin", dayStart);
+  url.searchParams.set("timeMax", dayEnd);
+  url.searchParams.set("q", event.summary);
+  const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!response.ok) return null;
+  const data = await response.json().catch(() => ({}));
+  return (data.items || []).find((item) => {
+    const startsAt = stringValue(item.start && item.start.dateTime);
+    return item.summary === event.summary && startsAt.startsWith(`${event.date}T${event.startTime}`);
+  }) || null;
+}
+
+async function insertGoogleCalendarEvent(accessToken, calendarId, event) {
+  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({
+      summary: event.summary,
+      location: event.location,
+      description: event.description,
+      start: { dateTime: `${event.date}T${event.startTime}:00+08:00`, timeZone: "Asia/Taipei" },
+      end: { dateTime: `${event.date}T${event.endTime}:00+08:00`, timeZone: "Asia/Taipei" },
+      extendedProperties: {
+        private: {
+          source: "klink_calendar_image_import",
+          source_hash: event.sourceHash,
+        },
+      },
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Google Calendar insert failed ${response.status}: ${JSON.stringify(body)}`);
+  return body;
+}
+
+function dateAddDays(date, days) {
+  const ms = Date.parse(`${date}T00:00:00+08:00`);
+  if (!Number.isFinite(ms)) return date;
+  const next = new Date(ms + Number(days || 0) * 86400000);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(next);
+}
+
+function parseStrictJsonObject(text) {
+  const raw = stringValue(text).trim();
+  try { return JSON.parse(raw); } catch (_err) { /* fallback below */ }
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+  throw new Error("Unable to parse JSON object");
+}
+
+function base64UrlJson(value) {
+  return base64UrlBytes(new TextEncoder().encode(JSON.stringify(value)));
+}
+
+function base64UrlBytes(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let output = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    output += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(output);
 }
 
 function parseIcsEvents(text) {
