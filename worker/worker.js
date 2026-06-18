@@ -29,6 +29,7 @@ const POINT_SOURCE_META = {
 };
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
+const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -104,6 +105,18 @@ export default {
             apiBase: url.origin,
           },
         }, 200, corsHeaders);
+      }
+
+      if ((url.pathname === "/console" || url.pathname === "/console.html") && request.method === "GET") {
+        return serveFrontendHtml("console.html", corsHeaders);
+      }
+
+      if ((url.pathname === "/dashboard" || url.pathname === "/index.html") && request.method === "GET") {
+        return serveFrontendHtml("index.html", corsHeaders);
+      }
+
+      if (url.pathname.startsWith("/docs/") && request.method === "GET") {
+        return serveFrontendAsset(url.pathname.replace(/^\/+/, ""), corsHeaders);
       }
 
       if (url.pathname === "/api/auth/line-login" && request.method === "POST") {
@@ -530,7 +543,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/health", "/api/console/summary", "/api/calendar/import-image", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -539,6 +552,78 @@ export default {
     }
   },
 };
+
+async function serveFrontendHtml(fileName, corsHeaders) {
+  const response = await fetch(`${FRONTEND_RAW_BASE}/${fileName}`, {
+    cf: { cacheEverything: true, cacheTtl: 60 },
+  });
+  if (!response.ok) {
+    return new Response(`Frontend source unavailable: ${fileName}`, {
+      status: 502,
+      headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const html = rewriteFrontendLinks(await response.text());
+  return new Response(html, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+async function serveFrontendAsset(pathname, corsHeaders) {
+  const safePath = String(pathname || "").replace(/^\/+/, "");
+  if (!safePath || safePath.includes("..")) {
+    return new Response("Invalid asset path", {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const response = await fetch(`${FRONTEND_RAW_BASE}/${safePath}`, {
+    cf: { cacheEverything: true, cacheTtl: 300 },
+  });
+  if (!response.ok) {
+    return new Response("Asset not found", {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const contentType = safePath.endsWith(".md")
+    ? "text/plain; charset=utf-8"
+    : (response.headers.get("Content-Type") || "application/octet-stream");
+  return new Response(response.body, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+function rewriteFrontendLinks(html) {
+  return String(html || "")
+    .replaceAll('href="console.html"', 'href="/console"')
+    .replaceAll("href='console.html'", "href='/console'")
+    .replaceAll('href="index.html?floor=main"', 'href="/dashboard?floor=main"')
+    .replaceAll("href='index.html?floor=main'", "href='/dashboard?floor=main'")
+    .replaceAll('href="index.html?floor=admin"', 'href="/dashboard?floor=admin"')
+    .replaceAll("href='index.html?floor=admin'", "href='/dashboard?floor=admin'")
+    .replaceAll('href="index.html"', 'href="/dashboard"')
+    .replaceAll("href='index.html'", "href='/dashboard'")
+    .replaceAll('location.href = "console.html"', 'location.href = "/console"')
+    .replaceAll("location.href = 'console.html'", "location.href = '/console'")
+    .replaceAll('location.href = "index.html?floor=main"', 'location.href = "/dashboard?floor=main"')
+    .replaceAll("location.href = 'index.html?floor=main'", "location.href = '/dashboard?floor=main'")
+    .replaceAll('location.href = "index.html?floor=admin"', 'location.href = "/dashboard?floor=admin"')
+    .replaceAll("location.href = 'index.html?floor=admin'", "location.href = '/dashboard?floor=admin'");
+}
 
 function resolveFloor(request) {
   const url = new URL(request.url);
