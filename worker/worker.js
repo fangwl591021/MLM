@@ -88,9 +88,34 @@ export default {
             GOOGLE_CALENDAR_ID: Boolean(env.GOOGLE_CALENDAR_ID || env.REWARD_GOOGLE_CALENDAR_ID),
             GOOGLE_SERVICE_ACCOUNT_EMAIL: Boolean(env.GOOGLE_SERVICE_ACCOUNT_EMAIL),
             GOOGLE_PRIVATE_KEY: Boolean(env.GOOGLE_PRIVATE_KEY),
+            DASHBOARD_LIFF_ID: Boolean(env.DASHBOARD_LIFF_ID),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
         }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/login-config" && request.method === "GET") {
+        const liffId = dashboardLiffId(env);
+        return jsonResponse({
+          status: "success",
+          data: {
+            liffId,
+            lineLoginEnabled: Boolean(liffId),
+            apiBase: url.origin,
+          },
+        }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/auth/line-login" && request.method === "POST") {
+        const body = await safeJson(request);
+        const result = await verifyLineLoginIdToken(env, stringValue(body.idToken || body.id_token));
+        const access = result.ok ? await resolveLineDashboardAccess(env, result.profile) : { allowed: false, admin: false, floors: [] };
+        return jsonResponse({
+          status: result.ok ? "success" : "error",
+          profile: result.profile || null,
+          access,
+          message: result.ok ? "" : (result.message || "LINE Login 驗證失敗"),
+        }, result.ok ? 200 : 401, corsHeaders);
       }
 
       if (url.pathname === "/r/nfc" && (request.method === "GET" || request.method === "HEAD")) {
@@ -134,13 +159,13 @@ export default {
       }
 
       if (url.pathname === "/api/console/summary" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const data = await fetchConsoleSummary(env);
         return jsonResponse({ status: "success", data }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/calendar/import-image" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const result = await importCalendarImageToGoogle(env, request);
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
@@ -187,7 +212,7 @@ export default {
       }
 
       if (url.pathname === "/api/data" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const data = await fetchDashboardData(env, floor);
         if (env.DB && provider.accessToken) {
           ctx.waitUntil(backfillProfiles(env, floor, provider, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
@@ -200,58 +225,58 @@ export default {
       }
 
       if (url.pathname === "/admin/crm/members" && request.method === "GET") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const data = await listCrmMembers(env, url);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/crm/member-search" && request.method === "GET") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const candidates = await searchCrmMemberCandidates(env, url);
         return jsonResponse({ success: true, status: "success", candidates }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/crm/sync-members" && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const result = await syncCrmMembers(env, body);
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/crm/sync-points" && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const result = await syncCrmPoints(env, body);
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/binding-codes" && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const result = await createBindingCode(request, env);
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/observations" && request.method === "GET") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const observations = await listPointObservations(env, url);
         return jsonResponse({ success: true, status: "success", observations }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/member-links" && request.method === "GET") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const links = await listPointMemberLinks(env, url);
         return jsonResponse({ success: true, status: "success", links }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/bind-line-user" && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const body = await safeJson(request);
         const result = await bindPointLineUser(env, body);
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/balance" && request.method === "GET") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const result = await listPointBalances(env, url);
         const balances = Array.isArray(result) ? result : result.balances;
         const resolved = Array.isArray(result) ? null : result.resolved;
@@ -260,13 +285,13 @@ export default {
       }
 
       if (url.pathname === "/admin/points/ledger" && request.method === "GET") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const ledger = await listPointLedger(env, url);
         return jsonResponse({ success: true, status: "success", ledger }, 200, corsHeaders);
       }
 
       if (url.pathname === "/admin/points/backfill-auto-rewards" && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const queryBody = Object.fromEntries(url.searchParams.entries());
         const result = await backfillMissingAutoRewards(env, { ...queryBody, ...body });
@@ -274,7 +299,7 @@ export default {
       }
 
       if (url.pathname === "/admin/points/repair-daily-keyword-balances" && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const queryBody = Object.fromEntries(url.searchParams.entries());
         const result = await repairDailyKeywordBalances(env, { ...queryBody, ...body });
@@ -282,7 +307,7 @@ export default {
       }
 
       if ((url.pathname === "/admin/points/grant" || url.pathname === "/admin/points/deduct" || url.pathname === "/admin/points/redeem") && request.method === "POST") {
-        assertPointAdminAuth(request, env);
+        await assertPointAdminAuth(request, env);
         const action = url.pathname.endsWith("/grant") ? "grant" : url.pathname.endsWith("/deduct") ? "deduct" : "redeem";
         const body = await safeJson(request);
         const result = await pointMutation(env, body, action);
@@ -298,20 +323,20 @@ export default {
       }
 
       if (url.pathname === "/api/migrate-gas-to-d1" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         if (!env.DB) return jsonResponse({ status: "error", message: "DB is not configured" }, 500, corsHeaders);
         const result = await migrateGasToD1(env, floor);
         return jsonResponse(result, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/line-oa/threads" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const data = await fetchDashboardData(env, floor);
         return jsonResponse({ success: true, status: "success", data: data.data.threads || [] }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/line-oa/thread" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const id = stringValue(url.searchParams.get("id"));
         if (!id) return jsonResponse({ success: false, status: "error", message: "id is required" }, 400, corsHeaders);
         const thread = await fetchThread(env, floor, id);
@@ -320,7 +345,7 @@ export default {
       }
 
       if (url.pathname === "/api/line-oa/thread" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const userId = stringValue(body.userId || body.id).replace(/^user:/, "");
         if (!userId) return jsonResponse({ success: false, status: "error", message: "userId or id is required" }, 400, corsHeaders);
@@ -338,7 +363,7 @@ export default {
       }
 
       if (url.pathname === "/api/profile-debug" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const userId = stringValue(url.searchParams.get("userId") || url.searchParams.get("uid"));
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
         const channelKey = stringValue(url.searchParams.get("channel") || url.searchParams.get("channel_key"));
@@ -360,7 +385,7 @@ export default {
       }
 
       if (url.pathname === "/api/line-bot-info" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const channelKey = stringValue(url.searchParams.get("channel") || url.searchParams.get("channel_key"));
         const pointConfig = POINT_CHANNELS.has(channelKey) ? getPointChannelConfig(env, channelKey) : null;
         const botProvider = pointConfig
@@ -371,7 +396,7 @@ export default {
       }
 
       if (url.pathname === "/api/backfill-profiles" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const limit = clampNumber(body.limit || 100, 1, 300);
         const channelKey = stringValue(body.channel || body.channel_key || url.searchParams.get("channel") || url.searchParams.get("channel_key"));
@@ -383,7 +408,7 @@ export default {
       }
 
       if (url.pathname === "/api/knowledge" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         if (!body.knowledge) return jsonResponse({ status: "error", message: "knowledge is required" }, 400, corsHeaders);
         const result = await importKnowledge(env, floor, body.knowledge, stringValue(body.fileName || "dashboard-upload.json"));
@@ -395,13 +420,13 @@ export default {
       }
 
       if (url.pathname === "/api/floor-whitelist" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertAccessManager(request, env);
         const data = await fetchFloorWhitelist(env);
         return jsonResponse({ status: "success", data }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/floor-whitelist" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertAccessManager(request, env);
         const body = await safeJson(request);
         const requestedFloor = stringValue(body.floor || body.floor_id);
         const targetFloor = ACCESS_LIST_IDS.has(requestedFloor) ? requestedFloor : floor;
@@ -410,14 +435,14 @@ export default {
       }
 
       if (url.pathname === "/api/reply-learning" && request.method === "GET") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const limit = clampNumber(url.searchParams.get("limit") || 50, 1, 200);
         const learning = await fetchReplyLearning(env, floor, limit);
         return jsonResponse({ status: "success", ...learning }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/reply-learning/rebuild" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request).catch(() => ({}));
         const limit = clampNumber(body.limit || 500, 1, 2000);
         const result = await rebuildReplyLearning(env, floor, limit);
@@ -425,7 +450,7 @@ export default {
       }
 
       if (url.pathname === "/api/conversation-meta" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const userId = stringValue(body.userId);
         if (!userId) return jsonResponse({ status: "error", message: "userId is required" }, 400, corsHeaders);
@@ -443,7 +468,7 @@ export default {
       }
 
       if (url.pathname === "/api/send" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const userId = stringValue(body.userId);
         const text = stringValue(body.text);
@@ -464,7 +489,7 @@ export default {
       }
 
       if (url.pathname === "/api/log-reply" && request.method === "POST") {
-        assertDashboardAuth(request, env);
+        await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const userId = stringValue(body.userId);
         const text = stringValue(body.text);
@@ -628,14 +653,14 @@ function requiresFloorAccess(pathname) {
 }
 
 async function assertFloorAccess(request, env, floor) {
-  assertDashboardAuth(request, env);
-  if (isAdminRequest(request, env)) return;
+  const auth = await assertDashboardAuth(request, env);
+  if (auth.adminToken) return;
   if (!env.DB) return;
   await ensureFloorAccessSchema(env);
   const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM floor_access_whitelist WHERE floor_id = ? AND active = 1").bind(targetFloor).first();
   if (Number(countRow && countRow.count || 0) <= 0) return;
-  const operator = requestOperatorIdentity(request);
+  const operator = requestOperatorIdentity(request, auth);
   if (!operator.ids.length && !operator.names.length) throw httpError(`此樓層已啟用白名單，請先填寫操作人代號`, 403);
   const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
   if (adminAllowed) return;
@@ -651,13 +676,15 @@ function normalizedOperatorId(value) {
   return stringValue(value).trim();
 }
 
-function requestOperatorIdentity(request) {
+function requestOperatorIdentity(request, auth = {}) {
   const idHeaders = [
+    auth.userId,
     request.headers.get("X-Operator-Id"),
     request.headers.get("X-User-Id"),
     request.headers.get("X-Admin-User"),
   ];
   const nameHeaders = [
+    auth.displayName,
     request.headers.get("X-Operator-Name"),
     request.headers.get("X-Admin-Name"),
   ];
@@ -5687,28 +5714,101 @@ function buildCorsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Operator-Id, X-Operator-Name, X-User-Id, X-Admin-User, X-Admin-Name",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Line-Id-Token, X-Operator-Id, X-Operator-Name, X-User-Id, X-Admin-User, X-Admin-Name",
     "Access-Control-Max-Age": "86400",
     ...JSON_HEADERS,
   };
 }
 
-function assertDashboardAuth(request, env) {
+async function assertDashboardAuth(request, env) {
   const tokens = [env.DASHBOARD_API_TOKEN, env.ADMIN_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
-  if (!tokens.length) throw httpError("DASHBOARD_API_TOKEN or ADMIN_TOKEN is not configured", 500);
   const auth = String(request.headers.get("Authorization") || "").trim();
   const directToken = String(request.headers.get("X-Dashboard-Token") || request.headers.get("X-Admin-Token") || "").trim();
   const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!tokens.includes(bearerToken) && !tokens.includes(directToken)) throw httpError("Unauthorized dashboard request", 401);
+  if (tokens.includes(bearerToken) || tokens.includes(directToken)) {
+    return { ok: true, token: bearerToken || directToken, adminToken: isAdminRequest(request, env), method: "token" };
+  }
+  const line = await verifyLineLoginRequest(request, env);
+  if (line.ok) return { ok: true, method: "line", ...line.profile };
+  if (!tokens.length && !dashboardLiffId(env)) throw httpError("DASHBOARD_API_TOKEN, ADMIN_TOKEN or DASHBOARD_LIFF_ID is not configured", 500);
+  throw httpError(line.message || "Unauthorized dashboard request", 401);
 }
 
-function assertPointAdminAuth(request, env) {
-  const tokens = [env.ADMIN_TOKEN, env.DASHBOARD_API_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
-  if (!tokens.length) throw httpError("ADMIN_TOKEN or DASHBOARD_API_TOKEN is not configured", 500);
-  const auth = String(request.headers.get("Authorization") || "").trim();
-  const directToken = String(request.headers.get("X-Dashboard-Token") || request.headers.get("X-Admin-Token") || "").trim();
-  const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!tokens.includes(bearerToken) && !tokens.includes(directToken)) throw httpError("Unauthorized dashboard request", 401);
+async function assertPointAdminAuth(request, env) {
+  return assertDashboardAuth(request, env);
+}
+
+async function assertAccessManager(request, env) {
+  const auth = await assertDashboardAuth(request, env);
+  if (auth.adminToken) return auth;
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  await ensureFloorAccessSchema(env);
+  const operator = requestOperatorIdentity(request, auth);
+  const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
+  if (!adminAllowed) throw httpError("只有 admin 可以管理權限", 403);
+  return auth;
+}
+
+function dashboardLiffId(env) {
+  return stringValue(env.DASHBOARD_LIFF_ID || env.LINE_DASHBOARD_LIFF_ID || "").trim();
+}
+
+function dashboardLineClientId(env) {
+  const configured = stringValue(env.DASHBOARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || "").trim();
+  if (configured) return configured;
+  const liffId = dashboardLiffId(env);
+  const match = liffId.match(/^(\d+)-/);
+  return match ? match[1] : "";
+}
+
+async function verifyLineLoginRequest(request, env) {
+  const idToken = stringValue(request.headers.get("X-Line-Id-Token")).trim();
+  if (!idToken) return { ok: false, message: "LINE Login is required" };
+  return verifyLineLoginIdToken(env, idToken);
+}
+
+async function verifyLineLoginIdToken(env, idToken) {
+  const token = stringValue(idToken).trim();
+  const clientId = dashboardLineClientId(env);
+  if (!token) return { ok: false, message: "LINE idToken is required" };
+  if (!clientId) return { ok: false, message: "DASHBOARD_LIFF_ID or DASHBOARD_LINE_LOGIN_CHANNEL_ID is not configured" };
+  try {
+    const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ id_token: token, client_id: clientId }).toString(),
+    });
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
+    if (!response.ok || !data || !data.sub) {
+      return { ok: false, status: response.status, message: data && (data.error_description || data.error) || text || "LINE idToken verify failed" };
+    }
+    return {
+      ok: true,
+      profile: {
+        userId: data.sub,
+        displayName: data.name || "",
+        pictureUrl: data.picture || "",
+        email: data.email || "",
+      },
+    };
+  } catch (err) {
+    return { ok: false, status: 0, message: err && err.message ? err.message : String(err) };
+  }
+}
+
+async function resolveLineDashboardAccess(env, profile) {
+  if (!profile || !profile.userId || !env.DB) return { allowed: false, admin: false, floors: [] };
+  await ensureFloorAccessSchema(env);
+  const operator = { ids: [profile.userId], names: [profile.displayName].filter(Boolean), label: profile.userId };
+  const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
+  const floors = [];
+  for (const floor of [FLOOR_MAIN, FLOOR_ADMIN]) {
+    const allowed = adminAllowed || await findFloorAccessEntry(env, floor, operator);
+    if (allowed) floors.push(floor);
+  }
+  return { allowed: Boolean(adminAllowed || floors.length), admin: Boolean(adminAllowed), floors };
 }
 
 function httpError(message, status) {

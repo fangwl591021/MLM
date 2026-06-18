@@ -126,6 +126,7 @@
     </div>
   </div>
 
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
     const DEFAULT_API_BASE = "https://mlm.fangwl591021.workers.dev";
     const TAG_OPTIONS = ["產品問題", "行政問題", "訂單物流", "退換貨", "客訴", "負評", "建議", "待追蹤", "VIP"];
@@ -144,7 +145,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointBind: $("pointBind"), pointBindSource: $("pointBindSource"), pointBindQuery: $("pointBindQuery"), pointBindSearch: $("pointBindSearch"), pointBindResults: $("pointBindResults"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperatorId: $("pointOperatorId"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage"), pointLedgerList: $("pointLedgerList"), pointLedgerCount: $("pointLedgerCount")
     };
-    const state = { floor: initialFloor(), chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
+    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -208,12 +209,62 @@
     els.pointBindSource.innerHTML = POINT_SOURCES.map((source) => `<option value="${esc(source.key)}">${esc(source.name)} · ${esc(source.loginId)}</option>`).join("");
     els.replyText.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(false); } });
     document.addEventListener("click", (e) => { if (!els.sendMenu.contains(e.target) && e.target !== els.sendMenuButton) els.sendMenu.hidden = true; });
-    setSettingsOpen(!els.apiToken.value.trim());
-    if (els.apiToken.value.trim()) loadFloorWhitelist().then(render).catch(() => {});
+    boot();
 
-    render();
-    sync();
-    setInterval(sync, 5000);
+    async function boot() {
+      render();
+      await initLineLogin();
+      setSettingsOpen(!hasAuth());
+      if (hasAuth()) loadFloorWhitelist().then(render).catch(() => {});
+      sync();
+      setInterval(sync, 5000);
+    }
+
+    async function initLineLogin() {
+      try {
+        const configRes = await fetch(`${apiBase()}/api/login-config`);
+        const config = await configRes.json();
+        state.auth.liffId = config && config.data ? config.data.liffId || "" : "";
+        if (!state.auth.liffId) {
+          state.auth.ready = true;
+          els.knowledgeStatus.textContent = "尚未設定 DASHBOARD_LIFF_ID，暫時使用 Token 備援登入。";
+          return;
+        }
+        if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
+        await liff.init({ liffId: state.auth.liffId });
+        if (!liff.isLoggedIn()) {
+          liff.login({ redirectUri: window.location.href });
+          return;
+        }
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
+        const profile = await liff.getProfile().catch(() => ({}));
+        state.auth.idToken = idToken;
+        state.auth.userId = profile.userId || "";
+        state.auth.displayName = profile.displayName || "";
+        state.auth.pictureUrl = profile.pictureUrl || "";
+        els.operatorId.value = state.auth.userId;
+        localStorage.setItem("line_ai_operator_id", state.auth.userId);
+        if (state.auth.displayName) localStorage.setItem("line_ai_operator_name", state.auth.displayName);
+        const authRes = await fetch(`${apiBase()}/api/auth/line-login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken })
+        });
+        const authJson = await authRes.json();
+        if (!authRes.ok || authJson.status !== "success") throw new Error(authJson.message || "LINE Login 驗證失敗");
+        state.auth.access = authJson.access || null;
+        state.auth.ready = true;
+        els.knowledgeStatus.textContent = `LINE Login：${state.auth.displayName || state.auth.userId}`;
+      } catch (err) {
+        state.auth.ready = true;
+        if (!els.apiToken.value.trim()) showError(err.message || String(err));
+      }
+    }
+
+    function hasAuth() {
+      return Boolean(els.apiToken.value.trim() || state.auth.idToken);
+    }
 
     function saveSettings() {
       els.apiBase.value = sanitizeApiBase(els.apiBase.value);
@@ -360,8 +411,7 @@
 
     async function sync() {
       const base = apiBase();
-      const token = els.apiToken.value.trim();
-      if (!base || !token) {
+      if (!base || !hasAuth()) {
         state.loaded = true; state.chats = []; state.threads = []; state.aiLogs = []; state.chatMeta = [];
         setStatus("未連線", true); clearError(); render(); return;
       }
@@ -429,9 +479,9 @@
     }
 
     async function syncMotherMembers() {
-      if (!els.apiToken.value.trim()) {
+      if (!hasAuth()) {
         setSettingsOpen(true);
-        showError("請先輸入 Dashboard Token，才能同步母站。");
+        showError("請先完成 LINE Login 或輸入管理 Token，才能同步母站。");
         return;
       }
       try {
@@ -1129,8 +1179,11 @@
       } catch (_err) { return DEFAULT_API_BASE; }
     }
     function authHeaders() {
-      const operator = els.operatorId.value.trim();
-      return { Authorization: `Bearer ${els.apiToken.value.trim()}`, "X-Operator-Id": operator, "X-Operator-Name": operator };
+      const operator = state.auth.userId || els.operatorId.value.trim();
+      const headers = { "X-Operator-Id": operator, "X-Operator-Name": state.auth.displayName || operator };
+      if (els.apiToken.value.trim()) headers.Authorization = `Bearer ${els.apiToken.value.trim()}`;
+      if (state.auth.idToken) headers["X-Line-Id-Token"] = state.auth.idToken;
+      return headers;
     }
     function authJsonHeaders() { return { "Content-Type": "application/json", ...authHeaders() }; }
     function setStatus(text, bad) { els.syncStatus.textContent = text; els.syncStatus.className = bad ? "pill bad" : "pill"; }
