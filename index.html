@@ -27,6 +27,7 @@
     body{background:#f7f9fc;color:#172033}.brand,.head,.assistHead{background:#fff}.brand h1,.room h2,.assist h2{font-weight:760;letter-spacing:0}.brand p,.room p,.assist p{color:#718096}.oa{background:#0bc765;box-shadow:0 10px 24px rgba(6,199,85,.18);font-weight:780}.settingsBtn,.statusBtn,.refresh{border-color:#d7deea;color:#243149;background:#fff;border-radius:12px;font-weight:720}.settingsBtn:hover,.statusBtn:hover,.refresh:hover{background:#f7fafc;border-color:#b9c4d4}.settingsBtn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.brandActions{margin-left:auto;display:flex;gap:8px;align-items:center}.homeBtn{background:#effcf4;color:#067a35;border-color:#b6ecc8}.floorTabs{padding:12px 18px;background:#fbfcfe;border-bottom:1px solid #eef2f7}.floorTab{height:36px;border:0;background:#eef2f7;color:#536072;font-weight:740}.floorTab.active{background:#e7f8ef;color:#067a35;box-shadow:inset 0 0 0 1px #9be2b8}.search::before{font-weight:760;color:#243149}.filterTab{background:#f1f4f8;color:#344054;font-weight:740}.filterTab.active{background:#e8eef8;color:#183153}.item{border-color:#e8edf4;box-shadow:0 8px 20px rgba(16,24,40,.04)}.item.active{background:#effbf5;border-color:#8de3ad;box-shadow:0 10px 26px rgba(6,199,85,.10),inset 3px 0 0 var(--line)}.name{font-weight:760;color:#101828}.avatar{font-weight:760;background:#e8eef5}.avatar.named{background:#dff8e9}.label,.item .state{font-weight:720}.state.warn{background:#ff9f1c}.state.dark,.countBadge{background:#18243a}.risk.low{background:#e7f8ef;color:#057a36}.manualBar{background:#66758f;font-weight:720}.messages{background-color:#c6d7e8}.bubble{box-shadow:0 8px 20px rgba(16,24,40,.06)}.suggestions button{font-weight:720}.sendPrimary{font-weight:760}.cardTitle{font-weight:760;color:#172033}.sideBtn{background:#f6fffa}.floorTag{background:#ecfdf3;color:#067a35;font-weight:760}
     .chat{height:100dvh;grid-template-rows:96px auto auto auto minmax(260px,1fr) auto}.messages{min-height:260px;overflow-y:auto;overscroll-behavior:contain}.composer{display:grid;grid-template-rows:auto auto;min-height:150px;max-height:190px;overflow:hidden;background:#fff}.suggestions{height:42px;min-height:42px;padding:7px 18px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.suggestions::-webkit-scrollbar{display:none}.suggestions .muted{display:flex;align-items:center;height:100%}.sendrow{height:108px;padding:8px 18px 14px;align-items:stretch}.sendrow textarea{height:86px;min-height:86px;max-height:86px;resize:none}.sendGroup{height:86px}.sendPrimary{height:86px;min-width:92px}.sendSplit{height:86px}@media(max-height:760px){.chat{grid-template-rows:96px auto auto auto minmax(220px,1fr) auto}.messages{min-height:220px}.composer{min-height:126px;max-height:148px}.suggestions{height:34px;min-height:34px;padding:4px 14px}.sendrow{height:92px;padding:6px 14px 8px}.sendrow textarea{height:76px;min-height:76px;max-height:76px}.sendGroup,.sendPrimary,.sendSplit{height:76px}}
     .motherSyncBtn{margin-left:auto;height:36px;border:1px solid #b6ecc8;border-radius:999px;background:#fff;color:#067a35;padding:0 14px;font-weight:760}.motherSyncBtn:hover{background:#effcf4}.motherSyncBtn:disabled{opacity:.55;cursor:not-allowed}
+    .accessListGrid{display:grid;gap:8px}.accessList{display:grid;gap:5px;border:1px solid #edf1f5;border-radius:10px;background:#fbfcfe;padding:9px 10px}.accessList strong{font-size:12px}.accessList div{color:#667085;font-size:12px;line-height:1.45}.hiddenControl{display:none!important}
   </style>
 </head>
 <body>
@@ -39,18 +40,21 @@
           <div class="settingTitle"><h3>登入身份</h3><span class="roleBadge">Token 僅存在本機</span></div>
           <label for="apiBase">Worker API URL</label><input id="apiBase" placeholder="https://mlm.fangwl591021.workers.dev" />
           <label for="apiToken">後台 Token</label><input id="apiToken" type="password" placeholder="總管理員或樓層管理員 Token" />
-          <label for="operatorId">操作人代號</label><input id="operatorId" placeholder="例：tony、admin001 或 U 開頭 LINE UID" />
-          <div class="roleNote"><strong>總管理員</strong>：使用 Admin Token，可進入所有樓層。<br><strong>樓層管理員</strong>：使用一般 Token，操作人代號必須列在該樓層白名單。</div>
+          <input id="operatorId" class="hiddenControl" />
+          <div class="roleNote"><strong>權限指定</strong>：請在聊天室上方直接勾選 <strong>admin</strong> 或 <strong>操作人</strong>。<br><strong>admin</strong> 可進入所有樓層；<strong>操作人</strong> 只可進入目前樓層。</div>
         </section>
         <section class="whitelistBox">
-          <div class="settingTitle"><h3>樓層白名單</h3><span class="roleBadge">依樓層分開</span></div>
-          <div class="whitelistHint">每行一位：操作人代號, 名稱。第一欄要和上方「操作人代號」完全相同；該樓層留空時不鎖權限。</div>
-          <div class="whitelistGrid">
-            <label class="whitelistFloor" for="adminAllWhitelist"><span>總管理員</span><textarea id="adminAllWhitelist" placeholder="tony, Tonyfang"></textarea></label>
-            <label class="whitelistFloor" for="mainWhitelist"><span>產品客服</span><textarea id="mainWhitelist" placeholder="tony, Tonyfang"></textarea></label>
-            <label class="whitelistFloor" for="adminWhitelist"><span>行政客服</span><textarea id="adminWhitelist" placeholder="admin001, 行政主管"></textarea></label>
+          <div class="settingTitle"><h3>權限名單</h3><span class="roleBadge">勾選管理</span></div>
+          <div class="whitelistHint">不提供手動輸入。請先點選聊天室，再用上方 <strong>admin</strong> / <strong>操作人</strong> 勾選授權或取消。</div>
+          <div class="accessListGrid">
+            <div class="accessList"><strong>admin</strong><div id="adminAllAccessList">尚未讀取</div></div>
+            <div class="accessList"><strong>產品客服操作人</strong><div id="mainAccessList">尚未讀取</div></div>
+            <div class="accessList"><strong>行政客服操作人</strong><div id="adminAccessList">尚未讀取</div></div>
           </div>
-          <button id="saveWhitelists" type="button">儲存樓層白名單</button>
+          <textarea id="adminAllWhitelist" class="hiddenControl"></textarea>
+          <textarea id="mainWhitelist" class="hiddenControl"></textarea>
+          <textarea id="adminWhitelist" class="hiddenControl"></textarea>
+          <button id="saveWhitelists" class="hiddenControl" type="button">儲存樓層白名單</button>
         </section>
         <label for="knowledgeFile">知識庫 JSON</label><input id="knowledgeFile" type="file" accept=".json,application/json" />
         <button id="uploadKnowledge" type="button">上傳知識庫</button>
@@ -132,7 +136,7 @@
     ];
     const $ = (id) => document.getElementById(id);
     const els = {
-      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), adminAllWhitelist: $("adminAllWhitelist"), mainWhitelist: $("mainWhitelist"), adminWhitelist: $("adminWhitelist"), saveWhitelists: $("saveWhitelists"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
+      apiBase: $("apiBase"), apiToken: $("apiToken"), operatorId: $("operatorId"), adminAllWhitelist: $("adminAllWhitelist"), mainWhitelist: $("mainWhitelist"), adminWhitelist: $("adminWhitelist"), adminAllAccessList: $("adminAllAccessList"), mainAccessList: $("mainAccessList"), adminAccessList: $("adminAccessList"), saveWhitelists: $("saveWhitelists"), settingsButton: $("settingsButton"), syncMotherButton: $("syncMotherButton"), knowledgeFile: $("knowledgeFile"), uploadKnowledge: $("uploadKnowledge"), backfillProfiles: $("backfillProfiles"), knowledgeStatus: $("knowledgeStatus"),
       searchBox: $("searchBox"), chatList: $("chatList"), messages: $("messages"), suggestions: $("suggestions"), sideSuggestions: $("sideSuggestions"), suggestionCount: $("suggestionCount"),
       replyText: $("replyText"), sendButton: $("sendButton"), sendMenuButton: $("sendMenuButton"), sendMenu: $("sendMenu"), logButton: $("logButton"), refreshButton: $("refreshButton"),
       pendingButton: $("pendingButton"), doneButton: $("doneButton"), searchButton: $("searchButton"), searchBottomButton: $("searchBottomButton"), activeTitle: $("activeTitle"), activeSubtitle: $("activeSubtitle"), activeAvatar: $("activeAvatar"),
@@ -245,6 +249,7 @@
         els.adminAllWhitelist.value = whitelistToText(state.accessWhitelists.adminAll);
         els.mainWhitelist.value = whitelistToText(state.accessWhitelists.main);
         els.adminWhitelist.value = whitelistToText(state.accessWhitelists.admin);
+        renderAccessLists();
       } catch (err) {
         els.knowledgeStatus.textContent = err.message || String(err);
       }
@@ -318,8 +323,24 @@
       if (key === "adminAll") els.adminAllWhitelist.value = whitelistToText(state.accessWhitelists[key]);
       if (key === "main") els.mainWhitelist.value = whitelistToText(state.accessWhitelists[key]);
       if (key === "admin") els.adminWhitelist.value = whitelistToText(state.accessWhitelists[key]);
+      renderAccessLists();
       els.knowledgeStatus.textContent = `${operatorName || operatorId} 已${enabled ? "加入" : "移除"}${floor === "admin_all" ? "總管理員" : (FLOORS[floor] || floor)}權限`;
       render();
+    }
+
+    function renderAccessLists() {
+      if (els.adminAllAccessList) els.adminAllAccessList.textContent = accessListText(state.accessWhitelists.adminAll);
+      if (els.mainAccessList) els.mainAccessList.textContent = accessListText(state.accessWhitelists.main);
+      if (els.adminAccessList) els.adminAccessList.textContent = accessListText(state.accessWhitelists.admin);
+    }
+
+    function accessListText(rows) {
+      const names = (rows || []).filter((row) => row.active !== false).map((row) => {
+        const id = row.operatorId || row.operator_id || "";
+        const name = row.operatorName || row.operator_name || "";
+        return name ? `${name} (${shortUid(id)})` : shortUid(id);
+      }).filter(Boolean);
+      return names.length ? names.join("、") : "尚未指定";
     }
 
     function initialFloor() {
