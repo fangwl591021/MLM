@@ -173,13 +173,13 @@ export default {
       }
 
       if (url.pathname === "/api/console/summary" && request.method === "GET") {
-        await assertDashboardAuth(request, env);
+        await assertAccessManager(request, env);
         const data = await fetchConsoleSummary(env);
         return jsonResponse({ status: "success", data }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/calendar/import-image" && request.method === "POST") {
-        await assertDashboardAuth(request, env);
+        await assertAccessManager(request, env);
         const result = await importCalendarImageToGoogle(env, request);
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }

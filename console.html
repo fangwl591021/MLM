@@ -141,9 +141,11 @@
     </main>
   </div>
 
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
     const DEFAULT_API = "https://mlm.fangwl591021.workers.dev";
     const $ = (id) => document.getElementById(id);
+    const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null };
     const apiBase = $("apiBase");
     const apiToken = $("apiToken");
     const settingsBox = $("settingsBox");
@@ -153,7 +155,17 @@
     $("syncButton").onclick = sync;
     $("calendarImportButton").onclick = importCalendarImage;
     render(defaultSummary());
-    if (apiToken.value) sync();
+    boot();
+
+    async function boot() {
+      try {
+        await initLineLogin();
+        if (auth.idToken || apiToken.value.trim()) await sync();
+      } catch (err) {
+        setStatus("登入失敗", true);
+        showError(err.message || String(err));
+      }
+    }
 
     function unlockSettings() {
       if (settingsBox.classList.contains("open")) {
@@ -175,7 +187,7 @@
       showError("");
       try {
         const res = await fetch(`${cleanBase(apiBase.value)}/api/console/summary`, {
-          headers: { Authorization: `Bearer ${apiToken.value.trim()}` },
+          headers: authHeaders(),
         });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
@@ -185,6 +197,51 @@
         setStatus("同步失敗", true);
         showError(err.message || String(err));
       }
+    }
+
+    async function initLineLogin() {
+      const base = cleanBase(apiBase.value);
+      const configRes = await fetch(`${base}/api/login-config`);
+      const config = await configRes.json().catch(() => ({}));
+      const liffId = config && config.data ? String(config.data.liffId || "") : "";
+      if (!liffId) {
+        auth.ready = true;
+        if (!apiToken.value.trim()) showError("尚未設定 DASHBOARD_LIFF_ID，請使用後台 Token。");
+        return;
+      }
+      if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
+      await liff.init({ liffId });
+      if (!liff.isLoggedIn()) {
+        liff.login({ redirectUri: `${DEFAULT_API}/console` });
+        return;
+      }
+      const idToken = liff.getIDToken();
+      if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
+      const profile = await liff.getProfile().catch(() => ({}));
+      auth.idToken = idToken;
+      auth.userId = profile.userId || "";
+      auth.displayName = profile.displayName || "";
+      auth.pictureUrl = profile.pictureUrl || "";
+      const loginRes = await fetch(`${base}/api/auth/line-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const loginJson = await loginRes.json().catch(() => ({}));
+      if (!loginRes.ok || loginJson.status !== "success" || !loginJson.access || !loginJson.access.admin) {
+        throw new Error(loginJson.message || "此 LINE 帳號沒有主控台 admin 權限");
+      }
+      auth.access = loginJson.access;
+      auth.ready = true;
+      setStatus(`已登入 ${auth.displayName || auth.userId}`, false);
+    }
+
+    function authHeaders() {
+      const headers = {};
+      const token = apiToken.value.trim();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (auth.idToken) headers["X-Line-Id-Token"] = auth.idToken;
+      return headers;
     }
 
     async function importCalendarImage() {
@@ -199,9 +256,9 @@
         resultBox.textContent = "請先選擇行事曆圖片。";
         return;
       }
-      if (!apiToken.value.trim()) {
+      if (!apiToken.value.trim() && !auth.idToken) {
         resultBox.className = "importResult bad";
-        resultBox.textContent = "請先在設定輸入 Dashboard Token。";
+        resultBox.textContent = "請先完成 LINE Login 或輸入 Dashboard Token。";
         return;
       }
       const form = new FormData();
@@ -214,7 +271,7 @@
       try {
         const res = await fetch(`${cleanBase(apiBase.value)}/api/calendar/import-image`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${apiToken.value.trim()}` },
+          headers: authHeaders(),
           body: form,
         });
         const json = await res.json();
