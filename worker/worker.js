@@ -635,22 +635,12 @@ async function assertFloorAccess(request, env, floor) {
   const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM floor_access_whitelist WHERE floor_id = ? AND active = 1").bind(targetFloor).first();
   if (Number(countRow && countRow.count || 0) <= 0) return;
-  const operatorId = normalizedOperatorId(request.headers.get("X-Operator-Id") || request.headers.get("X-User-Id") || request.headers.get("X-Admin-User"));
-  if (!operatorId) throw httpError(`此樓層已啟用白名單，請先填寫操作人代號`, 403);
-  const adminAllowed = await env.DB.prepare(`
-    SELECT operator_id
-    FROM floor_access_whitelist
-    WHERE floor_id = ? AND operator_id = ? AND active = 1
-    LIMIT 1
-  `).bind(FLOOR_SUPER_ADMIN, operatorId).first();
+  const operator = requestOperatorIdentity(request);
+  if (!operator.ids.length && !operator.names.length) throw httpError(`此樓層已啟用白名單，請先填寫操作人代號`, 403);
+  const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
   if (adminAllowed) return;
-  const allowed = await env.DB.prepare(`
-    SELECT operator_id
-    FROM floor_access_whitelist
-    WHERE floor_id = ? AND operator_id = ? AND active = 1
-    LIMIT 1
-  `).bind(targetFloor, operatorId).first();
-  if (!allowed) throw httpError(`操作人代號 ${operatorId} 不在 ${floorLabel(targetFloor)} 白名單`, 403);
+  const allowed = await findFloorAccessEntry(env, targetFloor, operator);
+  if (!allowed) throw httpError(`操作人 ${operator.label || "未填"} 不在 ${floorLabel(targetFloor)} 白名單`, 403);
 }
 
 function floorLabel(floor) {
@@ -659,6 +649,48 @@ function floorLabel(floor) {
 
 function normalizedOperatorId(value) {
   return stringValue(value).trim();
+}
+
+function requestOperatorIdentity(request) {
+  const idHeaders = [
+    request.headers.get("X-Operator-Id"),
+    request.headers.get("X-User-Id"),
+    request.headers.get("X-Admin-User"),
+  ];
+  const nameHeaders = [
+    request.headers.get("X-Operator-Name"),
+    request.headers.get("X-Admin-Name"),
+  ];
+  const ids = uniqueSuggestions(idHeaders.map(normalizedOperatorId).filter(Boolean));
+  const names = uniqueSuggestions([...nameHeaders, ...idHeaders].map((value) => stringValue(value).trim()).filter(Boolean));
+  return {
+    ids,
+    names,
+    label: ids[0] || names[0] || "",
+  };
+}
+
+async function findFloorAccessEntry(env, floor, operator) {
+  const ids = Array.isArray(operator && operator.ids) ? operator.ids.filter(Boolean) : [];
+  const names = Array.isArray(operator && operator.names) ? operator.names.filter(Boolean) : [];
+  if (!ids.length && !names.length) return null;
+  const clauses = [];
+  const bindings = [floor];
+  if (ids.length) {
+    clauses.push(`operator_id IN (${ids.map(() => "?").join(",")})`);
+    bindings.push(...ids);
+  }
+  if (names.length) {
+    clauses.push(`operator_name IN (${names.map(() => "?").join(",")})`);
+    bindings.push(...names);
+  }
+  const sql = `
+    SELECT operator_id, operator_name
+    FROM floor_access_whitelist
+    WHERE floor_id = ? AND active = 1 AND (${clauses.join(" OR ")})
+    LIMIT 1
+  `;
+  return env.DB.prepare(sql).bind(...bindings).first();
 }
 
 function isAdminRequest(request, env) {
@@ -5655,7 +5687,7 @@ function buildCorsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Operator-Id, X-User-Id, X-Admin-User",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Operator-Id, X-Operator-Name, X-User-Id, X-Admin-User, X-Admin-Name",
     "Access-Control-Max-Age": "86400",
     ...JSON_HEADERS,
   };

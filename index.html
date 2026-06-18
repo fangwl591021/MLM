@@ -1108,7 +1108,8 @@
       } catch (_err) { return DEFAULT_API_BASE; }
     }
     function authHeaders() {
-      return { Authorization: `Bearer ${els.apiToken.value.trim()}`, "X-Operator-Id": els.operatorId.value.trim() };
+      const operator = els.operatorId.value.trim();
+      return { Authorization: `Bearer ${els.apiToken.value.trim()}`, "X-Operator-Id": operator, "X-Operator-Name": operator };
     }
     function authJsonHeaders() { return { "Content-Type": "application/json", ...authHeaders() }; }
     function setStatus(text, bad) { els.syncStatus.textContent = text; els.syncStatus.className = bad ? "pill bad" : "pill"; }
