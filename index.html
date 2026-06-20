@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
@@ -35,6 +35,15 @@
     .chat{height:100dvh;grid-template-rows:96px auto auto auto minmax(260px,1fr) auto}.messages{min-height:260px;overflow-y:auto;overscroll-behavior:contain}.composer{display:grid;grid-template-rows:auto auto;min-height:150px;max-height:190px;overflow:hidden;background:#fff}.suggestions{height:42px;min-height:42px;padding:7px 18px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.suggestions::-webkit-scrollbar{display:none}.suggestions .muted{display:flex;align-items:center;height:100%}.sendrow{height:108px;padding:8px 18px 14px;align-items:stretch}.sendrow textarea{height:86px;min-height:86px;max-height:86px;resize:none}.sendGroup{height:86px}.sendPrimary{height:86px;min-width:92px}.sendSplit{height:86px}@media(max-height:760px){.chat{grid-template-rows:96px auto auto auto minmax(220px,1fr) auto}.messages{min-height:220px}.composer{min-height:126px;max-height:148px}.suggestions{height:34px;min-height:34px;padding:4px 14px}.sendrow{height:92px;padding:6px 14px 8px}.sendrow textarea{height:76px;min-height:76px;max-height:76px}.sendGroup,.sendPrimary,.sendSplit{height:76px}}
     .motherSyncBtn{margin-left:auto;height:36px;border:1px solid #b6ecc8;border-radius:999px;background:#fff;color:#067a35;padding:0 14px;font-weight:760}.motherSyncBtn:hover{background:#effcf4}.motherSyncBtn:disabled{opacity:.55;cursor:not-allowed}
     .accessListGrid{display:grid;gap:8px}.accessList{display:grid;gap:5px;border:1px solid #edf1f5;border-radius:10px;background:#fbfcfe;padding:9px 10px}.accessList strong{font-size:12px}.accessList div{color:#667085;font-size:12px;line-height:1.45}.hiddenControl{display:none!important}
+    .chat{grid-template-rows:96px 44px auto auto minmax(0,1fr) 154px!important}
+    .messages{min-height:0!important;overflow-y:auto!important}
+    .composer{height:154px!important;min-height:154px!important;max-height:154px!important;display:grid!important;grid-template-rows:42px 112px!important;overflow:hidden!important;background:#fff}
+    .suggestions{height:42px!important;min-height:42px!important;max-height:42px!important;padding:7px 18px!important;overflow-x:auto!important;overflow-y:hidden!important}
+    .sendrow{height:112px!important;min-height:112px!important;padding:8px 18px 10px!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:stretch!important}
+    .sendrow::before,.composerTools{display:none!important}
+    .sendrow textarea{height:86px!important;min-height:86px!important;max-height:86px!important;resize:none!important;overflow:auto!important}
+    .sendGroup,.sendPrimary,.sendSplit{height:86px!important}
+    @media(max-height:760px){.chat{grid-template-rows:96px 44px auto auto minmax(0,1fr) 126px!important}.composer{height:126px!important;min-height:126px!important;max-height:126px!important;grid-template-rows:34px 92px!important}.suggestions{height:34px!important;min-height:34px!important;max-height:34px!important;padding:4px 14px!important}.sendrow{height:92px!important;min-height:92px!important;padding:6px 14px 8px!important}.sendrow textarea,.sendGroup,.sendPrimary,.sendSplit{height:76px!important}.sendrow textarea{min-height:76px!important;max-height:76px!important}}
   </style>
 </head>
 <body>
