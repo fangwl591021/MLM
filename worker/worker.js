@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "console-token-refresh-20260620";
+const FRONTEND_BUILD_ID = "calendar-image-png-convert-20260620";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -2828,8 +2828,11 @@ async function importCalendarImageToGoogle(env, request) {
   const form = await request.formData();
   const file = form.get("image");
   if (!file || typeof file.arrayBuffer !== "function") throw httpError("image file is required", 400);
-  const mimeType = stringValue(file.type || "image/jpeg");
-  if (!mimeType.startsWith("image/")) throw httpError("Only image files are supported", 400);
+  const mimeType = stringValue(file.type || "image/jpeg").toLowerCase();
+  const supportedImageTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  if (!supportedImageTypes.has(mimeType)) {
+    throw httpError("Unsupported image type. Please upload JPG, PNG, GIF, or WEBP; AVIF must be converted before upload.", 400);
+  }
   const buffer = await file.arrayBuffer();
   if (buffer.byteLength > 10 * 1024 * 1024) throw httpError("Image is too large; max 10MB", 400);
 
