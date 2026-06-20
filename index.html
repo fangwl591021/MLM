@@ -289,6 +289,7 @@
         state.auth.ready = true;
         els.knowledgeStatus.textContent = `LINE Login：${state.auth.displayName || state.auth.userId}`;
       } catch (err) {
+        if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
         state.auth.ready = true;
         if (!els.apiToken.value.trim()) showError(err.message || String(err));
       }
@@ -462,6 +463,7 @@
         if (json.data.knowledgeMeta && json.data.knowledgeMeta.count) els.knowledgeStatus.textContent = `目前知識庫 ${json.data.knowledgeMeta.count} 筆${json.data.knowledgeMeta.version ? " · " + json.data.knowledgeMeta.version : ""}`;
         setStatus("已同步"); clearError(); render();
       } catch (err) {
+        if (!els.apiToken.value.trim() && isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
         state.loaded = true; setStatus("同步失敗", true); showError(err.message || String(err)); render();
       }
     }
@@ -1218,6 +1220,19 @@
       return headers;
     }
     function authJsonHeaders() { return { "Content-Type": "application/json", ...authHeaders() }; }
+    function isLineTokenExpired(message) { return /IdToken expired|line_id_token_expired|idToken expired|token expired|登入逾時/i.test(String(message || "")); }
+    function forceLineRelogin() {
+      state.auth.idToken = "";
+      state.auth.ready = false;
+      try {
+        if (window.liff && state.auth.liffId) {
+          if (liff.isLoggedIn()) liff.logout();
+          liff.login({ redirectUri: window.location.href });
+          return true;
+        }
+      } catch (_err) {}
+      return false;
+    }
     function setStatus(text, bad) { els.syncStatus.textContent = text; els.syncStatus.className = bad ? "pill bad" : "pill"; }
     function showError(text) {
       if (text && /Unauthorized|DASHBOARD_API_TOKEN|Token|白名單|操作人/i.test(text)) setSettingsOpen(true);

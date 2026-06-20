@@ -81,7 +81,10 @@
         const liffId = cfg?.data?.liffId;
         if (!liffId || location.protocol === 'file:') return;
         await liff.init({ liffId, withLoginOnExternalBrowser:true });
-        if (!liff.isLoggedIn()) return;
+        if (!liff.isLoggedIn()) {
+          if (!els.apiToken.value.trim()) liff.login({ redirectUri: location.href });
+          return;
+        }
         state.auth.idToken = liff.getIDToken() || '';
         const p = await liff.getProfile();
         state.auth.userId = p.userId || '';
@@ -92,8 +95,25 @@
     async function fetchJson(url, options={}){
       const res = await fetch(url, { cache:'no-store', ...options });
       const data = await res.json().catch(()=>({}));
-      if (!res.ok || data.status === 'error' || data.success === false) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      if (!res.ok || data.status === 'error' || data.success === false) {
+        const message = data.message || data.error || `HTTP ${res.status}`;
+        if (!els.apiToken.value.trim() && isLineTokenExpired(message) && forceLineRelogin()) throw new Error('LINE Login 已過期，正在重新登入。');
+        throw new Error(message);
+      }
       return data.data || data;
+    }
+
+    function isLineTokenExpired(message){ return /IdToken expired|line_id_token_expired|idToken expired|token expired|登入逾時/i.test(String(message||'')); }
+    function forceLineRelogin(){
+      state.auth.idToken = '';
+      try{
+        if (window.liff) {
+          if (liff.isLoggedIn()) liff.logout();
+          liff.login({ redirectUri: location.href });
+          return true;
+        }
+      }catch(_err){}
+      return false;
     }
 
     async function loadAll(){
