@@ -79,17 +79,21 @@
       try{
         const cfg = await fetch(`${cleanBase(els.apiBase.value)}/api/login-config`, { cache:'no-store' }).then(r=>r.json());
         const liffId = cfg?.data?.liffId;
-        if (!liffId || location.protocol === 'file:') return;
+        if (!liffId || location.protocol === 'file:') return true;
         await liff.init({ liffId, withLoginOnExternalBrowser:true });
         if (!liff.isLoggedIn()) {
-          if (!els.apiToken.value.trim()) liff.login({ redirectUri: location.href });
-          return;
+          if (!els.apiToken.value.trim()) {
+            liff.login({ redirectUri: location.href });
+            return false;
+          }
+          return true;
         }
         state.auth.idToken = liff.getIDToken() || '';
         const p = await liff.getProfile();
         state.auth.userId = p.userId || '';
         state.auth.displayName = p.displayName || '';
-      }catch(_err){}
+        return true;
+      }catch(_err){ return true; }
     }
 
     async function fetchJson(url, options={}){
@@ -140,7 +144,7 @@
     async function deleteFile(path){ if(!confirm(`確定刪除這個知識檔？\n${path}`)) return; try{ await fetchJson(apiUrl(`/api/knowledge/file?path=${encodeURIComponent(path)}`), { method:'DELETE', headers:authHeaders() }); toast('已刪除知識檔'); await loadAll(); }catch(err){ toast(err.message); } }
     async function copyTemplate(){ const tpl={ id:'klink_custom_qa', title:'康立自訂 Q&A', source:'內部文件', version:new Date().toISOString().slice(0,10), status:'published', category:'qa', usage:'供客服 AI 建議回覆使用', entries:[{ id:'sample', title:'問題標題', keywords:['關鍵字'], answer:'完整答案', reply_template:'客服可複製的回覆草稿', tags:['分類'] }] }; await navigator.clipboard.writeText(JSON.stringify(tpl,null,2)); toast('已複製 JSON 範本'); }
 
-    initAuth().finally(loadAll);
+    initAuth().then((ready) => { if (ready !== false) loadAll(); });
   </script>
 </body>
 </html>

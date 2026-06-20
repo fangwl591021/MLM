@@ -244,8 +244,9 @@
     boot();
 
     async function boot() {
+      const loginReady = await initLineLogin();
+      if (loginReady === false) return;
       render();
-      await initLineLogin();
       setSettingsOpen(!hasAuth());
       if (hasAuth()) loadFloorWhitelist().then(render).catch(() => {});
       sync();
@@ -260,13 +261,13 @@
         if (!state.auth.liffId) {
           state.auth.ready = true;
           els.knowledgeStatus.textContent = "尚未設定 DASHBOARD_LIFF_ID，暫時使用 Token 備援登入。";
-          return;
+          return true;
         }
         if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
         await liff.init({ liffId: state.auth.liffId });
         if (!liff.isLoggedIn()) {
           liff.login({ redirectUri: window.location.href });
-          return;
+          return false;
         }
         const idToken = liff.getIDToken();
         if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
@@ -288,10 +289,12 @@
         state.auth.access = authJson.access || null;
         state.auth.ready = true;
         els.knowledgeStatus.textContent = `LINE Login：${state.auth.displayName || state.auth.userId}`;
+        return true;
       } catch (err) {
-        if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
+        if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return false;
         state.auth.ready = true;
         if (!els.apiToken.value.trim()) showError(err.message || String(err));
+        return true;
       }
     }
 
