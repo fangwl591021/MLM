@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "calendar-image-png-convert-20260620";
+const FRONTEND_BUILD_ID = "calendar-json-repair-20260620";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -2902,7 +2902,49 @@ async function extractCalendarEventsFromImage(env, imageDataUrl, fileName) {
   });
   const body = await response.text();
   if (!response.ok) throw httpError(`OpenAI image parse failed ${response.status}: ${body}`, 502);
-  return parseStrictJsonObject(extractOpenAIText(JSON.parse(body)));
+  const outputText = extractOpenAIText(JSON.parse(body));
+  return await parseCalendarJsonObjectWithRepair(env, outputText);
+}
+
+async function parseCalendarJsonObjectWithRepair(env, text) {
+  try {
+    return parseStrictJsonObject(text);
+  } catch (err) {
+    const originalMessage = err && err.message ? err.message : String(err);
+    const repairedText = await repairCalendarJsonWithOpenAI(env, text, originalMessage);
+    try {
+      return parseStrictJsonObject(repairedText);
+    } catch (repairErr) {
+      const repairMessage = repairErr && repairErr.message ? repairErr.message : String(repairErr);
+      throw httpError(`OpenAI calendar JSON parse failed: ${originalMessage}; repair failed: ${repairMessage}`, 502);
+    }
+  }
+}
+
+async function repairCalendarJsonWithOpenAI(env, brokenJsonText, parseError) {
+  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
+  const model = env.OPENAI_MODEL || "gpt-5-mini";
+  const repairPrompt = [
+    "你是 JSON 修復工具。請把輸入內容修成合法 JSON。",
+    "只輸出 JSON，不要 markdown，不要說明。",
+    "目標格式只能是：{\"events\":[{\"date\":\"YYYY-MM-DD\",\"startTime\":\"HH:mm\",\"endTime\":\"HH:mm\",\"summary\":\"\",\"speaker\":\"\",\"locationName\":\"\",\"location\":\"\",\"description\":\"\"}]}",
+    `parseError: ${parseError}`,
+    "brokenJson:",
+    String(brokenJsonText || "").slice(0, 12000),
+  ].join("\n");
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      input: [{ role: "user", content: [{ type: "input_text", text: repairPrompt }] }],
+      text: { format: { type: "json_object" } },
+      max_output_tokens: 4000,
+    }),
+  });
+  const body = await response.text();
+  if (!response.ok) throw httpError(`OpenAI JSON repair failed ${response.status}: ${body}`, 502);
+  return extractOpenAIText(JSON.parse(body));
 }
 
 function normalizeCalendarImportEvents(payload, fileName) {
