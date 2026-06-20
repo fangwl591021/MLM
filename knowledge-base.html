@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KLINK 知識庫</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root{--line:#06c755;--ink:#101828;--muted:#667085;--border:#d9e2ef;--bg:#f4f7fb;--card:#fff;--blue:#2563eb;--danger:#dc2626}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}.wrap{max-width:1240px;margin:0 auto;padding:28px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:22px}.eyebrow{font-size:12px;font-weight:900;letter-spacing:.16em;color:#7b8798}.top h1{margin:6px 0 8px;font-size:38px;line-height:1.1}.top p{margin:0;color:var(--muted);line-height:1.65}.actions{display:flex;gap:10px;flex-wrap:wrap}.btn,.ghost,.danger{border:0;border-radius:12px;padding:11px 16px;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn{background:var(--line);color:#fff}.ghost{background:#fff;border:1px solid var(--border);color:#22314a}.danger{background:#fff1f2;color:#b91c1c;border:1px solid #fecdd3}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}.stat{border-radius:18px;padding:18px;background:#fff;border:1px solid var(--border)}.stat b{display:block;font-size:30px}.stat span{color:var(--muted);font-weight:800}.grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px}.panel,.mainPanel{background:#fff;border:1px solid var(--border);border-radius:18px}.panel{padding:16px}.panel h2,.mainPanel h2{margin:0 0 8px;font-size:19px}.hint{font-size:13px;color:var(--muted);line-height:1.55}.field{display:grid;gap:7px;margin-top:12px}.field label{font-size:13px;font-weight:900;color:#344054}.field input,.field textarea,.field select{width:100%;border:1px solid var(--border);border-radius:12px;padding:11px 12px;outline:none;background:#fff}.field textarea{min-height:150px;resize:vertical}.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.folderList{display:grid;gap:8px;margin-top:14px}.folder{border:0;border-radius:12px;padding:12px;background:#f3f6fa;color:#344054;font-weight:900;text-align:left;display:flex;justify-content:space-between}.folder.active{background:#061536;color:#fff}.mainPanel{overflow:hidden}.mainHead{padding:16px;border-bottom:1px solid var(--border);display:grid;gap:12px}.mainHead input{width:100%;border:1px solid var(--border);border-radius:12px;padding:11px 12px}.files{display:grid;gap:12px;padding:16px}.file{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff}.fileHead{padding:16px;display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #eef2f7}.file h3{margin:0;font-size:21px}.meta{color:var(--muted);font-size:13px;margin-top:6px}.badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.badge{border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;background:#eef2ff;color:#344054}.entries{display:grid}.entry{padding:14px 16px;border-top:1px solid #f1f4f8}.entry summary{font-weight:900;cursor:pointer}.entry p{line-height:1.65;color:#344054}.toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:20;background:#111827;color:#fff;border-radius:12px;padding:12px 16px;font-weight:900;box-shadow:0 12px 30px rgba(15,23,42,.2)}.error{background:#fff1f2;color:#b91c1c;border:1px solid #fecdd3;border-radius:12px;padding:12px;margin-top:12px;font-weight:800}.ok{background:#effcf4;color:#067a35;border:1px solid #b6ecc8;border-radius:12px;padding:12px;margin-top:12px;font-weight:800}.template{font-size:12px;line-height:1.6;max-height:260px;overflow:auto;background:#0f172a;color:#dbeafe;border-radius:12px;padding:12px;white-space:pre-wrap}@media(max-width:900px){.wrap{padding:16px}.top{display:grid}.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.top h1{font-size:30px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div><div class="eyebrow">KLINK KNOWLEDGE</div><h1>KLINK 知識庫</h1><p>仿旅遊管家模式：用 manifest 清單管理多個 JSON 檔，AI 建議會讀取已匯入的知識條目。</p></div>
+      <div class="actions"><a class="ghost" href="console.html">主控台</a><a class="ghost" href="index.html?floor=main">產品客服</a><a class="ghost" href="index.html?floor=admin">行政客服</a><button id="reload" class="btn">重新讀取</button></div>
+    </header>
+
+    <section class="stats"><div class="stat"><b id="statFiles">0</b><span>知識檔</span></div><div class="stat"><b id="statEntries">0</b><span>知識條目</span></div><div class="stat"><b id="statFolders">0</b><span>分類資料夾</span></div><div class="stat"><b id="statFloor">-</b><span>目前樓層</span></div></section>
+
+    <section class="grid">
+      <aside class="panel">
+        <h2>樓層與來源</h2>
+        <p class="hint">知識庫依客服樓層分開管理。上傳檔案不會清空其他檔案，只會替換同一路徑。</p>
+        <div class="field"><label>樓層</label><select id="floor"><option value="main">產品客服</option><option value="admin">行政客服</option></select></div>
+        <div class="field"><label>Worker API URL</label><input id="apiBase" value="https://mlm.fangwl591021.workers.dev" /></div>
+        <div class="field"><label>Dashboard Token</label><input id="apiToken" type="password" placeholder="若 LINE Login 已授權可留空" /></div>
+        <div class="folderList" id="folderList"></div>
+
+        <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+        <h2>上傳 JSON</h2>
+        <p class="hint">支援舊格式 <b>items</b>，也支援旅遊管家格式 <b>entries</b>。</p>
+        <div class="field"><label>JSON 檔</label><input id="jsonFile" type="file" accept=".json,application/json" /></div>
+        <div class="field"><label>知識庫路徑</label><input id="jsonPath" placeholder="knowledge/qa/klink-product.json" /></div>
+        <button id="validate" class="ghost" style="width:100%;margin-top:12px">檢查格式</button>
+        <button id="upload" class="btn" style="width:100%;margin-top:10px">上傳到知識庫</button>
+        <button id="copyTemplate" class="ghost" style="width:100%;margin-top:10px">複製 JSON 範本</button>
+        <div id="uploadResult" class="hint" style="margin-top:10px">尚未選擇檔案。</div>
+      </aside>
+
+      <section class="mainPanel">
+        <div class="mainHead"><div><h2 id="folderTitle">全部知識</h2><p id="folderSubtitle" class="hint">讀取中...</p></div><input id="search" type="search" placeholder="搜尋分類、問題、答案、檔名..." /></div>
+        <div id="files" class="files"></div>
+      </section>
+    </section>
+  </main>
+  <div id="toast" class="toast" hidden></div>
+
+  <script>
+    const DEFAULT_API_BASE = 'https://mlm.fangwl591021.workers.dev';
+    const FLOORS = { main: '產品客服', admin: '行政客服' };
+    const $ = (id) => document.getElementById(id);
+    const state = { manifest: null, docs: [], activeFolder: 'all', auth: { idToken: '', userId: '', displayName: '' } };
+    const els = { floor:$('floor'), apiBase:$('apiBase'), apiToken:$('apiToken'), folderList:$('folderList'), files:$('files'), search:$('search'), folderTitle:$('folderTitle'), folderSubtitle:$('folderSubtitle'), uploadResult:$('uploadResult') };
+
+    els.apiBase.value = localStorage.getItem('line_ai_api_base') || DEFAULT_API_BASE;
+    els.apiToken.value = localStorage.getItem('line_ai_api_token') || '';
+    els.floor.value = new URLSearchParams(location.search).get('floor') || localStorage.getItem('line_ai_floor') || 'main';
+    els.floor.addEventListener('change', () => { localStorage.setItem('line_ai_floor', els.floor.value); state.activeFolder='all'; loadAll(); });
+    els.apiBase.addEventListener('change', () => localStorage.setItem('line_ai_api_base', cleanBase(els.apiBase.value)));
+    els.apiToken.addEventListener('change', () => localStorage.setItem('line_ai_api_token', els.apiToken.value.trim()));
+    $('reload').addEventListener('click', loadAll);
+    $('validate').addEventListener('click', validateSelected);
+    $('upload').addEventListener('click', uploadSelected);
+    $('copyTemplate').addEventListener('click', copyTemplate);
+    els.search.addEventListener('input', renderFiles);
+
+    function cleanBase(value){ try{ const u = new URL(String(value||DEFAULT_API_BASE).trim(), location.origin); return u.origin + u.pathname.replace(/\/+$/,''); }catch(_){ return DEFAULT_API_BASE; } }
+    function apiUrl(path){ const sep = path.includes('?') ? '&' : '?'; return `${cleanBase(els.apiBase.value)}${path}${sep}floor=${encodeURIComponent(els.floor.value)}`; }
+    function authHeaders(){ const h = { 'X-Operator-Id': state.auth.userId || 'knowledge-manager', 'X-Operator-Name': state.auth.displayName || 'knowledge-manager' }; if (els.apiToken.value.trim()) h.Authorization = `Bearer ${els.apiToken.value.trim()}`; if (state.auth.idToken) h['X-Line-Id-Token'] = state.auth.idToken; return h; }
+    function jsonHeaders(){ return { 'Content-Type':'application/json', ...authHeaders() }; }
+    function toast(text){ const el=$('toast'); el.textContent=text; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,2200); }
+    function esc(v){ return String(v??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function folderLabel(folder){ return ({all:'全部知識',qa:'Q&A',product:'產品',rule:'制度',legacy:'舊匯入',custom:'自訂'}[folder] || folder || '未分類'); }
+    function folderOf(file){ return file.folder || 'legacy'; }
+
+    async function initAuth(){
+      try{
+        const cfg = await fetch(`${cleanBase(els.apiBase.value)}/api/login-config`, { cache:'no-store' }).then(r=>r.json());
+        const liffId = cfg?.data?.liffId;
+        if (!liffId || location.protocol === 'file:') return;
+        await liff.init({ liffId, withLoginOnExternalBrowser:true });
+        if (!liff.isLoggedIn()) return;
+        state.auth.idToken = liff.getIDToken() || '';
+        const p = await liff.getProfile();
+        state.auth.userId = p.userId || '';
+        state.auth.displayName = p.displayName || '';
+      }catch(_err){}
+    }
+
+    async function fetchJson(url, options={}){
+      const res = await fetch(url, { cache:'no-store', ...options });
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok || data.status === 'error' || data.success === false) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      return data.data || data;
+    }
+
+    async function loadAll(){
+      $('statFloor').textContent = FLOORS[els.floor.value] || els.floor.value;
+      els.files.innerHTML = '<div class="hint">讀取知識庫中...</div>';
+      try{
+        const manifest = await fetchJson(apiUrl('/api/knowledge/manifest'), { headers: authHeaders() });
+        state.manifest = manifest;
+        const files = Array.isArray(manifest.files) ? manifest.files : [];
+        state.docs = await Promise.all(files.map(async file => ({ file, doc: await fetchJson(apiUrl(`/api/knowledge/file?path=${encodeURIComponent(file.path)}`), { headers: authHeaders() }) })));
+        render();
+      }catch(err){ els.files.innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+    }
+
+    function render(){ renderStats(); renderFolders(); renderFiles(); }
+    function renderStats(){ const files=state.manifest?.files||[]; const folders=new Set(files.map(folderOf)); $('statFiles').textContent=files.length; $('statEntries').textContent=state.manifest?.count || state.docs.reduce((s,x)=>s+(x.doc.entries||[]).length,0); $('statFolders').textContent=folders.size; $('statFloor').textContent=FLOORS[els.floor.value] || els.floor.value; }
+    function renderFolders(){ const files=state.manifest?.files||[]; const map = new Map([['all', files.length]]); files.forEach(f=>map.set(folderOf(f), (map.get(folderOf(f))||0)+1)); els.folderList.innerHTML=''; [...map.entries()].forEach(([id,count])=>{ const b=document.createElement('button'); b.className=`folder ${state.activeFolder===id?'active':''}`; b.innerHTML=`<span>${esc(folderLabel(id))}</span><span>${count}</span>`; b.onclick=()=>{state.activeFolder=id;render();}; els.folderList.appendChild(b); }); }
+    function renderFiles(){ const q=els.search.value.trim().toLowerCase(); let rows=state.docs.filter(({file,doc})=> state.activeFolder==='all' || folderOf(file)===state.activeFolder); rows=rows.filter(({file,doc})=> !q || JSON.stringify({file,doc}).toLowerCase().includes(q)); els.folderTitle.textContent=folderLabel(state.activeFolder); els.folderSubtitle.textContent=`${rows.length} 個檔案，${rows.reduce((s,x)=>s+(x.doc.entries||[]).length,0)} 筆知識條目。`; if(!rows.length){ els.files.innerHTML='<div class="hint">目前沒有符合條件的知識檔。</div>'; return; } els.files.innerHTML=''; rows.forEach(({file,doc})=>{ const article=document.createElement('article'); article.className='file'; article.innerHTML=`<div class="fileHead"><div><h3>${esc(doc.title||file.title)}</h3><div class="meta">${esc(file.path)} · ${esc(file.category||doc.category||'一般')} · ${esc(file.updated_at||'')}</div></div><div class="badges"><span class="badge">${Number(file.count||0)} 筆</span><button class="danger" data-delete="${esc(file.path)}">刪除</button></div></div><div class="entries">${(doc.entries||[]).map(entry=>`<details class="entry"><summary>${esc(entry.title||entry.id)}</summary><p><b>關鍵字：</b>${esc((entry.keywords||[]).join('、'))}</p><p><b>回覆建議：</b>${esc(entry.reply_template||entry.answer||'')}</p></details>`).join('')}</div>`; article.querySelector('[data-delete]')?.addEventListener('click',()=>deleteFile(file.path)); els.files.appendChild(article); }); }
+
+    function readSelectedJson(){ const file=$('jsonFile').files?.[0]; if(!file) throw new Error('請先選擇 JSON 檔。'); return file.text().then(text=>JSON.parse(text)); }
+    function validateKnowledge(data){ const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : (Array.isArray(data.entries) ? data.entries : [])); if(!items.length) throw new Error('JSON 必須包含 items 或 entries。'); items.forEach((item,i)=>{ const q=item.question||item.q||item.title||item.id||item['問題']; const a=item.answer||item.a||item.reply_template||item.response||item.content||item['答案']; if(!q||!a) throw new Error(`第 ${i+1} 筆缺少 question/title 或 answer/reply_template。`); }); return items.length; }
+    async function validateSelected(){ try{ const data=await readSelectedJson(); const count=validateKnowledge(data); els.uploadResult.className='ok'; els.uploadResult.textContent=`格式通過，共 ${count} 筆。`; if(!$('jsonPath').value.trim()) $('jsonPath').value=`knowledge/custom/${($('jsonFile').files?.[0]?.name||'custom.json').replace(/\s+/g,'-')}`; }catch(err){ els.uploadResult.className='error'; els.uploadResult.textContent=err.message; } }
+    async function uploadSelected(){ try{ const data=await readSelectedJson(); const count=validateKnowledge(data); const path=$('jsonPath').value.trim() || `knowledge/custom/${$('jsonFile').files[0].name}`; els.uploadResult.className='hint'; els.uploadResult.textContent=`正在上傳 ${count} 筆...`; await fetchJson(apiUrl(`/api/knowledge/file?path=${encodeURIComponent(path)}`), { method:'POST', headers:jsonHeaders(), body:JSON.stringify(data) }); els.uploadResult.className='ok'; els.uploadResult.textContent=`已上傳：${path}`; toast('知識庫已更新'); await loadAll(); }catch(err){ els.uploadResult.className='error'; els.uploadResult.textContent=err.message; } }
+    async function deleteFile(path){ if(!confirm(`確定刪除這個知識檔？\n${path}`)) return; try{ await fetchJson(apiUrl(`/api/knowledge/file?path=${encodeURIComponent(path)}`), { method:'DELETE', headers:authHeaders() }); toast('已刪除知識檔'); await loadAll(); }catch(err){ toast(err.message); } }
+    async function copyTemplate(){ const tpl={ id:'klink_custom_qa', title:'康立自訂 Q&A', source:'內部文件', version:new Date().toISOString().slice(0,10), status:'published', category:'qa', usage:'供客服 AI 建議回覆使用', entries:[{ id:'sample', title:'問題標題', keywords:['關鍵字'], answer:'完整答案', reply_template:'客服可複製的回覆草稿', tags:['分類'] }] }; await navigator.clipboard.writeText(JSON.stringify(tpl,null,2)); toast('已複製 JSON 範本'); }
+
+    initAuth().finally(loadAll);
+  </script>
+</body>
+</html>

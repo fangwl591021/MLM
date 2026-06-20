@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "dashboard-flex-composer-20260620";
+const FRONTEND_BUILD_ID = "knowledge-manager-20260620";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -115,6 +115,10 @@ export default {
 
       if ((url.pathname === "/dashboard" || url.pathname === "/index.html") && request.method === "GET") {
         return serveFrontendHtml("index.html", corsHeaders);
+      }
+
+      if ((url.pathname === "/knowledge-base" || url.pathname === "/knowledge-base.html") && request.method === "GET") {
+        return serveFrontendHtml("knowledge-base.html", corsHeaders);
       }
 
       if (url.pathname.startsWith("/docs/") && request.method === "GET") {
@@ -434,6 +438,41 @@ export default {
         return jsonResponse(result, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/knowledge/manifest" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await getKnowledgeManifest(env, floor);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/knowledge/file" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const path = stringValue(url.searchParams.get("path"));
+        if (!path) return jsonResponse({ success: false, status: "error", message: "path is required" }, 400, corsHeaders);
+        const data = await getKnowledgeFile(env, floor, path);
+        if (!data) return jsonResponse({ success: false, status: "error", message: "KNOWLEDGE_FILE_NOT_FOUND" }, 404, corsHeaders);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/knowledge/file" && request.method === "POST") {
+        await assertDashboardAuth(request, env);
+        const path = stringValue(url.searchParams.get("path"));
+        if (!path) return jsonResponse({ success: false, status: "error", message: "path is required" }, 400, corsHeaders);
+        const body = await safeJson(request);
+        const result = await upsertKnowledgeFile(env, floor, body, path);
+        ctx.waitUntil(backupGas(env, {
+          type: "IMPORT_KNOWLEDGE_BASE",
+          data: { knowledge: body, fileName: path, source: "knowledge-file" },
+        }));
+        return jsonResponse({ success: true, status: "success", data: result }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/knowledge/file" && request.method === "DELETE") {
+        await assertDashboardAuth(request, env);
+        const path = stringValue(url.searchParams.get("path"));
+        if (!path) return jsonResponse({ success: false, status: "error", message: "path is required" }, 400, corsHeaders);
+        const result = await deleteKnowledgeFile(env, floor, path);
+        return jsonResponse({ success: true, status: "success", data: result }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/floor-whitelist" && request.method === "GET") {
         await assertAccessManager(request, env);
         const data = await fetchFloorWhitelist(env);
@@ -545,7 +584,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -624,7 +663,9 @@ function rewriteFrontendLinks(html) {
     .replaceAll('location.href = "index.html?floor=main"', 'location.href = "/dashboard?floor=main"')
     .replaceAll("location.href = 'index.html?floor=main'", "location.href = '/dashboard?floor=main'")
     .replaceAll('location.href = "index.html?floor=admin"', 'location.href = "/dashboard?floor=admin"')
-    .replaceAll("location.href = 'index.html?floor=admin'", "location.href = '/dashboard?floor=admin'");
+    .replaceAll("location.href = 'index.html?floor=admin'", "location.href = '/dashboard?floor=admin'")
+    .replaceAll('href="knowledge-base.html"', 'href="/knowledge-base"')
+    .replaceAll("href='knowledge-base.html'", "href='/knowledge-base'");
 }
 
 function resolveFloor(request) {
@@ -733,7 +774,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/floor-whitelist") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
-  if (path === "/api/knowledge" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild") return true;
+  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
   if (path.startsWith("/admin/points/")) return true;
   return false;
@@ -5491,11 +5532,109 @@ async function importKnowledge(env, floor, payload, fileName) {
   const normalized = normalizeKnowledgePayload(typeof payload === "string" ? JSON.parse(payload) : payload);
   const now = Date.now();
   await env.DB.prepare("DELETE FROM knowledge_items WHERE floor_id = ?").bind(floor || FLOOR_MAIN).run();
-  const statements = normalized.items.map((item) => env.DB.prepare("INSERT INTO knowledge_items (floor_id, category, question, answer, source, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(floor || FLOOR_MAIN, item.category, item.question, item.answer, fileName, now));
-  if (statements.length) await env.DB.batch(statements);
+  await insertKnowledgeItems(env, floor || FLOOR_MAIN, normalized.items, fileName, now);
   const meta = { title: normalized.title, version: normalized.version, source: fileName, count: normalized.items.length, updatedAt: new Date(now).toISOString() };
   await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(`knowledge_meta:${floor || FLOOR_MAIN}`, JSON.stringify(meta), now).run();
   return { status: "success", count: normalized.items.length, meta };
+}
+
+async function upsertKnowledgeFile(env, floor, payload, path) {
+  const normalized = normalizeKnowledgePayload(typeof payload === "string" ? JSON.parse(payload) : payload);
+  const now = Date.now();
+  const targetFloor = floor || FLOOR_MAIN;
+  await env.DB.prepare("DELETE FROM knowledge_items WHERE floor_id = ? AND source = ?").bind(targetFloor, path).run();
+  await insertKnowledgeItems(env, targetFloor, normalized.items, path, now);
+  const manifest = await getKnowledgeManifest(env, targetFloor);
+  return { file: knowledgeFileEntry(path, normalized, normalized.items.length, now), manifest };
+}
+
+async function insertKnowledgeItems(env, floor, items, source, now) {
+  const statements = items.map((item) => env.DB.prepare("INSERT INTO knowledge_items (floor_id, category, question, answer, source, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(floor, item.category, item.question, item.answer, source, now));
+  if (statements.length) await env.DB.batch(statements);
+}
+
+async function deleteKnowledgeFile(env, floor, path) {
+  const targetFloor = floor || FLOOR_MAIN;
+  const result = await env.DB.prepare("DELETE FROM knowledge_items WHERE floor_id = ? AND source = ?").bind(targetFloor, path).run();
+  return { path, deleted: Number(result.meta?.changes || 0), manifest: await getKnowledgeManifest(env, targetFloor) };
+}
+
+async function getKnowledgeManifest(env, floor = FLOOR_MAIN) {
+  const targetFloor = floor || FLOOR_MAIN;
+  const { results } = await env.DB.prepare(`
+    SELECT source, category, COUNT(*) AS count, MAX(created_at) AS updated_at
+    FROM knowledge_items
+    WHERE floor_id = ?
+    GROUP BY source, category
+    ORDER BY MAX(created_at) DESC, source ASC
+  `).bind(targetFloor).all();
+  const bySource = new Map();
+  for (const row of results || []) {
+    const source = stringValue(row.source || "dashboard-upload.json") || "dashboard-upload.json";
+    if (!bySource.has(source)) bySource.set(source, { source, categories: [], count: 0, updatedAt: 0 });
+    const current = bySource.get(source);
+    current.categories.push(stringValue(row.category || "一般"));
+    current.count += Number(row.count || 0);
+    current.updatedAt = Math.max(current.updatedAt, Number(row.updated_at || 0));
+  }
+  const files = Array.from(bySource.values()).map((item) => knowledgeFileEntry(item.source, { title: knowledgeTitleFromPath(item.source), category: item.categories[0], version: "" }, item.count, item.updatedAt));
+  const total = files.reduce((sum, file) => sum + Number(file.count || 0), 0);
+  return { id: "klink-knowledge", title: "KLINK 知識庫", version: new Date().toISOString().slice(0, 10), floor: targetFloor, count: total, files };
+}
+
+async function getKnowledgeFile(env, floor, path) {
+  const targetFloor = floor || FLOOR_MAIN;
+  const { results } = await env.DB.prepare("SELECT id, category, question, answer, source, created_at FROM knowledge_items WHERE floor_id = ? AND source = ? ORDER BY id ASC").bind(targetFloor, path).all();
+  const rows = results || [];
+  if (!rows.length) return null;
+  const first = rows[0];
+  return {
+    id: safeKnowledgeSlug(path),
+    title: knowledgeTitleFromPath(path),
+    source: path,
+    version: first.created_at ? new Date(Number(first.created_at)).toISOString().slice(0, 10) : "",
+    status: "published",
+    category: first.category || "一般",
+    usage: "供 KLINK 客服監看與 AI 建議回覆比對使用。",
+    entries: rows.map((row) => ({
+      id: `item_${row.id}`,
+      title: row.question,
+      keywords: tokenize(row.question).slice(0, 8),
+      answer: row.answer,
+      reply_template: row.answer,
+      tags: [row.category || "一般"],
+    })),
+  };
+}
+
+function knowledgeFileEntry(path, normalized, count, updatedAt) {
+  const safePath = stringValue(path || "dashboard-upload.json") || "dashboard-upload.json";
+  return {
+    id: safeKnowledgeSlug(safePath),
+    folder: knowledgeFolderFromPath(safePath, normalized.category),
+    title: normalized.title || knowledgeTitleFromPath(safePath),
+    path: safePath,
+    category: normalized.category || "一般",
+    status: "published",
+    source: safePath,
+    count: Number(count || 0),
+    updated_at: updatedAt ? new Date(Number(updatedAt)).toISOString() : "",
+  };
+}
+
+function knowledgeFolderFromPath(path, category) {
+  const parts = stringValue(path).split("/").filter(Boolean);
+  if (parts[0] === "knowledge" && parts[1]) return parts[1];
+  return stringValue(category || "legacy").replace(/\s+/g, "_") || "legacy";
+}
+
+function knowledgeTitleFromPath(path) {
+  const base = stringValue(path).split("/").filter(Boolean).pop() || "知識庫檔案";
+  return base.replace(/\.json$/i, "").replace(/[-_]+/g, " ").trim() || "知識庫檔案";
+}
+
+function safeKnowledgeSlug(value) {
+  return stringValue(value || "knowledge").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96) || "knowledge";
 }
 
 async function getKnowledgeMeta(env, floor = FLOOR_MAIN) {
@@ -5509,20 +5648,21 @@ async function getKnowledgeMeta(env, floor = FLOOR_MAIN) {
 
 function normalizeKnowledgePayload(payload) {
   const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
-  const items = Array.isArray(payload) ? payload : (Array.isArray(source.items) ? source.items : []);
+  const rawItems = Array.isArray(payload) ? payload : (Array.isArray(source.items) ? source.items : (Array.isArray(source.entries) ? source.entries : []));
+  const defaultCategory = stringValue(source.category || source.folder || "一般");
   return {
     title: stringValue(source.title || source.name),
-    version: stringValue(source.version || source.updatedAt),
-    items: items.map((item, index) => {
-      const category = stringValue(item.category || item.categoryName || "\u4e00\u822c");
-      const question = stringValue(item.question || item.q || item["\u554f\u984c"]);
-      const answer = stringValue(item.answer || item.a || item["\u7b54\u6848"]);
-      if (!question || !answer) throw new Error(`Invalid knowledge item at index ${index}: question and answer are required`);
+    version: stringValue(source.version || source.updatedAt || source.updated_at),
+    category: defaultCategory,
+    items: rawItems.map((item, index) => {
+      const category = stringValue(item.category || item.categoryName || (Array.isArray(item.tags) ? item.tags[0] : "") || defaultCategory || "一般");
+      const question = stringValue(item.question || item.q || item.title || item.id || item["問題"]);
+      const answer = stringValue(item.answer || item.a || item.reply_template || item.response || item.content || item["答案"]);
+      if (!question || !answer) throw new Error(`Invalid knowledge item at index ${index}: question/title and answer/reply_template are required`);
       return { category, question, answer };
     }),
   };
 }
-
 async function pushLineMessage(provider, userId, text) {
   if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
