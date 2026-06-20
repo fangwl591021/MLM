@@ -162,6 +162,7 @@
         await initLineLogin();
         if (auth.idToken || apiToken.value.trim()) await sync();
       } catch (err) {
+        if (handleAuthExpired(err)) return;
         setStatus("登入失敗", true);
         showError(err.message || String(err));
       }
@@ -194,6 +195,7 @@
         render(json.data);
         setStatus("已同步", false);
       } catch (err) {
+        if (handleAuthExpired(err)) return;
         setStatus("同步失敗", true);
         showError(err.message || String(err));
       }
@@ -244,6 +246,33 @@
       return headers;
     }
 
+    function isLineTokenExpired(message) {
+      return /IdToken expired|line_id_token_expired|idToken expired|token expired|登入逾時/i.test(String(message || ""));
+    }
+
+    function forceLineRelogin() {
+      auth.idToken = "";
+      auth.ready = false;
+      try {
+        if (window.liff) {
+          if (liff.isLoggedIn()) liff.logout();
+          liff.login({ redirectUri: location.href });
+          return true;
+        }
+      } catch (_err) {}
+      return false;
+    }
+
+    function handleAuthExpired(err) {
+      const message = err && err.message ? err.message : String(err || "");
+      if (!apiToken.value.trim() && isLineTokenExpired(message) && forceLineRelogin()) {
+        setStatus("登入逾時", true);
+        showError("LINE Login 已過期，正在重新登入。");
+        return true;
+      }
+      return false;
+    }
+
     async function importCalendarImage() {
       const fileInput = $("calendarImageFile");
       const resultBox = $("calendarImportResult");
@@ -286,6 +315,11 @@
         resultBox.textContent = `完成：寫入 ${imported} 筆，略過 ${skipped} 筆。\n${lines.join("\n")}`;
         sync();
       } catch (err) {
+        if (handleAuthExpired(err)) {
+          resultBox.className = "importResult bad";
+          resultBox.textContent = "LINE Login 已過期，正在重新登入。";
+          return;
+        }
         resultBox.className = "importResult bad";
         resultBox.textContent = err.message || String(err);
       } finally {
