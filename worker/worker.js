@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "calendar-json-repair-20260620";
+const FRONTEND_BUILD_ID = "google-private-key-normalize-20260620";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -3061,12 +3061,18 @@ async function getGoogleCalendarAccessToken(env) {
 }
 
 async function importGooglePrivateKey(privateKey) {
-  const pem = stringValue(privateKey).replace(/\\n/g, "\n").trim();
-  const base64 = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s+/g, "");
-  const binary = atob(base64);
+  const pem = normalizeGooglePrivateKey(privateKey);
+  const match = pem.match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
+  const base64 = (match ? match[1] : pem).replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length % 4 !== 0) {
+    throw httpError("GOOGLE_PRIVATE_KEY format is invalid. Paste the service account private_key PEM value, or paste the full service account JSON into GOOGLE_PRIVATE_KEY.", 500);
+  }
+  let binary = "";
+  try {
+    binary = atob(base64);
+  } catch (_err) {
+    throw httpError("GOOGLE_PRIVATE_KEY base64 decode failed. Re-enter the service account private_key without extra quotes or copied UI labels.", 500);
+  }
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return crypto.subtle.importKey(
@@ -3078,52 +3084,21 @@ async function importGooglePrivateKey(privateKey) {
   );
 }
 
-async function findGoogleCalendarDuplicate(accessToken, calendarId, event) {
-  const dayStart = `${event.date}T00:00:00+08:00`;
-  const dayEnd = `${dateAddDays(event.date, 1)}T00:00:00+08:00`;
-  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
-  url.searchParams.set("singleEvents", "true");
-  url.searchParams.set("maxResults", "10");
-  url.searchParams.set("timeMin", dayStart);
-  url.searchParams.set("timeMax", dayEnd);
-  url.searchParams.set("q", event.summary);
-  const response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!response.ok) return null;
-  const data = await response.json().catch(() => ({}));
-  return (data.items || []).find((item) => {
-    const startsAt = stringValue(item.start && item.start.dateTime);
-    return item.summary === event.summary && startsAt.startsWith(`${event.date}T${event.startTime}`);
-  }) || null;
-}
-
-async function insertGoogleCalendarEvent(accessToken, calendarId, event) {
-  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({
-      summary: event.summary,
-      location: event.location,
-      description: event.description,
-      start: { dateTime: `${event.date}T${event.startTime}:00+08:00`, timeZone: "Asia/Taipei" },
-      end: { dateTime: `${event.date}T${event.endTime}:00+08:00`, timeZone: "Asia/Taipei" },
-      extendedProperties: {
-        private: {
-          source: "klink_calendar_image_import",
-          source_hash: event.sourceHash,
-        },
-      },
-    }),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Google Calendar insert failed ${response.status}: ${JSON.stringify(body)}`);
-  return body;
-}
-
-function dateAddDays(date, days) {
-  const ms = Date.parse(`${date}T00:00:00+08:00`);
-  if (!Number.isFinite(ms)) return date;
-  const next = new Date(ms + Number(days || 0) * 86400000);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(next);
+function normalizeGooglePrivateKey(value) {
+  let raw = stringValue(value).trim();
+  if (!raw) throw httpError("GOOGLE_PRIVATE_KEY is empty", 500);
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    raw = raw.slice(1, -1).trim();
+  }
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw);
+      return stringValue(parsed.private_key).replace(/\\n/g, "\n").replace(/\r/g, "").trim();
+    } catch (_err) {
+      throw httpError("GOOGLE_PRIVATE_KEY contains JSON but it cannot be parsed. Paste valid service account JSON or only the private_key PEM value.", 500);
+    }
+  }
+  return raw.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
 }
 
 function parseStrictJsonObject(text) {
