@@ -212,7 +212,7 @@
       if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
       await liff.init({ liffId });
       if (!liff.isLoggedIn()) {
-        liff.login({ redirectUri: `${DEFAULT_API}/console` });
+        location.href = `https://liff.line.me/${encodeURIComponent(liffId)}`;
         return;
       }
       const idToken = liff.getIDToken();
