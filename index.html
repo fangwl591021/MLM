@@ -44,6 +44,22 @@
     .sendrow textarea{height:86px!important;min-height:86px!important;max-height:86px!important;resize:none!important;overflow:auto!important}
     .sendGroup,.sendPrimary,.sendSplit{height:86px!important}
     @media(max-height:760px){.chat{grid-template-rows:96px 44px auto auto minmax(0,1fr) 126px!important}.composer{height:126px!important;min-height:126px!important;max-height:126px!important;grid-template-rows:34px 92px!important}.suggestions{height:34px!important;min-height:34px!important;max-height:34px!important;padding:4px 14px!important}.sendrow{height:92px!important;min-height:92px!important;padding:6px 14px 8px!important}.sendrow textarea,.sendGroup,.sendPrimary,.sendSplit{height:76px!important}.sendrow textarea{min-height:76px!important;max-height:76px!important}}
+    /* Final dashboard chat layout: fixed header/composer, message pane consumes remaining height. */
+    .chat{display:flex!important;flex-direction:column!important;height:100dvh!important;min-height:0!important;overflow:hidden!important;grid-template-rows:none!important}
+    .head{flex:0 0 96px!important;min-height:96px!important;max-height:96px!important}
+    .manage{flex:0 0 44px!important;min-height:44px!important;max-height:44px!important}
+    .manualBar.show{display:flex!important;flex:0 0 48px!important;min-height:48px!important;max-height:48px!important}
+    .manualBar:not(.show){display:none!important}
+    .error:not(.hide){flex:0 0 auto!important}
+    .messages{flex:1 1 auto!important;min-height:0!important;height:auto!important;overflow-y:auto!important;overscroll-behavior:contain!important}
+    .composer{flex:0 0 154px!important;height:154px!important;min-height:154px!important;max-height:154px!important;display:grid!important;grid-template-rows:42px 112px!important;overflow:hidden!important;background:#fff!important}
+    .suggestions{height:42px!important;min-height:42px!important;max-height:42px!important;padding:7px 18px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important}
+    .suggestions::-webkit-scrollbar{display:none!important}
+    .sendrow{height:112px!important;min-height:112px!important;max-height:112px!important;padding:8px 18px 10px!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:14px!important;align-items:stretch!important;overflow:hidden!important}
+    .sendrow::before,.composerTools{display:none!important}
+    .sendrow textarea{height:86px!important;min-height:86px!important;max-height:86px!important;resize:none!important;overflow:auto!important;align-self:start!important}
+    .sendGroup,.sendPrimary,.sendSplit{height:86px!important;align-self:start!important}
+    @media(max-height:760px){.composer{flex-basis:126px!important;height:126px!important;min-height:126px!important;max-height:126px!important;grid-template-rows:34px 92px!important}.suggestions{height:34px!important;min-height:34px!important;max-height:34px!important;padding:4px 14px!important}.sendrow{height:92px!important;min-height:92px!important;max-height:92px!important;padding:6px 14px 8px!important}.sendrow textarea,.sendGroup,.sendPrimary,.sendSplit{height:76px!important}.sendrow textarea{min-height:76px!important;max-height:76px!important}}
   </style>
 </head>
 <body>
