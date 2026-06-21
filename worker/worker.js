@@ -737,12 +737,13 @@ async function fetchConsoleSummary(env) {
     });
   }
 
-  const [calendarCount, calendarUpcomingList, upcomingEvents, registrations, checkins, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
+  const [calendarCount, calendarUpcomingList, upcomingEvents, registrations, checkins, recentCheckins, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
     countIfTableExists(env, "calendar_events", "starts_at >= ? AND starts_at < ?", [todayStart, todayStart + 86400000]),
     fetchUpcomingCalendarEvents(env, todayStart, 24),
-    countIfTableExists(env, "events", "status != 'archived' AND (starts_at IS NULL OR starts_at >= ?)", [todayStart]),
+    countIfTableExists(env, "calendar_events", "starts_at >= ?", [todayStart]),
     countIfTableExists(env, "event_registrations", "registered_at >= ?", [todayStart]),
-    countIfTableExists(env, "event_checkins", "checked_in_at >= ?", [todayStart]),
+    countIfTableExists(env, "reward_claims", "status = 'success' AND created_at >= datetime(?, 'unixepoch')", [Math.floor(todayStart / 1000)]),
+    fetchRecentRewardCheckins(env, 12),
     countIfTableExists(env, "crm_members", "", []),
     countIfTableExists(env, "point_accounts", "", []),
     countIfTableExists(env, "point_ledger", "created_at >= datetime(?, 'unixepoch')", [Math.floor(todayStart / 1000)]),
@@ -764,9 +765,34 @@ async function fetchConsoleSummary(env) {
     totals,
     floors,
     calendar: { today: calendarCount, upcoming: calendarUpcomingList },
-    events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins },
+    events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins, recentCheckins, upcomingCourses: calendarUpcomingList.slice(0, 8) },
     pointCrm: { members: crmMembers, pointAccounts, ledgerToday: pointLedgerToday },
   };
+}
+
+async function fetchRecentRewardCheckins(env, limit = 12) {
+  if (!env.DB) return [];
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT campaign, line_user_id, channel_key, points, event_title, location_name, distance_meters, created_at
+      FROM reward_claims
+      WHERE status = 'success'
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).bind(Math.max(1, Math.min(50, Number(limit) || 12))).all();
+    return (results || []).map((row) => ({
+      campaign: stringValue(row.campaign),
+      userId: stringValue(row.line_user_id),
+      channelKey: stringValue(row.channel_key),
+      points: numberOrZero(row.points),
+      eventTitle: stringValue(row.event_title),
+      location: stringValue(row.location_name),
+      distanceMeters: row.distance_meters == null ? null : Number(row.distance_meters),
+      createdAt: stringValue(row.created_at),
+    }));
+  } catch (_) {
+    return [];
+  }
 }
 
 async function ensureCalendarEventSchema(env) {
