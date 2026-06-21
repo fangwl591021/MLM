@@ -153,6 +153,7 @@
     const copyCheckinButton = $("copyCheckinUrl");
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
     render(defaultSummary());
+    loadPublicCalendarFallback();
     boot();
 
     async function boot() {
@@ -312,6 +313,28 @@
         image.onerror = () => reject(new Error("瀏覽器無法讀取此圖片格式，請改用 JPG、PNG 或 WEBP。"));
         image.src = src;
       });
+    }
+
+
+    async function loadPublicCalendarFallback() {
+      try {
+        const res = await fetch(cleanBase(apiBase.value) + "/api/reward/calendar-events");
+        const json = await res.json();
+        if (!res.ok || !(json.success || json.status === "success") || !Array.isArray(json.events)) return;
+        const rows = json.events.map((event) => ({
+          id: event.uid || event.id || "",
+          title: event.title || event.summary || "未命名活動",
+          description: event.description || "",
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+          location: event.location || "",
+          visibility: "public",
+        })).filter((event) => Number(event.startsAt));
+        renderCalendarMonth(rows);
+        renderCalendarList(rows);
+        renderEventPanel({ events: { upcoming: rows.length, registrationsToday: 0, checkinsToday: 0, upcomingCourses: rows, recentCheckins: [] } });
+        if (rows.length && $("status").textContent === "未同步") setStatus("行事曆已載入", false);
+      } catch (_err) {}
     }
 
     async function importCalendarImage() {
