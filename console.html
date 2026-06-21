@@ -225,9 +225,8 @@
       if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
       await liff.init({ liffId });
       if (!liff.isLoggedIn()) {
-        setStatus("登入中", false);
+        setStatus("請登入", true);
         setAuthGate(true);
-        openLiffEntry();
         return false;
       }
       const idToken = liff.getIDToken();
@@ -267,11 +266,24 @@
       try {
         if (window.liff) {
           await liff.init({ liffId: auth.liffId });
-          openLiffEntry();
+          if (liff.isLoggedIn()) {
+            const ready = await initLineLogin();
+            if (ready) await sync();
+            return;
+          }
+          liff.login({ redirectUri: loginRedirectUri() });
           return;
         }
       } catch (_err) {}
       location.href = `https://liff.line.me/${encodeURIComponent(auth.liffId)}`;
+    }
+
+    function loginRedirectUri() {
+      const url = new URL(location.href);
+      url.searchParams.delete("liff.state");
+      url.searchParams.delete("code");
+      url.searchParams.delete("state");
+      return url.toString();
     }
 
     function rawNextParam() {
