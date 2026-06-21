@@ -150,7 +150,8 @@
     $("settingsToggle").onclick = unlockSettings;
     $("syncButton").onclick = sync;
     $("calendarImportButton").onclick = importCalendarImage;
-    $("copyCheckinUrl").onclick = () => copyText($("checkinEntryUrl").value);
+    const copyCheckinButton = $("copyCheckinUrl");
+    if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
     render(defaultSummary());
     boot();
 
@@ -158,6 +159,7 @@
       try {
         await initLineLogin();
         if (auth.idToken || apiToken.value.trim()) await sync();
+      else setStatus("請登入", true);
       } catch (err) {
         if (handleAuthExpired(err)) return;
         setStatus("登入失敗", true);
@@ -179,6 +181,11 @@
     }
 
     async function sync() {
+      if (!auth.idToken && !apiToken.value.trim()) {
+        setStatus("登入中", false);
+        await initLineLogin();
+        if (!auth.idToken && !apiToken.value.trim()) return;
+      }
       localStorage.setItem("line_ai_api_base", cleanBase(apiBase.value));
       localStorage.setItem("line_ai_api_token", apiToken.value.trim());
       setStatus("同步中", false);
@@ -205,7 +212,7 @@
       const liffId = config && config.data ? String(config.data.liffId || "") : "";
       if (!liffId) {
         auth.ready = true;
-        if (!apiToken.value.trim()) showError("尚未設定 DASHBOARD_LIFF_ID，請使用後台 Token。");
+        if (!apiToken.value.trim()) showError("尚未設定 DASHBOARD_LIFF_ID，無法使用 LINE Login。");
         return;
       }
       if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
