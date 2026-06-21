@@ -13,10 +13,10 @@
       }
       if (location.hostname !== "mlm.fangwl591021.workers.dev" || location.pathname !== "/console") return;
       var liffId = "2007221311-imB2QGWW";
-      var marker = "klink_console_liff_prelogin_v2_" + liffId;
+      var marker = "klink_console_liff_prelogin_v3_" + liffId;
       if (sessionStorage.getItem(marker) === "1") return;
       sessionStorage.setItem(marker, "1");
-      location.replace("https://liff.line.me/" + encodeURIComponent(liffId));
+      location.replace("https://liff.line.me/" + encodeURIComponent(liffId) + "?liff.state=" + encodeURIComponent("/console"));
     })();
   </script>
   <style>
@@ -169,13 +169,15 @@
 
     async function boot() {
       try {
+        setStatus("登入中", false);
         await initLineLogin();
         if (auth.idToken || apiToken.value.trim()) await sync();
-        else { setStatus("請登入", true); setAuthGate(true); }
+        else return redirectToDashboardLiff();
       } catch (err) {
         if (handleAuthExpired(err)) return;
         setStatus("登入失敗", true);
         showError(err.message || String(err));
+        setAuthGate(true);
       }
     }
 
@@ -229,14 +231,9 @@
         if (!apiToken.value.trim()) showError("尚未設定 DASHBOARD_LIFF_ID，無法使用 LINE Login。");
         return;
       }
-      if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
+      if (!window.liff) return redirectToDashboardLiff();
       await liff.init({ liffId });
-      if (!liff.isLoggedIn()) {
-        setStatus("登入中", false);
-        setAuthGate(true);
-        liff.login({ redirectUri: location.href });
-        return;
-      }
+      if (!liff.isLoggedIn()) return redirectToDashboardLiff();
       const idToken = liff.getIDToken();
       if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
       const profile = await liff.getProfile().catch(() => ({}));
@@ -268,14 +265,14 @@
       }
       if (!auth.liffId) { showError("尚未設定 DASHBOARD_LIFF_ID，無法使用 LINE Login。"); return; }
       setStatus("登入中", false);
-      try {
-        if (window.liff) {
-          await liff.init({ liffId: auth.liffId });
-          liff.login({ redirectUri: location.href });
-          return;
-        }
-      } catch (_err) {}
-      location.href = `https://liff.line.me/${encodeURIComponent(auth.liffId)}`;
+      redirectToDashboardLiff();
+    }
+
+    function redirectToDashboardLiff() {
+      const liffId = auth.liffId || "2007221311-imB2QGWW";
+      setAuthGate(true);
+      location.replace(`https://liff.line.me/${encodeURIComponent(liffId)}?liff.state=${encodeURIComponent("/console")}`);
+      return false;
     }
 
     function setAuthGate(show) {
