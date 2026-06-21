@@ -5,9 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KLINK 客服系統</title>
   <script>
-    (function redirectLegacyGithubPages() {
-      if (location.hostname !== "fangwl591021.github.io") return;
-      location.replace("https://mlm.fangwl591021.workers.dev/console" + location.search + location.hash);
+    (function forceLineLoginBeforeConsole() {
+      var workerConsole = "https://mlm.fangwl591021.workers.dev/console";
+      if (location.hostname === "fangwl591021.github.io") {
+        location.replace(workerConsole + location.search + location.hash);
+        return;
+      }
+      if (location.hostname !== "mlm.fangwl591021.workers.dev" || location.pathname !== "/console") return;
+      var liffId = "2007221311-imB2QGWW";
+      var marker = "klink_console_liff_prelogin_v2_" + liffId;
+      if (sessionStorage.getItem(marker) === "1") return;
+      sessionStorage.setItem(marker, "1");
+      location.replace("https://liff.line.me/" + encodeURIComponent(liffId));
     })();
   </script>
   <style>
