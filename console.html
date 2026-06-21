@@ -5,11 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KLINK 客服系統</title>
   <script>
-    (function normalizeConsoleHost() {
-      var workerConsole = "https://mlm.fangwl591021.workers.dev/console";
-      if (location.hostname === "fangwl591021.github.io") {
-        location.replace(workerConsole + location.search + location.hash);
-      }
+    (function redirectLegacyGithubPages() {
+      if (location.hostname !== "fangwl591021.github.io") return;
+      location.replace("https://mlm.fangwl591021.workers.dev/console" + location.search + location.hash);
     })();
   </script>
   <style>
@@ -47,10 +45,10 @@
       </section>
     </aside>
     <main>
-      <section id="authGate" class="authGate show"><div><strong>正在確認 LINE 登入</strong><p class="muted">主控台需要確認管理員身分後才能讀取客服、行事曆與點數資料。</p></div><button id="loginButton" type="button">重新登入</button></section>
+      <section id="authGate" class="authGate"><div><strong>請先使用 LINE 登入</strong><p class="muted">主控台需要確認管理員身分後才能讀取客服、行事曆與點數資料。</p></div><button id="loginButton" type="button">使用 LINE 登入</button></section>
       <div class="top">
-        <div><h2>綜合成效</h2><p class="muted" id="subtitle">正在確認登入與同步資料。</p></div>
-        <div class="status" id="status">登入中</div>
+        <div><h2>綜合成效</h2><p class="muted" id="subtitle">等待同步資料。</p></div>
+        <div class="status" id="status">未同步</div>
       </div>
 
       <section class="grid">
@@ -150,8 +148,6 @@
     const settingsBox = $("settingsBox");
     apiBase.value = localStorage.getItem("line_ai_api_base") || DEFAULT_API;
     apiToken.value = localStorage.getItem("line_ai_api_token") || "";
-    window.addEventListener("error", (event) => { setStatus("前端錯誤", true); showError(event.message || "前端腳本錯誤"); });
-    window.addEventListener("unhandledrejection", (event) => { setStatus("前端錯誤", true); showError(event.reason && event.reason.message ? event.reason.message : String(event.reason || "前端非同步錯誤")); });
     $("settingsToggle").onclick = unlockSettings;
     $("syncButton").onclick = sync;
     $("loginButton").onclick = startLineLogin;
@@ -164,19 +160,16 @@
 
     async function boot() {
       try {
-        setStatus("同步中", false);
-        if (await sync({ skipLogin: true, silentAuthError: true })) return;
-        setStatus("登入中", false);
-        const canAutoRedirect = !isLiffReturnUrl() && !sessionStorage.getItem("klink_console_login_attempted");
-        await initLineLogin({ autoRedirect: canAutoRedirect });
-        await sync({ skipLogin: true });
+        await initLineLogin();
+        if (auth.idToken || apiToken.value.trim()) await sync();
+        else { setStatus("請登入", true); setAuthGate(true); }
       } catch (err) {
         if (handleAuthExpired(err)) return;
         setStatus("登入失敗", true);
         showError(err.message || String(err));
-        setAuthGate(true);
       }
     }
+
     function unlockSettings() {
       if (settingsBox.classList.contains("open")) {
         settingsBox.classList.remove("open");
@@ -190,12 +183,12 @@
       }
     }
 
-    async function sync(options = {}) {
-      if (!options.skipLogin && !auth.idToken && !apiToken.value.trim()) {
+    async function sync() {
+      if (!auth.idToken && !apiToken.value.trim()) {
         setStatus("請登入", true);
         setAuthGate(true);
         await initLineLogin();
-        if (!auth.idToken && !apiToken.value.trim()) return false;
+        if (!auth.idToken && !apiToken.value.trim()) return;
       }
       localStorage.setItem("line_ai_api_base", cleanBase(apiBase.value));
       localStorage.setItem("line_ai_api_token", apiToken.value.trim());
@@ -204,42 +197,36 @@
       try {
         const res = await fetch(`${cleanBase(apiBase.value)}/api/console/summary`, {
           headers: authHeaders(),
-          credentials: "include",
         });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         render(json.data);
         setStatus("已同步", false);
-        setAuthGate(false);
-        return true;
       } catch (err) {
-        const message = err.message || String(err);
-        if (options.silentAuthError && /LINE Login is required|Unauthorized|權限|admin|idToken|session/i.test(message)) return false;
-        if (handleAuthExpired(err)) return false;
+        if (handleAuthExpired(err)) return;
         setStatus("同步失敗", true);
-        showError(message);
-        return false;
+        showError(err.message || String(err));
       }
     }
-    async function initLineLogin(options = {}) {
+
+    async function initLineLogin() {
       const base = cleanBase(apiBase.value);
-      const configRes = await fetch(`${base}/api/login-config`, { credentials: "include" });
+      const configRes = await fetch(`${base}/api/login-config`);
       const config = await configRes.json().catch(() => ({}));
       const liffId = config && config.data ? String(config.data.liffId || "") : "";
       auth.liffId = liffId;
       if (!liffId) {
         auth.ready = true;
         if (!apiToken.value.trim()) showError("尚未設定 DASHBOARD_LIFF_ID，無法使用 LINE Login。");
-        return false;
+        return;
       }
-      if (!window.liff) {
-        if (options.autoRedirect) return redirectToDashboardLiff();
-        throw new Error("LINE Login SDK 尚未載入，請按重新登入。");
-      }
+      if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
       await liff.init({ liffId });
       if (!liff.isLoggedIn()) {
-        if (options.autoRedirect) return redirectToDashboardLiff();
-        throw new Error("LINE Login 尚未完成，請按重新登入。");
+        setStatus("登入中", false);
+        setAuthGate(true);
+        liff.login({ redirectUri: location.href });
+        return;
       }
       const idToken = liff.getIDToken();
       if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
@@ -250,7 +237,6 @@
       auth.pictureUrl = profile.pictureUrl || "";
       const loginRes = await fetch(`${base}/api/auth/line-login`, {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idToken }),
       });
@@ -262,32 +248,27 @@
       auth.ready = true;
       setStatus(`已登入 ${auth.displayName || auth.userId}`, false);
       setAuthGate(false);
-      return true;
     }
 
     async function startLineLogin() {
       const base = cleanBase(apiBase.value);
       if (!auth.liffId) {
-        const configRes = await fetch(`${base}/api/login-config`, { credentials: "include" });
+        const configRes = await fetch(`${base}/api/login-config`);
         const config = await configRes.json().catch(() => ({}));
         auth.liffId = config && config.data ? String(config.data.liffId || "") : "";
       }
       if (!auth.liffId) { showError("尚未設定 DASHBOARD_LIFF_ID，無法使用 LINE Login。"); return; }
       setStatus("登入中", false);
-      redirectToDashboardLiff();
+      try {
+        if (window.liff) {
+          await liff.init({ liffId: auth.liffId });
+          liff.login({ redirectUri: location.href });
+          return;
+        }
+      } catch (_err) {}
+      location.href = `https://liff.line.me/${encodeURIComponent(auth.liffId)}`;
     }
 
-    function redirectToDashboardLiff() {
-      const liffId = auth.liffId || "2007221311-imB2QGWW";
-      sessionStorage.setItem("klink_console_login_attempted", "1");
-      setAuthGate(true);
-      location.replace(`https://liff.line.me/${encodeURIComponent(liffId)}`);
-      return false;
-    }
-
-    function isLiffReturnUrl() {
-      return location.search.includes("liff.state") || location.search.includes("liff.referrer");
-    }
     function setAuthGate(show) {
       const gate = $("authGate");
       if (!gate) return;
@@ -416,7 +397,6 @@
         form.append("fileName", prepared.fileName);
         const res = await fetch(`${cleanBase(apiBase.value)}/api/calendar/import-image`, {
           method: "POST",
-          credentials: "include",
           headers: authHeaders(),
           body: form,
         });
@@ -482,18 +462,13 @@
 
     function renderEventPanel(data) {
       const events = data.events || {};
-      const upcomingCount = $("eventUpcomingCount");
-      const registrationCount = $("eventRegistrationCount");
-      const checkinCount = $("eventCheckinCount");
-      const courseList = $("eventCourseList");
-      const checkinList = $("eventCheckinList");
-      if (upcomingCount) upcomingCount.textContent = events.upcoming || 0;
-      if (registrationCount) registrationCount.textContent = events.registrationsToday || 0;
-      if (checkinCount) checkinCount.textContent = events.checkinsToday || 0;
+      $("eventUpcomingCount").textContent = events.upcoming || 0;
+      $("eventRegistrationCount").textContent = events.registrationsToday || 0;
+      $("eventCheckinCount").textContent = events.checkinsToday || 0;
       const courses = Array.isArray(events.upcomingCourses) ? events.upcomingCourses : [];
-      if (courseList) courseList.innerHTML = courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>';
+      $("eventCourseList").innerHTML = courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>';
       const checkins = Array.isArray(events.recentCheckins) ? events.recentCheckins : [];
-      if (checkinList) checkinList.innerHTML = checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>';
+      $("eventCheckinList").innerHTML = checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>';
     }
 
     function copyText(value) {
