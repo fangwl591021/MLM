@@ -161,8 +161,10 @@
 
     async function boot() {
       try {
-        await initLineLogin();
-        if (auth.idToken || apiToken.value.trim()) await sync();
+        const loginReady = await initLineLogin();
+        if (loginReady === false) return;
+        if (auth.idToken) await sync();
+        else if (!auth.liffId && apiToken.value.trim()) await sync();
         else { setStatus("請登入", true); setAuthGate(true); }
       } catch (err) {
         if (handleAuthExpired(err)) return;
@@ -185,11 +187,11 @@
     }
 
     async function sync() {
-      if (!auth.idToken && !apiToken.value.trim()) {
+      if (!auth.idToken && (auth.liffId || !apiToken.value.trim())) {
         setStatus("請登入", true);
         setAuthGate(true);
-        await initLineLogin();
-        if (!auth.idToken && !apiToken.value.trim()) return;
+        const loginReady = await initLineLogin();
+        if (loginReady === false || !auth.idToken) return;
       }
       localStorage.setItem("line_ai_api_base", cleanBase(apiBase.value));
       localStorage.setItem("line_ai_api_token", apiToken.value.trim());
@@ -456,7 +458,14 @@
         resultBox.textContent = "請先選擇行事曆圖片。";
         return;
       }
-      if (!apiToken.value.trim() && !auth.idToken) {
+      if (!auth.idToken && (auth.liffId || !apiToken.value.trim())) {
+        resultBox.className = "importResult bad";
+        resultBox.textContent = "請先完成 LINE Login。";
+        setAuthGate(true);
+        const loginReady = await initLineLogin();
+        if (loginReady === false || !auth.idToken) return;
+      }
+      if (!auth.idToken && !apiToken.value.trim()) {
         resultBox.className = "importResult bad";
         resultBox.textContent = "請先完成 LINE Login 或輸入 Dashboard Token。";
         return;

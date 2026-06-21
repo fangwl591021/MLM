@@ -276,9 +276,10 @@
         return false;
       } catch (err) {
         if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return false;
-        state.auth.ready = true;
-        if (!els.apiToken.value.trim()) showError(err.message || String(err));
-        return true;
+        state.auth.ready = false;
+        showError(err.message || String(err));
+        redirectToConsoleLogin();
+        return false;
       }
     }
 
@@ -301,7 +302,7 @@
       location.replace(`${apiBase()}/console?next=${encodeURIComponent(next)}`);
     }
     function hasAuth() {
-      return Boolean(els.apiToken.value.trim() || state.auth.idToken);
+      return Boolean(state.auth.idToken);
     }
 
     function saveSettings() {
@@ -451,10 +452,15 @@
       const base = apiBase();
       const floorAtStart = state.floor;
       const seq = ++state.syncSeq;
-      if (!base || !hasAuth()) {
+      if (!base) {
         state.loaded = true; state.chats = []; state.threads = []; state.aiLogs = []; state.chatMeta = [];
         cacheCurrentFloor();
         setStatus("未連線", true); clearError(); render(); return;
+      }
+      if (!hasAuth()) {
+        setStatus("請登入", true);
+        redirectToConsoleLogin();
+        return;
       }
       try {
         if (!options.quiet) setStatus("同步中");
@@ -478,7 +484,7 @@
         setStatus("已同步"); clearError(); render();
       } catch (err) {
         if (state.floor !== floorAtStart || seq !== state.syncSeq) return;
-        if (!els.apiToken.value.trim() && isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
+        if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
         state.loaded = true; cacheCurrentFloor(); setStatus("同步失敗", true); showError(err.message || String(err)); render();
       }
     }
@@ -530,7 +536,7 @@
     async function syncMotherMembers() {
       if (!hasAuth()) {
         setSettingsOpen(true);
-        showError("請先完成 LINE Login 或輸入管理 Token，才能同步母站。");
+        showError("請先完成 LINE Login，才能同步母站。");
         return;
       }
       try {
