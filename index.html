@@ -177,7 +177,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointBind: $("pointBind"), pointBindSource: $("pointBindSource"), pointBindQuery: $("pointBindQuery"), pointBindSearch: $("pointBindSearch"), pointBindResults: $("pointBindResults"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperatorId: $("pointOperatorId"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage"), pointLedgerList: $("pointLedgerList"), pointLedgerCount: $("pointLedgerCount")
     };
-    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
+    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, floorCache: {}, syncSeq: 0, activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -190,15 +190,17 @@
     els.searchBox.addEventListener("input", render);
     document.querySelectorAll("[data-floor]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.floor = button.dataset.floor || "main";
+        const nextFloor = button.dataset.floor || "main";
+        if (nextFloor === state.floor) return;
+        cacheCurrentFloor();
+        state.floor = nextFloor;
         localStorage.setItem("line_ai_floor", state.floor);
         writeFloorToUrl(state.floor);
-        state.activeUserId = "";
-        state.loaded = false;
+        applyFloorCache(state.floor);
         document.querySelectorAll("[data-floor]").forEach((item) => item.classList.toggle("active", item === button));
         if (document.querySelector(".left").classList.contains("config-open") && els.apiToken.value.trim()) loadFloorWhitelist();
         render();
-        sync();
+        sync({ quiet: state.loaded });
       });
       button.classList.toggle("active", button.dataset.floor === state.floor);
     });
@@ -445,29 +447,39 @@
       window.history.replaceState(null, "", url.toString());
     }
 
-    async function sync() {
+    async function sync(options = {}) {
       const base = apiBase();
+      const floorAtStart = state.floor;
+      const seq = ++state.syncSeq;
       if (!base || !hasAuth()) {
         state.loaded = true; state.chats = []; state.threads = []; state.aiLogs = []; state.chatMeta = [];
+        cacheCurrentFloor();
         setStatus("未連線", true); clearError(); render(); return;
       }
       try {
-        setStatus("同步中");
-        const res = await fetch(apiUrl("/api/data"), { headers: authHeaders() });
+        if (!options.quiet) setStatus("同步中");
+        const res = await fetch(apiUrlForFloor("/api/data", floorAtStart), { headers: authHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
-        state.chats = Array.isArray(json.data.chats) ? json.data.chats : [];
-        state.threads = Array.isArray(json.data.threads) ? json.data.threads : [];
-        state.aiLogs = Array.isArray(json.data.aiLogs) ? json.data.aiLogs : [];
-        state.chatMeta = Array.isArray(json.data.chatMeta) ? json.data.chatMeta : [];
-        state.loaded = true;
-        const activeExists = state.threads.some((thread) => thread.userId === state.activeUserId) || state.chats.some((row) => row["用戶ID"] === state.activeUserId);
-        if (!activeExists) state.activeUserId = state.threads[0] ? state.threads[0].userId : (state.chats[0] ? state.chats[0]["用戶ID"] : "");
+        const next = {
+          chats: Array.isArray(json.data.chats) ? json.data.chats : [],
+          threads: Array.isArray(json.data.threads) ? json.data.threads : [],
+          aiLogs: Array.isArray(json.data.aiLogs) ? json.data.aiLogs : [],
+          chatMeta: Array.isArray(json.data.chatMeta) ? json.data.chatMeta : [],
+          loaded: true,
+          activeUserId: state.activeUserId
+        };
+        const activeExists = next.threads.some((thread) => thread.userId === next.activeUserId) || next.chats.some((row) => row["用戶ID"] === next.activeUserId);
+        if (!activeExists) next.activeUserId = next.threads[0] ? next.threads[0].userId : (next.chats[0] ? next.chats[0]["用戶ID"] : "");
+        state.floorCache[floorAtStart] = next;
+        if (state.floor !== floorAtStart || seq !== state.syncSeq) return;
+        applyFloorCache(floorAtStart);
         if (json.data.knowledgeMeta && json.data.knowledgeMeta.count) els.knowledgeStatus.textContent = `目前知識庫 ${json.data.knowledgeMeta.count} 筆${json.data.knowledgeMeta.version ? " · " + json.data.knowledgeMeta.version : ""}`;
         setStatus("已同步"); clearError(); render();
       } catch (err) {
+        if (state.floor !== floorAtStart || seq !== state.syncSeq) return;
         if (!els.apiToken.value.trim() && isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
-        state.loaded = true; setStatus("同步失敗", true); showError(err.message || String(err)); render();
+        state.loaded = true; cacheCurrentFloor(); setStatus("同步失敗", true); showError(err.message || String(err)); render();
       }
     }
 
@@ -1202,8 +1214,31 @@
       return value;
     }
     function apiUrl(path) {
+      return apiUrlForFloor(path, state.floor || "main");
+    }
+    function apiUrlForFloor(path, floor) {
       const separator = path.includes("?") ? "&" : "?";
-      return `${apiBase()}${path}${separator}floor=${encodeURIComponent(state.floor || "main")}`;
+      return `${apiBase()}${path}${separator}floor=${encodeURIComponent(floor || "main")}`;
+    }
+    function floorSnapshot() {
+      return { chats: state.chats, threads: state.threads, aiLogs: state.aiLogs, chatMeta: state.chatMeta, activeUserId: state.activeUserId, loaded: state.loaded };
+    }
+    function cacheCurrentFloor() {
+      state.floorCache[state.floor || "main"] = floorSnapshot();
+    }
+    function applyFloorCache(floor) {
+      const cached = state.floorCache[floor || "main"];
+      if (cached) {
+        state.chats = cached.chats || [];
+        state.threads = cached.threads || [];
+        state.aiLogs = cached.aiLogs || [];
+        state.chatMeta = cached.chatMeta || [];
+        state.activeUserId = cached.activeUserId || "";
+        state.loaded = Boolean(cached.loaded);
+        return true;
+      }
+      state.chats = []; state.threads = []; state.aiLogs = []; state.chatMeta = []; state.activeUserId = ""; state.loaded = false;
+      return false;
     }
     function sanitizeApiBase(value) {
       const raw = String(value || "").trim().replace(/\/+$/, "");
