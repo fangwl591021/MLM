@@ -347,7 +347,8 @@
         const skipped = Number(json.skipped || 0);
         const lines = (json.events || []).slice(0, 12).map((event) => {
           const mark = event.status === "imported" ? "已寫入" : "略過";
-          return `${mark} ${event.date || ""} ${event.startTime || ""}-${event.endTime || ""} ${event.summary || ""} ${event.locationName || ""}`.trim();
+          const reason = event.reason ? `（${event.reason}）` : "";
+          return `${mark}${reason} ${event.date || ""} ${event.startTime || ""}-${event.endTime || ""} ${event.summary || ""} ${event.locationName || ""}`.trim();
         });
         resultBox.className = "importResult ok";
         resultBox.textContent = `完成：寫入 ${imported} 筆，略過 ${skipped} 筆。\n${lines.join("\n")}`;

@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "calendar-balanced-json-20260621";
+const FRONTEND_BUILD_ID = "calendar-google-insert-20260621";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -2978,7 +2978,15 @@ function normalizeCalendarImportEvents(payload, fileName) {
       sourceHash: shortHash(`${date}|${startTime}|${endTime}|${summary}|${location}`),
     });
   }
-  return events.sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
+  const seen = new Set();
+  return events
+    .filter((event) => {
+      const key = event.sourceHash || `${event.date}|${event.startTime}|${event.endTime}|${event.summary}|${event.location}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
 }
 
 function normalizeCalendarLocationName(value) {
@@ -3025,6 +3033,59 @@ function addMinutesToClock(clock, minutes) {
   const total = h * 60 + m + Number(minutes || 0);
   const next = ((total % 1440) + 1440) % 1440;
   return `${String(Math.floor(next / 60)).padStart(2, "0")}:${String(next % 60).padStart(2, "0")}`;
+}
+
+async function findGoogleCalendarDuplicate(accessToken, calendarId, event) {
+  const dateStart = `${event.date}T00:00:00+08:00`;
+  const dateEnd = `${dateAddDays(event.date, 1)}T00:00:00+08:00`;
+  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
+  url.searchParams.set("timeMin", dateStart);
+  url.searchParams.set("timeMax", dateEnd);
+  url.searchParams.set("singleEvents", "true");
+  url.searchParams.set("orderBy", "startTime");
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw httpError(`Google calendar duplicate check failed: ${JSON.stringify(body)}`, 502);
+  const expectedStart = `${event.date}T${event.startTime}:00+08:00`;
+  const expectedSummary = normalizeDuplicateText(event.summary);
+  return (body.items || []).find((item) => {
+    const itemStart = stringValue(item && item.start && (item.start.dateTime || item.start.date));
+    const itemSummary = normalizeDuplicateText(item && item.summary);
+    const sameHash = stringValue(item && item.extendedProperties && item.extendedProperties.private && item.extendedProperties.private.klinkSourceHash) === event.sourceHash;
+    const sameStart = itemStart === expectedStart || itemStart.startsWith(`${event.date}T${event.startTime}`);
+    return sameHash || (sameStart && itemSummary === expectedSummary);
+  }) || null;
+}
+
+async function insertGoogleCalendarEvent(accessToken, calendarId, event) {
+  const payload = {
+    summary: event.summary,
+    location: event.location,
+    description: event.description,
+    start: { dateTime: `${event.date}T${event.startTime}:00+08:00`, timeZone: "Asia/Taipei" },
+    end: { dateTime: `${event.date}T${event.endTime}:00+08:00`, timeZone: "Asia/Taipei" },
+    extendedProperties: {
+      private: {
+        klinkSourceHash: event.sourceHash || "",
+        klinkLocationName: event.locationName || "",
+        klinkImportedAt: new Date().toISOString(),
+      },
+    },
+  };
+  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw httpError(`Google calendar insert failed: ${JSON.stringify(body)}`, 502);
+  return body;
+}
+
+function normalizeDuplicateText(value) {
+  return stringValue(value).replace(/\s+/g, "").trim().toLowerCase();
 }
 
 function calendarWriteId(env) {
