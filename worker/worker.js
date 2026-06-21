@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "calendar-google-insert-20260621";
+const FRONTEND_BUILD_ID = "calendar-date-add-fix-20260621";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -3035,9 +3035,17 @@ function addMinutesToClock(clock, minutes) {
   return `${String(Math.floor(next / 60)).padStart(2, "0")}:${String(next % 60).padStart(2, "0")}`;
 }
 
+function addDaysToIsoDate(date, days) {
+  const match = stringValue(date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return date;
+  const utc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(days || 0));
+  const next = new Date(utc);
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+}
+
 async function findGoogleCalendarDuplicate(accessToken, calendarId, event) {
   const dateStart = `${event.date}T00:00:00+08:00`;
-  const dateEnd = `${dateAddDays(event.date, 1)}T00:00:00+08:00`;
+  const dateEnd = `${addDaysToIsoDate(event.date, 1)}T00:00:00+08:00`;
   const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
   url.searchParams.set("timeMin", dateStart);
   url.searchParams.set("timeMax", dateEnd);
