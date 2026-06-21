@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "google-private-key-normalize-20260620";
+const FRONTEND_BUILD_ID = "openai-output-reader-20260621";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -2897,7 +2897,7 @@ async function extractCalendarEventsFromImage(env, imageDataUrl, fileName) {
         ],
       }],
       text: { format: { type: "json_object" } },
-      max_output_tokens: 4000,
+      max_output_tokens: 8000,
     }),
   });
   const body = await response.text();
@@ -2939,7 +2939,7 @@ async function repairCalendarJsonWithOpenAI(env, brokenJsonText, parseError) {
       model,
       input: [{ role: "user", content: [{ type: "input_text", text: repairPrompt }] }],
       text: { format: { type: "json_object" } },
-      max_output_tokens: 4000,
+      max_output_tokens: 8000,
     }),
   });
   const body = await response.text();
@@ -5539,13 +5539,28 @@ async function callOpenAI(env, prompt) {
 }
 
 function extractOpenAIText(body) {
-  if (body.output_text) return body.output_text;
-  for (const item of body.output || []) {
-    for (const part of item.content || []) {
-      if (part.text) return part.text;
+  const chunks = [];
+  const pushText = (value) => {
+    if (typeof value === "string" && value.trim()) chunks.push(value.trim());
+  };
+  pushText(body && body.output_text);
+  for (const item of body && body.output || []) {
+    pushText(item && item.text);
+    for (const part of item && item.content || []) {
+      if (typeof part === "string") pushText(part);
+      pushText(part && part.text);
+      pushText(part && part.output_text);
+      if (part && part.type === "output_text") pushText(part.text);
     }
   }
-  throw new Error("OpenAI returned empty content");
+  for (const choice of body && body.choices || []) {
+    pushText(choice && choice.text);
+    pushText(choice && choice.message && choice.message.content);
+  }
+  if (chunks.length) return chunks.join("\n");
+  const status = body && body.status ? ` status=${body.status}` : "";
+  const reason = body && body.incomplete_details ? ` incomplete=${JSON.stringify(body.incomplete_details)}` : "";
+  throw new Error(`OpenAI returned empty content.${status}${reason}`);
 }
 
 async function importKnowledge(env, floor, payload, fileName) {
