@@ -223,8 +223,9 @@
       if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
       await liff.init({ liffId });
       if (!liff.isLoggedIn()) {
-        setStatus("請登入", true);
+        setStatus("登入中", false);
         setAuthGate(true);
+        liff.login({ redirectUri: location.href });
         return;
       }
       const idToken = liff.getIDToken();
