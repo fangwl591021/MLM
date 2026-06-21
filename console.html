@@ -478,13 +478,18 @@
 
     function renderEventPanel(data) {
       const events = data.events || {};
-      $("eventUpcomingCount").textContent = events.upcoming || 0;
-      $("eventRegistrationCount").textContent = events.registrationsToday || 0;
-      $("eventCheckinCount").textContent = events.checkinsToday || 0;
+      const upcomingCount = $("eventUpcomingCount");
+      const registrationCount = $("eventRegistrationCount");
+      const checkinCount = $("eventCheckinCount");
+      const courseList = $("eventCourseList");
+      const checkinList = $("eventCheckinList");
+      if (upcomingCount) upcomingCount.textContent = events.upcoming || 0;
+      if (registrationCount) registrationCount.textContent = events.registrationsToday || 0;
+      if (checkinCount) checkinCount.textContent = events.checkinsToday || 0;
       const courses = Array.isArray(events.upcomingCourses) ? events.upcomingCourses : [];
-      $("eventCourseList").innerHTML = courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>';
+      if (courseList) courseList.innerHTML = courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>';
       const checkins = Array.isArray(events.recentCheckins) ? events.recentCheckins : [];
-      $("eventCheckinList").innerHTML = checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>';
+      if (checkinList) checkinList.innerHTML = checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>';
     }
 
     function copyText(value) {
