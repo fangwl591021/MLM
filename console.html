@@ -54,10 +54,10 @@
       </section>
     </aside>
     <main>
-      <section id="authGate" class="authGate"><div><strong>請先使用 LINE 登入</strong><p class="muted">主控台需要確認管理員身分後才能讀取客服、行事曆與點數資料。</p></div><button id="loginButton" type="button">使用 LINE 登入</button></section>
+      <section id="authGate" class="authGate show"><div><strong>正在確認 LINE 登入</strong><p class="muted">主控台需要確認管理員身分後才能讀取客服、行事曆與點數資料。</p></div><button id="loginButton" type="button">重新登入</button></section>
       <div class="top">
-        <div><h2>綜合成效</h2><p class="muted" id="subtitle">等待同步資料。</p></div>
-        <div class="status" id="status">未同步</div>
+        <div><h2>綜合成效</h2><p class="muted" id="subtitle">正在確認登入與同步資料。</p></div>
+        <div class="status" id="status">登入中</div>
       </div>
 
       <section class="grid">
@@ -157,6 +157,8 @@
     const settingsBox = $("settingsBox");
     apiBase.value = localStorage.getItem("line_ai_api_base") || DEFAULT_API;
     apiToken.value = localStorage.getItem("line_ai_api_token") || "";
+    window.addEventListener("error", (event) => { setStatus("前端錯誤", true); showError(event.message || "前端腳本錯誤"); });
+    window.addEventListener("unhandledrejection", (event) => { setStatus("前端錯誤", true); showError(event.reason && event.reason.message ? event.reason.message : String(event.reason || "前端非同步錯誤")); });
     $("settingsToggle").onclick = unlockSettings;
     $("syncButton").onclick = sync;
     $("loginButton").onclick = startLineLogin;
