@@ -65,7 +65,7 @@
 <body>
   <div class="app">
     <aside class="left">
-      <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="console.html">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
+      <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="https://mlm.fangwl591021.workers.dev/console">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
       <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
       <section class="config">
         <section class="settingsPanel">
@@ -268,7 +268,7 @@
         if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
         await liff.init({ liffId: state.auth.liffId });
         if (!liff.isLoggedIn()) {
-          liff.login({ redirectUri: window.location.href });
+          liff.login();
           return false;
         }
         const idToken = liff.getIDToken();
@@ -1265,7 +1265,7 @@
       try {
         if (window.liff && state.auth.liffId) {
           if (liff.isLoggedIn()) liff.logout();
-          liff.login({ redirectUri: window.location.href });
+          liff.login();
           return true;
         }
       } catch (_err) {}
