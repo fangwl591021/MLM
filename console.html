@@ -155,7 +155,6 @@
     $("calendarImportButton").onclick = importCalendarImage;
     const copyCheckinButton = $("copyCheckinUrl");
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
-    render(defaultSummary());
     setAuthGate(true);
     boot();
 
@@ -548,15 +547,24 @@
 
     function renderEventPanel(data) {
       const events = data.events || {};
-      $("eventUpcomingCount").textContent = events.upcoming || 0;
-      $("eventRegistrationCount").textContent = events.registrationsToday || 0;
-      $("eventCheckinCount").textContent = events.checkinsToday || 0;
+      setText("eventUpcomingCount", events.upcoming || 0);
+      setText("eventRegistrationCount", events.registrationsToday || 0);
+      setText("eventCheckinCount", events.checkinsToday || 0);
       const courses = Array.isArray(events.upcomingCourses) ? events.upcomingCourses : [];
-      $("eventCourseList").innerHTML = courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>';
+      setHtml("eventCourseList", courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>');
       const checkins = Array.isArray(events.recentCheckins) ? events.recentCheckins : [];
-      $("eventCheckinList").innerHTML = checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>';
+      setHtml("eventCheckinList", checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>');
     }
 
+    function setText(id, value) {
+      const el = $(id);
+      if (el) el.textContent = value;
+    }
+
+    function setHtml(id, value) {
+      const el = $(id);
+      if (el) el.innerHTML = value;
+    }
     function copyText(value) {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(value).catch(() => {});
     }
