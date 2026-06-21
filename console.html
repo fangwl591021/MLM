@@ -12,11 +12,12 @@
         return;
       }
       if (location.hostname !== "mlm.fangwl591021.workers.dev" || location.pathname !== "/console") return;
+      if (location.search.includes("liff.state") || location.search.includes("liff.referrer")) return;
       var liffId = "2007221311-imB2QGWW";
-      var marker = "klink_console_liff_prelogin_v3_" + liffId;
+      var marker = "klink_console_liff_prelogin_v4_" + liffId;
       if (sessionStorage.getItem(marker) === "1") return;
       sessionStorage.setItem(marker, "1");
-      location.replace("https://liff.line.me/" + encodeURIComponent(liffId) + "?liff.state=" + encodeURIComponent("/console"));
+      location.replace("https://liff.line.me/" + encodeURIComponent(liffId));
     })();
   </script>
   <style>
@@ -273,7 +274,7 @@
     function redirectToDashboardLiff() {
       const liffId = auth.liffId || "2007221311-imB2QGWW";
       setAuthGate(true);
-      location.replace(`https://liff.line.me/${encodeURIComponent(liffId)}?liff.state=${encodeURIComponent("/console")}`);
+      location.replace(`https://liff.line.me/${encodeURIComponent(liffId)}`);
       return false;
     }
 
