@@ -142,6 +142,7 @@
   <script>
     const DEFAULT_API = "https://mlm.fangwl591021.workers.dev";
     const $ = (id) => document.getElementById(id);
+    const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "" };
     const apiBase = $("apiBase");
     const apiToken = $("apiToken");
@@ -225,8 +226,8 @@
       if (!liff.isLoggedIn()) {
         setStatus("登入中", false);
         setAuthGate(true);
-        liff.login();
-        return;
+        openLiffEntry();
+        return false;
       }
       const idToken = liff.getIDToken();
       if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
@@ -241,13 +242,16 @@
         body: JSON.stringify({ idToken }),
       });
       const loginJson = await loginRes.json().catch(() => ({}));
-      if (!loginRes.ok || loginJson.status !== "success" || !loginJson.access || !loginJson.access.admin) {
-        throw new Error(loginJson.message || "此 LINE 帳號沒有主控台 admin 權限");
+      if (!loginRes.ok || loginJson.status !== "success" || !loginJson.access || !loginJson.access.allowed) {
+        throw new Error(loginJson.message || "此 LINE 帳號沒有客服系統權限");
       }
       auth.access = loginJson.access;
       auth.ready = true;
       setStatus(`已登入 ${auth.displayName || auth.userId}`, false);
       setAuthGate(false);
+      storeDashboardAuth();
+      if (redirectAfterLogin()) return false;
+      return true;
     }
 
     async function startLineLogin() {
@@ -262,13 +266,34 @@
       try {
         if (window.liff) {
           await liff.init({ liffId: auth.liffId });
-          liff.login();
+          openLiffEntry();
           return;
         }
       } catch (_err) {}
       location.href = `https://liff.line.me/${encodeURIComponent(auth.liffId)}`;
     }
 
+    function rawNextParam() {
+      const params = new URLSearchParams(location.search);
+      const direct = params.get("next");
+      if (direct) return direct;
+      const liffState = params.get("liff.state");
+      if (!liffState) return "";
+      try {
+        const decoded = decodeURIComponent(liffState);
+        const query = decoded.startsWith("?") ? decoded.slice(1) : decoded.replace(/^\//, "");
+        return new URLSearchParams(query).get("next") || "";
+      } catch (_err) {
+        return "";
+      }
+    }
+
+    function openLiffEntry() {
+      if (!auth.liffId) return;
+      const next = rawNextParam();
+      const suffix = next ? `?next=${encodeURIComponent(next)}` : "";
+      location.href = `https://liff.line.me/${encodeURIComponent(auth.liffId)}${suffix}`;
+    }
     function setAuthGate(show) {
       const gate = $("authGate");
       if (!gate) return;
@@ -283,6 +308,56 @@
       return headers;
     }
 
+    function storeDashboardAuth() {
+      try {
+        sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+          idToken: auth.idToken,
+          userId: auth.userId,
+          displayName: auth.displayName,
+          pictureUrl: auth.pictureUrl,
+          access: auth.access,
+          savedAt: Date.now(),
+        }));
+      } catch (_err) {}
+    }
+
+    function requestedNextPath() {
+      const raw = rawNextParam();
+      if (!raw) return "";
+      try {
+        const decoded = decodeURIComponent(raw);
+        if (/^\/dashboard(\?|$)/.test(decoded)) return decoded;
+        const url = new URL(decoded, location.origin);
+        if (url.origin === location.origin && url.pathname === "/dashboard") return `${url.pathname}${url.search}${url.hash}`;
+      } catch (_err) {}
+      return "";
+    }
+
+    function floorFromPath(path) {
+      try {
+        const url = new URL(path, location.origin);
+        return url.searchParams.get("floor") === "admin" ? "admin" : "main";
+      } catch (_err) { return "main"; }
+    }
+
+    function redirectAfterLogin() {
+      const access = auth.access || {};
+      const floors = Array.isArray(access.floors) ? access.floors : [];
+      const next = requestedNextPath();
+      if (next) {
+        const floor = floorFromPath(next);
+        if (access.admin || floors.includes(floor)) {
+          location.replace(`${cleanBase(apiBase.value)}${next}`);
+          return true;
+        }
+        throw new Error("此 LINE 帳號沒有該樓層權限");
+      }
+      if (!access.admin && floors.length) {
+        location.replace(`${cleanBase(apiBase.value)}/dashboard?floor=${encodeURIComponent(floors[0])}`);
+        return true;
+      }
+      return false;
+    }
     function isLineTokenExpired(message) {
       return /IdToken expired|line_id_token_expired|idToken expired|token expired|登入逾時/i.test(String(message || ""));
     }
@@ -293,7 +368,7 @@
       try {
         if (window.liff) {
           if (liff.isLoggedIn()) liff.logout();
-          liff.login();
+          openLiffEntry();
           return true;
         }
       } catch (_err) {}

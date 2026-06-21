@@ -161,6 +161,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
     const DEFAULT_API_BASE = "https://mlm.fangwl591021.workers.dev";
+    const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const TAG_OPTIONS = ["產品問題", "行政問題", "訂單物流", "退換貨", "客訴", "負評", "建議", "待追蹤", "VIP"];
     const FLOORS = { main: "產品客服", admin: "行政客服" };
     const POINT_SOURCES = [
@@ -257,41 +258,22 @@
 
     async function initLineLogin() {
       try {
-        const configRes = await fetch(`${apiBase()}/api/login-config`);
-        const config = await configRes.json();
-        state.auth.liffId = config && config.data ? config.data.liffId || "" : "";
-        if (!state.auth.liffId) {
+        const stored = readStoredDashboardAuth();
+        if (stored && stored.idToken) {
+          state.auth.idToken = stored.idToken;
+          state.auth.userId = stored.userId || "";
+          state.auth.displayName = stored.displayName || "";
+          state.auth.pictureUrl = stored.pictureUrl || "";
+          state.auth.access = stored.access || null;
           state.auth.ready = true;
-          els.knowledgeStatus.textContent = "尚未設定 DASHBOARD_LIFF_ID，暫時使用 Token 備援登入。";
+          els.operatorId.value = state.auth.userId;
+          if (state.auth.userId) localStorage.setItem("line_ai_operator_id", state.auth.userId);
+          if (state.auth.displayName) localStorage.setItem("line_ai_operator_name", state.auth.displayName);
+          els.knowledgeStatus.textContent = `LINE Login：${state.auth.displayName || state.auth.userId}`;
           return true;
         }
-        if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
-        await liff.init({ liffId: state.auth.liffId });
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return false;
-        }
-        const idToken = liff.getIDToken();
-        if (!idToken) throw new Error("LINE Login 沒有取得 idToken");
-        const profile = await liff.getProfile().catch(() => ({}));
-        state.auth.idToken = idToken;
-        state.auth.userId = profile.userId || "";
-        state.auth.displayName = profile.displayName || "";
-        state.auth.pictureUrl = profile.pictureUrl || "";
-        els.operatorId.value = state.auth.userId;
-        localStorage.setItem("line_ai_operator_id", state.auth.userId);
-        if (state.auth.displayName) localStorage.setItem("line_ai_operator_name", state.auth.displayName);
-        const authRes = await fetch(`${apiBase()}/api/auth/line-login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
-        const authJson = await authRes.json();
-        if (!authRes.ok || authJson.status !== "success") throw new Error(authJson.message || "LINE Login 驗證失敗");
-        state.auth.access = authJson.access || null;
-        state.auth.ready = true;
-        els.knowledgeStatus.textContent = `LINE Login：${state.auth.displayName || state.auth.userId}`;
-        return true;
+        redirectToConsoleLogin();
+        return false;
       } catch (err) {
         if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return false;
         state.auth.ready = true;
@@ -300,6 +282,24 @@
       }
     }
 
+    function readStoredDashboardAuth() {
+      try {
+        const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || !data.idToken) return null;
+        if (Date.now() - Number(data.savedAt || 0) > 55 * 60 * 1000) {
+          sessionStorage.removeItem(AUTH_STORAGE_KEY);
+          return null;
+        }
+        return data;
+      } catch (_err) { return null; }
+    }
+
+    function redirectToConsoleLogin() {
+      const next = `${location.pathname}${location.search}${location.hash}` || "/dashboard";
+      location.replace(`${apiBase()}/console?next=${encodeURIComponent(next)}`);
+    }
     function hasAuth() {
       return Boolean(els.apiToken.value.trim() || state.auth.idToken);
     }
@@ -1263,11 +1263,9 @@
       state.auth.idToken = "";
       state.auth.ready = false;
       try {
-        if (window.liff && state.auth.liffId) {
-          if (liff.isLoggedIn()) liff.logout();
-          liff.login();
-          return true;
-        }
+        sessionStorage.removeItem(AUTH_STORAGE_KEY);
+        redirectToConsoleLogin();
+        return true;
       } catch (_err) {}
       return false;
     }
