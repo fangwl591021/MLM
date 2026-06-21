@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "openai-output-reader-20260621";
+const FRONTEND_BUILD_ID = "calendar-balanced-json-20260621";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -2908,12 +2908,12 @@ async function extractCalendarEventsFromImage(env, imageDataUrl, fileName) {
 
 async function parseCalendarJsonObjectWithRepair(env, text) {
   try {
-    return parseStrictJsonObject(text);
+    return parseCalendarJsonPayload(text);
   } catch (err) {
     const originalMessage = err && err.message ? err.message : String(err);
     const repairedText = await repairCalendarJsonWithOpenAI(env, text, originalMessage);
     try {
-      return parseStrictJsonObject(repairedText);
+      return parseCalendarJsonPayload(repairedText);
     } catch (repairErr) {
       const repairMessage = repairErr && repairErr.message ? repairErr.message : String(repairErr);
       throw httpError(`OpenAI calendar JSON parse failed: ${originalMessage}; repair failed: ${repairMessage}`, 502);
@@ -3101,12 +3101,60 @@ function normalizeGooglePrivateKey(value) {
   return raw.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
 }
 
+function parseCalendarJsonPayload(text) {
+  const objects = extractBalancedJsonObjects(text).map((chunk) => JSON.parse(chunk));
+  if (!objects.length) return parseStrictJsonObject(text);
+  if (objects.length === 1) return objects[0];
+  const events = [];
+  for (const obj of objects) {
+    if (Array.isArray(obj && obj.events)) events.push(...obj.events);
+    else if (Array.isArray(obj)) events.push(...obj);
+  }
+  if (events.length) return { events };
+  return objects[0];
+}
+
 function parseStrictJsonObject(text) {
   const raw = stringValue(text).trim();
   try { return JSON.parse(raw); } catch (_err) { /* fallback below */ }
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (match) return JSON.parse(match[0]);
+  const firstObject = extractBalancedJsonObjects(raw)[0];
+  if (firstObject) return JSON.parse(firstObject);
   throw new Error("Unable to parse JSON object");
+}
+
+function extractBalancedJsonObjects(text) {
+  const raw = stringValue(text);
+  const chunks = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+      continue;
+    }
+    if (ch === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        chunks.push(raw.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return chunks;
 }
 
 function base64UrlJson(value) {
