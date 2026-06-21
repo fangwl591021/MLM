@@ -43,7 +43,7 @@ const REWARD_CAMPAIGN_POINTS = {
 const REWARD_CALENDAR_AUTO = "calendar_auto";
 const NFC_TEST_CAMPAIGN_PREFIX = "nfc_test_";
 const DEFAULT_PUBLIC_BASE_URL = "https://mlm.fangwl591021.workers.dev";
-const DEFAULT_REWARD_CALENDAR_ID = "e60890fdb27ca97452f32e6484c312ed029faef62a6ddd4fbbe753fa557bcde5@group.calendar.google.com";
+
 const DEFAULT_REWARD_GEOFENCE_METERS = 50;
 const DEFAULT_REWARD_CALENDAR_POINTS = 5;
 const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 90;
@@ -88,9 +88,7 @@ export default {
             WETW_SHOP_ID: Boolean(env.WETW_SHOP_ID),
             GATEWAY_FORWARD_TOKEN: Boolean(env.GATEWAY_FORWARD_TOKEN || env.MLM_FORWARD_TOKEN),
             OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
-            GOOGLE_CALENDAR_ID: Boolean(env.GOOGLE_CALENDAR_ID || env.REWARD_GOOGLE_CALENDAR_ID),
-            GOOGLE_SERVICE_ACCOUNT_EMAIL: Boolean(env.GOOGLE_SERVICE_ACCOUNT_EMAIL),
-            GOOGLE_PRIVATE_KEY: Boolean(env.GOOGLE_PRIVATE_KEY),
+            CALENDAR_EVENTS_DB: Boolean(env.DB),
             DASHBOARD_LIFF_ID: Boolean(env.DASHBOARD_LIFF_ID),
             ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
           },
@@ -185,7 +183,7 @@ export default {
 
       if (url.pathname === "/api/calendar/import-image" && request.method === "POST") {
         await assertAccessManager(request, env);
-        const result = await importCalendarImageToGoogle(env, request);
+        const result = await importCalendarImageToD1(env, request);
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
@@ -702,6 +700,7 @@ async function fetchConsoleSummary(env) {
   const todayStart = taipeiStartOfDay(now);
   const floorNames = { [FLOOR_MAIN]: "\u7522\u54c1\u5ba2\u670d", [FLOOR_ADMIN]: "\u884c\u653f\u5ba2\u670d" };
   const floors = [];
+  await ensureCalendarEventSchema(env);
 
   for (const floor of [FLOOR_MAIN, FLOOR_ADMIN]) {
     const [threadStats, todayMessages, todayReplies, aiAlerts, latestThread] = await Promise.all([
@@ -738,8 +737,9 @@ async function fetchConsoleSummary(env) {
     });
   }
 
-  const [calendarCount, upcomingEvents, registrations, checkins, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
+  const [calendarCount, calendarUpcomingList, upcomingEvents, registrations, checkins, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
     countIfTableExists(env, "calendar_events", "starts_at >= ? AND starts_at < ?", [todayStart, todayStart + 86400000]),
+    fetchUpcomingCalendarEvents(env, todayStart, 24),
     countIfTableExists(env, "events", "status != 'archived' AND (starts_at IS NULL OR starts_at >= ?)", [todayStart]),
     countIfTableExists(env, "event_registrations", "registered_at >= ?", [todayStart]),
     countIfTableExists(env, "event_checkins", "checked_in_at >= ?", [todayStart]),
@@ -763,10 +763,51 @@ async function fetchConsoleSummary(env) {
     todayStart,
     totals,
     floors,
-    calendar: { today: calendarCount },
+    calendar: { today: calendarCount, upcoming: calendarUpcomingList },
     events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins },
     pointCrm: { members: crmMembers, pointAccounts, ledgerToday: pointLedgerToday },
   };
+}
+
+async function ensureCalendarEventSchema(env) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id TEXT PRIMARY KEY,
+      floor_id TEXT NOT NULL DEFAULT '*',
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      starts_at INTEGER NOT NULL,
+      ends_at INTEGER,
+      location TEXT NOT NULL DEFAULT '',
+      owner_user_id TEXT,
+      visibility TEXT NOT NULL DEFAULT 'internal',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_calendar_events_floor_starts ON calendar_events(floor_id, starts_at)").run();
+}
+
+async function fetchUpcomingCalendarEvents(env, fromMs = Date.now(), limit = 50) {
+  await ensureCalendarEventSchema(env);
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  const rows = await env.DB.prepare(`
+    SELECT id, title, description, starts_at, ends_at, location, visibility
+    FROM calendar_events
+    WHERE starts_at >= ?
+    ORDER BY starts_at ASC
+    LIMIT ?
+  `).bind(Number(fromMs) || Date.now(), safeLimit).all();
+  return (rows.results || []).map((row) => ({
+    id: stringValue(row.id),
+    title: stringValue(row.title),
+    description: stringValue(row.description),
+    startsAt: numberOrZero(row.starts_at),
+    endsAt: numberOrZero(row.ends_at),
+    location: stringValue(row.location),
+    visibility: stringValue(row.visibility || "internal"),
+  }));
 }
 
 function requiresFloorAccess(pathname) {
@@ -2058,7 +2099,7 @@ async function claimQrReward(env, body) {
   try {
     const entryLabel = rewardEntryLabel(entryMethod);
     const eventNote = calendarContext
-      ? `${entryLabel}；Google日曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location}；距離：${Math.round(calendarContext.distanceMeters)}m`
+      ? `${entryLabel}；內建行事曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location}；距離：${Math.round(calendarContext.distanceMeters)}m`
       : `${entryLabel} ${campaign}`;
     const mutation = await pointMutation(env, {
       channel_key: POINT_OA1,
@@ -2189,14 +2230,14 @@ function rewardNfcInstructionsHtml(request, env, corsHeaders) {
 <body>
   <main>
     <section class="hero">
-      <div class="brand"><div class="mark">KL</div><div><h1>康立智能 NFC 感應贈K點</h1><p>把短網址寫入 NFC Tag。會員手機感應後會開啟 LINE LIFF，系統依 Google 日曆活動時間、地點與手機定位自動判定是否發放 K點。</p></div></div>
+      <div class="brand"><div class="mark">KL</div><div><h1>康立智能 NFC 感應贈K點</h1><p>把短網址寫入 NFC Tag。會員手機感應後會開啟 LINE LIFF，系統依內建行事曆活動時間、地點與手機定位自動判定是否發放 K點。</p></div></div>
       <div class="urlBox"><strong>NFC Tag 建議寫入網址</strong><code>${escapeHtml(nfcUrl)}</code></div>
       <a class="button" href="${escapeHtml(nfcUrl)}">測試 NFC 入口</a>
       <p class="muted">實際會轉到 LIFF：<br>${escapeHtml(liffUrl)}</p>
     </section>
     <section class="grid">
       <div class="card"><h2>NFC 寫入流程</h2><ol><li>手機安裝 NFC Tools 或同類型 NFC 寫入工具。</li><li>選擇 Write / Add a record / URL。</li><li>貼上上方短網址。</li><li>靠近 NFC Tag 寫入。</li><li>用另一支手機感應測試。</li></ol></div>
-      <div class="card"><h2>發點判定流程</h2><ol><li>會員感應 NFC。</li><li>LINE LIFF 驗證會員 UID。</li><li>系統讀取 Google 日曆目前進行中的活動。</li><li>手機定位在活動地點範圍內才發放 K點。</li><li>同一活動同一會員只可領取一次。</li></ol></div>
+      <div class="card"><h2>發點判定流程</h2><ol><li>會員感應 NFC。</li><li>LINE LIFF 驗證會員 UID。</li><li>系統讀取內建行事曆目前進行中的活動。</li><li>手機定位在活動地點範圍內才發放 K點。</li><li>同一活動同一會員只可領取一次。</li></ol></div>
       <div class="card warn"><h2>備用固定 5 K點入口</h2><p>如果某場活動暫時不使用日曆定位，可寫入固定活動入口。</p><code>${escapeHtml(fixedUrl)}</code></div>
     </section>
   </main>
@@ -2645,7 +2686,7 @@ async function resolveCalendarRewardContext(env, body) {
   checked.sort((a, b) => a.distanceMeters - b.distanceMeters);
   const best = checked[0];
   if (!best || !Number.isFinite(best.distanceMeters)) {
-    throw httpError("目前活動沒有可判定的地址，請確認 Google 日曆地點欄位", 400);
+    throw httpError("目前活動沒有可判定的地址，請確認內建行事曆地點欄位", 400);
   }
   if (best.distanceMeters > radius) {
     throw httpError(`您目前距離活動地點約 ${Math.round(best.distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
@@ -2804,26 +2845,40 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
 }
 
 async function fetchRewardCalendarEvents(env) {
-  const calendarId = stringValue(env.REWARD_GOOGLE_CALENDAR_ID) || DEFAULT_REWARD_CALENDAR_ID;
-  const icsUrl = stringValue(env.REWARD_GOOGLE_CALENDAR_ICS_URL)
-    || `https://calendar.google.com/calendar/ical/${encodeURIComponent(calendarId)}/public/basic.ics`;
-  const response = await fetch(icsUrl, {
-    headers: { "Accept": "text/calendar,text/plain,*/*" },
-  });
-  if (!response.ok) throw httpError(`Google 日曆讀取失敗：${response.status}`, 502);
-  const text = await response.text();
-  return parseIcsEvents(text)
+  await ensureCalendarEventSchema(env);
+  const from = taipeiStartOfDay(Date.now()) - 86400000;
+  const rows = await env.DB.prepare(`
+    SELECT id, title, description, starts_at, ends_at, location
+    FROM calendar_events
+    WHERE starts_at >= ?
+    ORDER BY starts_at ASC
+    LIMIT 300
+  `).bind(from).all();
+  return (rows.results || [])
+    .map(calendarEventRowToRewardEvent)
     .filter((event) => event.startsAt && event.endsAt)
     .sort((a, b) => a.startsAt - b.startsAt);
 }
 
-async function importCalendarImageToGoogle(env, request) {
+function calendarEventRowToRewardEvent(row) {
+  const startsAt = numberOrZero(row && row.starts_at);
+  const endsAt = numberOrZero(row && row.ends_at) || (startsAt ? startsAt + 90 * 60 * 1000 : 0);
+  return {
+    uid: stringValue(row && row.id),
+    summary: stringValue(row && row.title),
+    description: stringValue(row && row.description),
+    location: stringValue(row && row.location),
+    startsAt,
+    endsAt,
+  };
+}
+
+async function importCalendarImageToD1(env, request) {
   const missing = [];
   if (!env.OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
-  if (!calendarWriteId(env)) missing.push("GOOGLE_CALENDAR_ID or REWARD_GOOGLE_CALENDAR_ID");
-  if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL) missing.push("GOOGLE_SERVICE_ACCOUNT_EMAIL");
-  if (!env.GOOGLE_PRIVATE_KEY) missing.push("GOOGLE_PRIVATE_KEY");
+  if (!env.DB) missing.push("DB");
   if (missing.length) throw httpError(`Missing required config: ${missing.join(", ")}`, 500);
+  await ensureCalendarEventSchema(env);
 
   const form = await request.formData();
   const file = form.get("image");
@@ -2844,22 +2899,32 @@ async function importCalendarImageToGoogle(env, request) {
     return { imported: 0, skipped: 0, events: [], message: "No timed calendar events were found in the image." };
   }
 
-  const accessToken = await getGoogleCalendarAccessToken(env);
-  const calendarId = calendarWriteId(env);
   const results = [];
   let imported = 0;
   let skipped = 0;
+  const now = Date.now();
   for (const event of normalized) {
     try {
-      const duplicate = await findGoogleCalendarDuplicate(accessToken, calendarId, event);
-      if (duplicate) {
-        skipped += 1;
-        results.push({ ...event, status: "skipped", reason: "duplicate" });
-        continue;
-      }
-      const inserted = await insertGoogleCalendarEvent(accessToken, calendarId, event);
+      const startsAt = calendarImportEpoch(event.date, event.startTime);
+      let endsAt = calendarImportEpoch(event.date, event.endTime);
+      if (!startsAt || !endsAt) throw new Error("invalid date/time");
+      if (endsAt <= startsAt) endsAt += 86400000;
+      const id = `cal_${event.sourceHash || shortHash(`${event.date}|${event.startTime}|${event.endTime}|${event.summary}|${event.location}`)}`;
+      const existing = await env.DB.prepare("SELECT id FROM calendar_events WHERE id = ?").bind(id).first();
+      await env.DB.prepare(`
+        INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, location, owner_user_id, visibility, created_at, updated_at)
+        VALUES (?, '*', ?, ?, ?, ?, ?, '', 'public', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          description = excluded.description,
+          starts_at = excluded.starts_at,
+          ends_at = excluded.ends_at,
+          location = excluded.location,
+          visibility = excluded.visibility,
+          updated_at = excluded.updated_at
+      `).bind(id, event.summary, event.description, startsAt, endsAt, event.location, now, now).run();
       imported += 1;
-      results.push({ ...event, status: "imported", googleEventId: inserted.id || "" });
+      results.push({ ...event, id, startsAt, endsAt, status: existing ? "updated" : "imported" });
     } catch (err) {
       skipped += 1;
       results.push({ ...event, status: "skipped", reason: err && err.message ? err.message : String(err) });
@@ -2868,6 +2933,13 @@ async function importCalendarImageToGoogle(env, request) {
   return { imported, skipped, events: results };
 }
 
+function calendarImportEpoch(date, clock) {
+  const isoDate = normalizeIsoDate(date);
+  const time = normalizeClockTime(clock);
+  if (!isoDate || !time) return 0;
+  const ms = Date.parse(`${isoDate}T${time}:00+08:00`);
+  return Number.isFinite(ms) ? ms : 0;
+}
 async function extractCalendarEventsFromImage(env, imageDataUrl, fileName) {
   const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
   const model = env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-5-mini";
@@ -3035,141 +3107,6 @@ function addMinutesToClock(clock, minutes) {
   return `${String(Math.floor(next / 60)).padStart(2, "0")}:${String(next % 60).padStart(2, "0")}`;
 }
 
-function addDaysToIsoDate(date, days) {
-  const match = stringValue(date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return date;
-  const utc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(days || 0));
-  const next = new Date(utc);
-  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
-}
-
-async function findGoogleCalendarDuplicate(accessToken, calendarId, event) {
-  const dateStart = `${event.date}T00:00:00+08:00`;
-  const dateEnd = `${addDaysToIsoDate(event.date, 1)}T00:00:00+08:00`;
-  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
-  url.searchParams.set("timeMin", dateStart);
-  url.searchParams.set("timeMax", dateEnd);
-  url.searchParams.set("singleEvents", "true");
-  url.searchParams.set("orderBy", "startTime");
-  const response = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw httpError(`Google calendar duplicate check failed: ${JSON.stringify(body)}`, 502);
-  const expectedStart = `${event.date}T${event.startTime}:00+08:00`;
-  const expectedSummary = normalizeDuplicateText(event.summary);
-  return (body.items || []).find((item) => {
-    const itemStart = stringValue(item && item.start && (item.start.dateTime || item.start.date));
-    const itemSummary = normalizeDuplicateText(item && item.summary);
-    const sameHash = stringValue(item && item.extendedProperties && item.extendedProperties.private && item.extendedProperties.private.klinkSourceHash) === event.sourceHash;
-    const sameStart = itemStart === expectedStart || itemStart.startsWith(`${event.date}T${event.startTime}`);
-    return sameHash || (sameStart && itemSummary === expectedSummary);
-  }) || null;
-}
-
-async function insertGoogleCalendarEvent(accessToken, calendarId, event) {
-  const payload = {
-    summary: event.summary,
-    location: event.location,
-    description: event.description,
-    start: { dateTime: `${event.date}T${event.startTime}:00+08:00`, timeZone: "Asia/Taipei" },
-    end: { dateTime: `${event.date}T${event.endTime}:00+08:00`, timeZone: "Asia/Taipei" },
-    extendedProperties: {
-      private: {
-        klinkSourceHash: event.sourceHash || "",
-        klinkLocationName: event.locationName || "",
-        klinkImportedAt: new Date().toISOString(),
-      },
-    },
-  };
-  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify(payload),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw httpError(`Google calendar insert failed: ${JSON.stringify(body)}`, 502);
-  return body;
-}
-
-function normalizeDuplicateText(value) {
-  return stringValue(value).replace(/\s+/g, "").trim().toLowerCase();
-}
-
-function calendarWriteId(env) {
-  return stringValue(env.GOOGLE_CALENDAR_ID || env.REWARD_GOOGLE_CALENDAR_ID || DEFAULT_REWARD_CALENDAR_ID);
-}
-
-async function getGoogleCalendarAccessToken(env) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const payload = {
-    iss: stringValue(env.GOOGLE_SERVICE_ACCOUNT_EMAIL),
-    scope: "https://www.googleapis.com/auth/calendar.events",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-  const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
-  const key = await importGooglePrivateKey(env.GOOGLE_PRIVATE_KEY);
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(signingInput));
-  const assertion = `${signingInput}.${base64UrlBytes(new Uint8Array(signature))}`;
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
-    }),
-  });
-  const tokenBody = await tokenResponse.json().catch(() => ({}));
-  if (!tokenResponse.ok || !tokenBody.access_token) {
-    throw httpError(`Google service account auth failed: ${JSON.stringify(tokenBody)}`, 502);
-  }
-  return tokenBody.access_token;
-}
-
-async function importGooglePrivateKey(privateKey) {
-  const pem = normalizeGooglePrivateKey(privateKey);
-  const match = pem.match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
-  const base64 = (match ? match[1] : pem).replace(/\s+/g, "");
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length % 4 !== 0) {
-    throw httpError("GOOGLE_PRIVATE_KEY format is invalid. Paste the service account private_key PEM value, or paste the full service account JSON into GOOGLE_PRIVATE_KEY.", 500);
-  }
-  let binary = "";
-  try {
-    binary = atob(base64);
-  } catch (_err) {
-    throw httpError("GOOGLE_PRIVATE_KEY base64 decode failed. Re-enter the service account private_key without extra quotes or copied UI labels.", 500);
-  }
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return crypto.subtle.importKey(
-    "pkcs8",
-    bytes.buffer,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-}
-
-function normalizeGooglePrivateKey(value) {
-  let raw = stringValue(value).trim();
-  if (!raw) throw httpError("GOOGLE_PRIVATE_KEY is empty", 500);
-  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
-    raw = raw.slice(1, -1).trim();
-  }
-  if (raw.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(raw);
-      return stringValue(parsed.private_key).replace(/\\n/g, "\n").replace(/\r/g, "").trim();
-    } catch (_err) {
-      throw httpError("GOOGLE_PRIVATE_KEY contains JSON but it cannot be parsed. Paste valid service account JSON or only the private_key PEM value.", 500);
-    }
-  }
-  return raw.replace(/\\n/g, "\n").replace(/\r/g, "").trim();
-}
-
 function parseCalendarJsonPayload(text) {
   const objects = extractBalancedJsonObjects(text).map((chunk) => JSON.parse(chunk));
   if (!objects.length) return parseStrictJsonObject(text);
@@ -3226,16 +3163,6 @@ function extractBalancedJsonObjects(text) {
   return chunks;
 }
 
-function base64UrlJson(value) {
-  return base64UrlBytes(new TextEncoder().encode(JSON.stringify(value)));
-}
-
-function base64UrlBytes(bytes) {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let output = "";
@@ -3244,88 +3171,6 @@ function arrayBufferToBase64(buffer) {
     output += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(output);
-}
-
-function parseIcsEvents(text) {
-  const lines = unfoldIcsLines(text);
-  const events = [];
-  let current = null;
-  for (const line of lines) {
-    if (line === "BEGIN:VEVENT") {
-      current = {};
-      continue;
-    }
-    if (line === "END:VEVENT") {
-      if (current) {
-        const startsAt = current.DTSTART ? parseIcsDate(current.DTSTART.value, current.DTSTART.params) : 0;
-        const endsAt = current.DTEND ? parseIcsDate(current.DTEND.value, current.DTEND.params) : startsAt + 2 * 60 * 60 * 1000;
-        events.push({
-          uid: unescapeIcs(current.UID && current.UID.value),
-          summary: unescapeIcs(current.SUMMARY && current.SUMMARY.value) || "未命名活動",
-          description: unescapeIcs(current.DESCRIPTION && current.DESCRIPTION.value),
-          location: unescapeIcs(current.LOCATION && current.LOCATION.value),
-          startsAt,
-          endsAt,
-        });
-      }
-      current = null;
-      continue;
-    }
-    if (!current) continue;
-    const parsed = parseIcsProperty(line);
-    if (parsed && !current[parsed.name]) current[parsed.name] = parsed;
-  }
-  return events;
-}
-
-function unfoldIcsLines(text) {
-  const raw = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const lines = [];
-  for (const line of raw) {
-    if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length) {
-      lines[lines.length - 1] += line.slice(1);
-    } else if (line) {
-      lines.push(line);
-    }
-  }
-  return lines;
-}
-
-function parseIcsProperty(line) {
-  const index = line.indexOf(":");
-  if (index < 0) return null;
-  const left = line.slice(0, index);
-  const value = line.slice(index + 1);
-  const parts = left.split(";");
-  const name = parts.shift().toUpperCase();
-  const params = {};
-  for (const part of parts) {
-    const eq = part.indexOf("=");
-    if (eq > 0) params[part.slice(0, eq).toUpperCase()] = part.slice(eq + 1);
-  }
-  return { name, params, value };
-}
-
-function parseIcsDate(value, params = {}) {
-  const text = stringValue(value);
-  if (/^\d{8}$/.test(text)) {
-    return Date.UTC(Number(text.slice(0, 4)), Number(text.slice(4, 6)) - 1, Number(text.slice(6, 8))) - 8 * 60 * 60 * 1000;
-  }
-  const match = text.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
-  if (!match) return Date.parse(text) || 0;
-  const [, y, mo, d, h, mi, s, z] = match;
-  const utc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s));
-  if (z === "Z") return utc;
-  const tz = stringValue(params.TZID);
-  return utc - (tz.includes("Taipei") || !tz ? 8 * 60 * 60 * 1000 : 0);
-}
-
-function unescapeIcs(value) {
-  return stringValue(value)
-    .replace(/\\n/gi, "\n")
-    .replace(/\\,/g, ",")
-    .replace(/\\;/g, ";")
-    .replace(/\\\\/g, "\\");
 }
 
 async function geocodeRewardLocation(env, location) {
