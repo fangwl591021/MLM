@@ -225,7 +225,7 @@
       if (!liff.isLoggedIn()) {
         setStatus("登入中", false);
         setAuthGate(true);
-        liff.login({ redirectUri: location.href });
+        liff.login();
         return;
       }
       const idToken = liff.getIDToken();
@@ -262,7 +262,7 @@
       try {
         if (window.liff) {
           await liff.init({ liffId: auth.liffId });
-          liff.login({ redirectUri: location.href });
+          liff.login();
           return;
         }
       } catch (_err) {}
@@ -293,7 +293,7 @@
       try {
         if (window.liff) {
           if (liff.isLoggedIn()) liff.logout();
-          liff.login({ redirectUri: location.href });
+          liff.login();
           return true;
         }
       } catch (_err) {}
