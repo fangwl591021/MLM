@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "console-liff-plain-url-20260621";
+const FRONTEND_BUILD_ID = "console-session-auth-20260621";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -127,12 +127,16 @@ export default {
         const body = await safeJson(request);
         const result = await verifyLineLoginIdToken(env, stringValue(body.idToken || body.id_token));
         const access = result.ok ? await resolveLineDashboardAccess(env, result.profile) : { allowed: false, admin: false, floors: [] };
-        return jsonResponse({
+        const response = jsonResponse({
           status: result.ok ? "success" : "error",
           profile: result.profile || null,
           access,
           message: result.ok ? "" : (result.message || "LINE Login 驗證失敗"),
         }, result.ok ? 200 : 401, corsHeaders);
+        if (result.ok && access.admin) {
+          response.headers.append("Set-Cookie", await buildConsoleSessionCookie(env, result.profile));
+        }
+        return response;
       }
 
       if (url.pathname === "/r/nfc" && (request.method === "GET" || request.method === "HEAD")) {
@@ -5988,6 +5992,8 @@ async function assertDashboardAuth(request, env) {
   if (tokens.includes(bearerToken) || tokens.includes(directToken)) {
     return { ok: true, token: bearerToken || directToken, adminToken: isAdminRequest(request, env), method: "token" };
   }
+  const session = await verifyConsoleSession(request, env);
+  if (session.ok) return { ok: true, method: "session", ...session.profile };
   const line = await verifyLineLoginRequest(request, env);
   if (line.ok) return { ok: true, method: "line", ...line.profile };
   if (!tokens.length && !dashboardLiffId(env)) throw httpError("DASHBOARD_API_TOKEN, ADMIN_TOKEN or DASHBOARD_LIFF_ID is not configured", 500);
@@ -6026,6 +6032,76 @@ async function verifyLineLoginRequest(request, env) {
   const idToken = stringValue(request.headers.get("X-Line-Id-Token")).trim();
   if (!idToken) return { ok: false, message: "LINE Login is required" };
   return verifyLineLoginIdToken(env, idToken);
+}
+
+async function buildConsoleSessionCookie(env, profile) {
+  const maxAge = 7 * 24 * 60 * 60;
+  const payload = {
+    uid: stringValue(profile && profile.userId).trim(),
+    name: stringValue(profile && profile.displayName).trim(),
+    picture: stringValue(profile && profile.pictureUrl).trim(),
+    exp: Math.floor(Date.now() / 1000) + maxAge,
+  };
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = await signConsoleSession(env, encodedPayload);
+  return `kl_console_session=${encodedPayload}.${signature}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`;
+}
+
+async function verifyConsoleSession(request, env) {
+  const value = readCookie(request, "kl_console_session");
+  if (!value || !value.includes(".")) return { ok: false, message: "Console session is required" };
+  const parts = value.split(".");
+  if (parts.length !== 2) return { ok: false, message: "Console session format is invalid" };
+  const expected = await signConsoleSession(env, parts[0]);
+  if (!constantTimeEqual(expected, parts[1])) return { ok: false, message: "Console session signature is invalid" };
+  let payload = null;
+  try { payload = JSON.parse(base64UrlDecode(parts[0])); } catch (_err) { payload = null; }
+  if (!payload || !payload.uid) return { ok: false, message: "Console session payload is invalid" };
+  if (Number(payload.exp || 0) <= Math.floor(Date.now() / 1000)) return { ok: false, message: "Console session expired" };
+  return {
+    ok: true,
+    profile: {
+      userId: stringValue(payload.uid),
+      displayName: stringValue(payload.name),
+      pictureUrl: stringValue(payload.picture),
+    },
+  };
+}
+
+async function signConsoleSession(env, encodedPayload) {
+  const secret = stringValue(env.ADMIN_TOKEN || env.DASHBOARD_API_TOKEN || env.OPENAI_API_KEY || "klink-console-session").trim();
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(encodedPayload));
+  return base64UrlEncodeBytes(new Uint8Array(digest));
+}
+
+function readCookie(request, name) {
+  const cookie = stringValue(request.headers.get("Cookie"));
+  const prefix = `${name}=`;
+  for (const part of cookie.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length);
+  }
+  return "";
+}
+
+function base64UrlEncode(value) {
+  return base64UrlEncodeBytes(new TextEncoder().encode(value));
+}
+
+function base64UrlDecode(value) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function base64UrlEncodeBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 async function verifyLineLoginIdToken(env, idToken) {

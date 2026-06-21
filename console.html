@@ -172,10 +172,11 @@
 
     async function boot() {
       try {
+        setStatus("同步中", false);
+        if (await sync({ skipLogin: true, silentAuthError: true })) return;
         setStatus("登入中", false);
         await initLineLogin();
-        if (auth.idToken || apiToken.value.trim()) await sync();
-        else return redirectToDashboardLiff();
+        await sync({ skipLogin: true });
       } catch (err) {
         if (handleAuthExpired(err)) return;
         setStatus("登入失敗", true);
@@ -183,7 +184,6 @@
         setAuthGate(true);
       }
     }
-
     function unlockSettings() {
       if (settingsBox.classList.contains("open")) {
         settingsBox.classList.remove("open");
@@ -197,12 +197,12 @@
       }
     }
 
-    async function sync() {
-      if (!auth.idToken && !apiToken.value.trim()) {
+    async function sync(options = {}) {
+      if (!options.skipLogin && !auth.idToken && !apiToken.value.trim()) {
         setStatus("請登入", true);
         setAuthGate(true);
         await initLineLogin();
-        if (!auth.idToken && !apiToken.value.trim()) return;
+        if (!auth.idToken && !apiToken.value.trim()) return false;
       }
       localStorage.setItem("line_ai_api_base", cleanBase(apiBase.value));
       localStorage.setItem("line_ai_api_token", apiToken.value.trim());
@@ -211,21 +211,26 @@
       try {
         const res = await fetch(`${cleanBase(apiBase.value)}/api/console/summary`, {
           headers: authHeaders(),
+          credentials: "include",
         });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         render(json.data);
         setStatus("已同步", false);
+        setAuthGate(false);
+        return true;
       } catch (err) {
-        if (handleAuthExpired(err)) return;
+        const message = err.message || String(err);
+        if (options.silentAuthError && /LINE Login is required|Unauthorized|權限|admin|idToken|session/i.test(message)) return false;
+        if (handleAuthExpired(err)) return false;
         setStatus("同步失敗", true);
-        showError(err.message || String(err));
+        showError(message);
+        return false;
       }
     }
-
     async function initLineLogin() {
       const base = cleanBase(apiBase.value);
-      const configRes = await fetch(`${base}/api/login-config`);
+      const configRes = await fetch(`${base}/api/login-config`, { credentials: "include" });
       const config = await configRes.json().catch(() => ({}));
       const liffId = config && config.data ? String(config.data.liffId || "") : "";
       auth.liffId = liffId;
@@ -246,6 +251,7 @@
       auth.pictureUrl = profile.pictureUrl || "";
       const loginRes = await fetch(`${base}/api/auth/line-login`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idToken }),
       });
@@ -262,7 +268,7 @@
     async function startLineLogin() {
       const base = cleanBase(apiBase.value);
       if (!auth.liffId) {
-        const configRes = await fetch(`${base}/api/login-config`);
+        const configRes = await fetch(`${base}/api/login-config`, { credentials: "include" });
         const config = await configRes.json().catch(() => ({}));
         auth.liffId = config && config.data ? String(config.data.liffId || "") : "";
       }
@@ -406,6 +412,7 @@
         form.append("fileName", prepared.fileName);
         const res = await fetch(`${cleanBase(apiBase.value)}/api/calendar/import-image`, {
           method: "POST",
+          credentials: "include",
           headers: authHeaders(),
           body: form,
         });
