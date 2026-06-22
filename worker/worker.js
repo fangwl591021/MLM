@@ -3599,7 +3599,7 @@ async function listPointBalances(env, url) {
 }
 
 function pointBalanceRowsHaveData(rows) {
-  return (Array.isArray(rows) ? rows : []).some((row) => Number(row && row.live_rows || 0) > 0 || Number(row && row.balance || 0) !== 0);
+  return (Array.isArray(rows) ? rows : []).some((row) => Boolean(row && row.local_account) || Number(row && row.live_rows || 0) > 0 || Number(row && row.balance || 0) !== 0);
 }
 async function livePointBalancesForUser(env, lineUserId) {
   const balances = [];
@@ -3629,6 +3629,22 @@ async function livePointBalancesForSourceUsers(env, channelLineUserIds, pointTyp
 
 async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
   const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 20);
+  const liveRows = Array.isArray(snapshot.rows) ? snapshot.rows.length : 0;
+  if (liveRows > 0 || Number(snapshot.balance || 0) !== 0) {
+    return decoratePointBalances([{
+      account_key: `${channelKey}:${lineUserId}:${pointType}`,
+      master_member_ref: "",
+      channel_key: channelKey,
+      line_user_id: lineUserId,
+      point_type: pointType,
+      balance: snapshot.balance,
+      updated_at: "mother-site-live",
+      query_shop_id: snapshot.shop_id,
+      live_rows: liveRows,
+    }])[0];
+  }
+  const local = await localPointBalanceRow(env, channelKey, lineUserId, pointType, snapshot.shop_id);
+  if (local) return local;
   return decoratePointBalances([{
     account_key: `${channelKey}:${lineUserId}:${pointType}`,
     master_member_ref: "",
@@ -3636,9 +3652,33 @@ async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
     line_user_id: lineUserId,
     point_type: pointType,
     balance: snapshot.balance,
-    updated_at: "mother-site-live",
+    updated_at: "mother-site-live-empty",
     query_shop_id: snapshot.shop_id,
-    live_rows: Array.isArray(snapshot.rows) ? snapshot.rows.length : 0,
+    live_rows: liveRows,
+  }])[0];
+}
+
+async function localPointBalanceRow(env, channelKey, lineUserId, pointType, queryShopId = "") {
+  if (!env.DB) return null;
+  const row = await env.DB.prepare(`
+    SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+    FROM point_accounts
+    WHERE channel_key = ? AND line_user_id = ? AND point_type = ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(channelKey, lineUserId, pointType).first();
+  if (!row) return null;
+  return decoratePointBalances([{
+    account_key: stringValue(row.account_key),
+    master_member_ref: stringValue(row.master_member_ref),
+    channel_key: stringValue(row.channel_key),
+    line_user_id: stringValue(row.line_user_id),
+    point_type: stringValue(row.point_type),
+    balance: Number(row.balance || 0),
+    updated_at: row.updated_at || "local-cache",
+    query_shop_id: queryShopId,
+    live_rows: 0,
+    local_account: true,
   }])[0];
 }
 
