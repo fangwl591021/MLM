@@ -19,6 +19,11 @@ const FLOOR_SUPER_ADMIN = "admin_all";
 const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN]);
 const ACCESS_LIST_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SUPER_ADMIN]);
 const BUILTIN_ADMIN_UIDS = new Set(["U1b5150879fb688cae4b52e80a4b836c6"]);
+const PASSWORD_LOGIN_USERS = {
+  admin: { password: "@1234", name: "系統管理員", admin: true, floors: [FLOOR_MAIN, FLOOR_ADMIN], home: "/console" },
+  adservice: { password: "#1234", name: "行政客服", admin: false, floors: [FLOOR_ADMIN], home: "/dashboard?floor=admin" },
+  pdservice: { password: "$1234", name: "產品客服", admin: false, floors: [FLOOR_MAIN], home: "/dashboard?floor=main" },
+};
 const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
@@ -95,6 +100,10 @@ export default {
         }, 200, corsHeaders);
       }
 
+      if ((url.pathname === "/login" || url.pathname === "/login.html") && request.method === "GET") {
+        return passwordLoginHtml(corsHeaders);
+      }
+
       if (url.pathname === "/api/login-config" && request.method === "GET") {
         const liffId = dashboardLiffId(env);
         return jsonResponse({
@@ -127,6 +136,26 @@ export default {
         return serveFrontendAsset(url.pathname.replace(/^\/+/, ""), corsHeaders);
       }
 
+      if (url.pathname === "/api/auth/password-login" && request.method === "POST") {
+        const body = await safeJson(request);
+        const result = verifyPasswordLogin(body);
+        const response = jsonResponse({
+          status: result.ok ? "success" : "error",
+          profile: result.profile || null,
+          access: result.access || { allowed: false, admin: false, floors: [] },
+          home: result.home || "/login",
+          message: result.ok ? "" : (result.message || "帳號或密碼錯誤"),
+        }, result.ok ? 200 : 401, corsHeaders);
+        if (result.ok) response.headers.append("Set-Cookie", await buildConsoleSessionCookie(env, result.profile, result.access));
+        return response;
+      }
+
+      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+        const response = jsonResponse({ status: "success" }, 200, corsHeaders);
+        response.headers.append("Set-Cookie", "kl_console_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
+        return response;
+      }
+
       if (url.pathname === "/api/auth/line-login" && request.method === "POST") {
         const body = await safeJson(request);
         const result = await verifyLineLoginIdToken(env, stringValue(body.idToken || body.id_token));
@@ -138,7 +167,7 @@ export default {
           message: result.ok ? "" : (result.message || "LINE Login 驗證失敗"),
         }, result.ok ? 200 : 401, corsHeaders);
         if (result.ok && access.admin) {
-          response.headers.append("Set-Cookie", await buildConsoleSessionCookie(env, result.profile));
+          response.headers.append("Set-Cookie", await buildConsoleSessionCookie(env, result.profile, access));
         }
         return response;
       }
@@ -965,10 +994,12 @@ function requiresFloorAccess(pathname) {
 
 async function assertFloorAccess(request, env, floor) {
   const auth = await assertDashboardAuth(request, env);
-  if (auth.adminToken) return;
+  const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
+  if (auth.adminToken || auth.admin) return;
+  const sessionFloors = Array.isArray(auth.floors) ? auth.floors : [];
+  if (sessionFloors.includes(FLOOR_SUPER_ADMIN) || sessionFloors.includes(targetFloor)) return;
   if (!env.DB) return;
   await ensureFloorAccessSchema(env);
-  const targetFloor = FLOOR_IDS.has(floor) ? floor : FLOOR_MAIN;
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM floor_access_whitelist WHERE floor_id = ? AND active = 1").bind(targetFloor).first();
   if (Number(countRow && countRow.count || 0) <= 0) return;
   const operator = requestOperatorIdentity(request, auth);
@@ -6197,6 +6228,83 @@ function buildCorsHeaders(request, env) {
   };
 }
 
+function verifyPasswordLogin(body) {
+  const username = stringValue(body && (body.username || body.account || body.user)).trim();
+  const password = stringValue(body && body.password);
+  const user = PASSWORD_LOGIN_USERS[username];
+  if (!user || password !== user.password) return { ok: false, message: "帳號或密碼錯誤" };
+  const floors = Array.isArray(user.floors) ? user.floors.slice() : [];
+  const access = { allowed: true, admin: Boolean(user.admin), floors };
+  return {
+    ok: true,
+    access,
+    home: user.home || "/console",
+    profile: {
+      userId: `password:${username}`,
+      displayName: user.name || username,
+      pictureUrl: "",
+    },
+  };
+}
+
+function passwordLoginHtml(corsHeaders) {
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KLINK 客服系統登入</title>
+  <style>
+    :root{--line:#06c755;--ink:#0f172a;--muted:#64748b;--border:#d8e0eb;--bad:#b42318}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f7fb;color:var(--ink);font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px}
+    main{width:min(430px,100%);background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:0 24px 70px rgba(15,23,42,.12);padding:28px}
+    .brand{display:flex;align-items:center;gap:14px;margin-bottom:22px}.logo{width:52px;height:52px;border-radius:16px;background:var(--line);color:#fff;display:grid;place-items:center;font-weight:900;font-size:20px}h1{font-size:24px;margin:0}p{margin:5px 0 0;color:var(--muted);line-height:1.5}.field{display:grid;gap:7px;margin-top:14px;font-weight:800}.field input{height:46px;border:1px solid var(--border);border-radius:12px;padding:0 12px;font:inherit}.field input:focus{outline:0;border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.14)}button{width:100%;height:48px;margin-top:18px;border:0;border-radius:12px;background:var(--line);color:#fff;font-weight:900;font-size:16px;cursor:pointer}button:disabled{opacity:.6;cursor:not-allowed}.msg{min-height:20px;margin-top:12px;color:var(--bad);font-weight:800}.links{display:flex;justify-content:space-between;gap:10px;margin-top:16px}.links a{color:#2563eb;text-decoration:none;font-weight:800;font-size:13px}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><div class="logo">KL</div><div><h1>KLINK 客服系統</h1><p>請輸入帳號密碼登入</p></div></div>
+    <form id="form">
+      <label class="field">帳號<input id="username" name="username" autocomplete="username" required /></label>
+      <label class="field">密碼<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
+      <button id="submit" type="submit">登入</button>
+      <div id="message" class="msg"></div>
+    </form>
+    <div class="links"><a href="/console">主控台</a><a href="/dashboard?floor=main">產品客服</a><a href="/dashboard?floor=admin">行政客服</a></div>
+  </main>
+  <script>
+    const form = document.getElementById("form");
+    const button = document.getElementById("submit");
+    const message = document.getElementById("message");
+    function nextPath(home){
+      const params = new URLSearchParams(location.search);
+      const next = params.get("next") || home || "/console";
+      if (!next.startsWith("/") || next.startsWith("//")) return home || "/console";
+      return next;
+    }
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "";
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/auth/password-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: form.username.value.trim(), password: form.password.value })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.status !== "success") throw new Error(data.message || "登入失敗");
+        location.replace(nextPath(data.home));
+      } catch (error) {
+        message.textContent = error.message || String(error);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>`, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
+}
 async function assertDashboardAuth(request, env) {
   const tokens = [env.DASHBOARD_API_TOKEN, env.ADMIN_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
   const auth = String(request.headers.get("Authorization") || "").trim();
@@ -6219,7 +6327,7 @@ async function assertPointAdminAuth(request, env) {
 
 async function assertAccessManager(request, env) {
   const auth = await assertDashboardAuth(request, env);
-  if (auth.adminToken) return auth;
+  if (auth.adminToken || auth.admin) return auth;
   if (!env.DB) throw httpError("DB is not configured", 500);
   await ensureFloorAccessSchema(env);
   const operator = requestOperatorIdentity(request, auth);
@@ -6247,12 +6355,14 @@ async function verifyLineLoginRequest(request, env) {
   return verifyLineLoginIdToken(env, idToken);
 }
 
-async function buildConsoleSessionCookie(env, profile) {
+async function buildConsoleSessionCookie(env, profile, access = null) {
   const maxAge = 7 * 24 * 60 * 60;
   const payload = {
     uid: stringValue(profile && profile.userId).trim(),
     name: stringValue(profile && profile.displayName).trim(),
     picture: stringValue(profile && profile.pictureUrl).trim(),
+    admin: Boolean(access && access.admin),
+    floors: Array.isArray(access && access.floors) ? access.floors.filter((floor) => ACCESS_LIST_IDS.has(floor)) : [],
     exp: Math.floor(Date.now() / 1000) + maxAge,
   };
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
@@ -6277,6 +6387,8 @@ async function verifyConsoleSession(request, env) {
       userId: stringValue(payload.uid),
       displayName: stringValue(payload.name),
       pictureUrl: stringValue(payload.picture),
+      admin: Boolean(payload.admin),
+      floors: Array.isArray(payload.floors) ? payload.floors.filter((floor) => ACCESS_LIST_IDS.has(floor)) : [],
     },
   };
 }
