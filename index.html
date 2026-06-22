@@ -733,7 +733,7 @@
         const last = group.last || {};
         const hot = group.messages.some((row) => row["重要"] === "是");
         const active = group.userId === state.activeUserId ? " active" : "";
-        const avatar = group.avatarUrl ? `<img src="${esc(group.avatarUrl)}" alt="">` : esc(initialOf(group.displayName));
+        const avatar = avatarImage(group.avatarUrl, initialOf(group.displayName));
         const riskText = group.risk === "high" || hot ? "高風險" : "低風險";
         const profileLabel = !group.hasRealName ? (group.profileStatus ? `LINE ${group.profileStatus}` : "名稱待同步") : "";
         return `<button class="item${active}" data-id="${esc(group.userId)}"><div class="avatar ${group.hasRealName ? "named" : ""}">${avatar}</div><div><div class="line"><span class="name">${esc(group.displayName)}</span><span class="time">${fmt(last["時間"])}</span></div><div class="uid">${esc(group.userId)}</div><div class="preview">${esc(last["內容"] || "")}</div><div class="tags"><span class="${statusClass(group.status)}">${esc(group.status)}</span><span class="label risk ${group.risk === "high" || hot ? "high" : "low"}">${riskText}</span><span class="label countBadge">${group.messages.length} 則</span><span class="label pointLabel" data-point-id="${esc(group.userId)}">K點</span>${profileLabel ? `<span class="label nameWait">${esc(profileLabel)}</span>` : ""}${group.tags.slice(0, 2).map((t) => `<span class="label">${esc(t)}</span>`).join("")}${hot ? '<span class="label hot">重要</span>' : ""}</div></div></button>`;
@@ -762,7 +762,7 @@
       els.activeTitle.textContent = group.displayName;
       els.activeSubtitle.textContent = `${FLOORS[state.floor] || "客服"} · 共 ${group.messages.length} 則訊息 · 用戶ID ${group.userId}`;
       els.activeAvatar.className = `activeAvatar ${group.hasRealName ? "named" : ""}`;
-      els.activeAvatar.innerHTML = group.avatarUrl ? `<img src="${esc(group.avatarUrl)}" alt="">` : esc(initialOf(group.displayName));
+      els.activeAvatar.innerHTML = avatarImage(group.avatarUrl, initialOf(group.displayName));
       els.pendingButton.classList.toggle("active", group.status === "待處理" || group.status === "待回覆");
       els.doneButton.classList.toggle("active", group.status === "處理完畢" || group.status === "已回覆");
       els.manualBar.classList.toggle("show", !isDoneStatus(group.status));
@@ -926,7 +926,7 @@
           const active = alt.line_user_id === currentPointUid || alt.line_user_id === state.pointUserId;
           const match = alt.picture_match ? "頭像相符" : "同名";
           const balance = alt.balance === null || alt.balance === undefined ? "讀取失敗" : `${formatPoint(alt.balance)} K點`;
-          const avatar = alt.picture_url ? `<img src="${esc(alt.picture_url)}" alt="">` : `<img alt="">`;
+          const avatar = avatarImage(alt.picture_url, initialOf(alt.display_name || "會員"));
           return `<button type="button" class="pointAlt ${active ? "active" : ""}" data-point-alt="${index}">${avatar}<div class="pointAltText"><strong>${esc(alt.display_name || "未命名")} · ${esc(balance)}</strong><span>${esc(alt.source_label || alt.channel_key)} · ${esc(shortUid(alt.line_user_id))}</span><small>${esc(match)}${active ? " · 目前" : " · 點選綁定"}</small></div></button>`;
         }).join("")}</div></div>`;
       }
@@ -1207,6 +1207,12 @@
     function nameOf(row, fallback) { const value = row && (row["用戶名稱"] || row.displayName || row.userName || row["姓名"]); return String(value || fallback || "").trim(); }
     function setInputUnlessFocused(input, value) { if (document.activeElement !== input) input.value = value || ""; }
     function initialOf(name) { return String(name || "U").trim().charAt(0).toUpperCase() || "U"; }
+    function avatarImage(url, fallback) {
+      const safeFallback = esc(fallback || "U");
+      const src = String(url || "").trim();
+      if (!src) return safeFallback;
+      return `<img src="${esc(src)}" alt="" data-fallback="${safeFallback}" onerror="this.replaceWith(document.createTextNode(this.dataset.fallback||'U'))">`;
+    }
     function insertText(text) {
       const start = els.replyText.selectionStart || 0, end = els.replyText.selectionEnd || 0;
       els.replyText.value = els.replyText.value.slice(0, start) + text + els.replyText.value.slice(end);
