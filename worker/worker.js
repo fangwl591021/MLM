@@ -115,7 +115,7 @@ export default {
         return serveFrontendHtml("index.html", corsHeaders);
       }
 
-      if (url.pathname === "/calendar" && request.method === "GET") {
+      if (url.pathname === "/calendar" && (request.method === "GET" || request.method === "HEAD")) {
         return Response.redirect(`${url.origin}/console#calendarPanel`, 302);
       }
 
