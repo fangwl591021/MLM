@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/3e5a8887d81720056c3ccff1665c1975a22b68f0";
-const FRONTEND_BUILD_ID = "calendar-simple-time-20260622-2";
+const FRONTEND_BUILD_ID = "calendar-timeonly-registration-20260622-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -897,9 +897,10 @@ async function saveCalendarEvent(env, body) {
   let endsAt = numberOrZero(body.endsAt || body.ends_at);
   if (!startsAt || !endsAt) throw httpError("活動開始與結束時間必填", 400);
   if (endsAt <= startsAt) throw httpError("活動結束時間必須晚於開始時間", 400);
-  const checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at) || startsAt;
-  const checkinEndsAt = numberOrZero(body.checkinEndsAt || body.checkin_ends_at) || endsAt;
-  if (checkinEndsAt <= checkinStartsAt) throw httpError("報到結束時間必須晚於報到開始時間", 400);
+  const checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at);
+  const checkinEndsAt = numberOrZero(body.checkinEndsAt || body.checkin_ends_at);
+  if (!checkinStartsAt || !checkinEndsAt) throw httpError("報名開始與結束時間必填", 400);
+  if (checkinEndsAt <= checkinStartsAt) throw httpError("報名結束時間必須晚於報名開始時間", 400);
   const id = normalizeCalendarEventId(body.id) || `cal_manual_${shortHash(`${title}|${startsAt}|${stringValue(body.location)}`)}`;
   const now = Date.now();
   await env.DB.prepare(`
@@ -3424,8 +3425,8 @@ function rewardCheckinEarlyMinutes(env) {
 }
 
 function calendarEventCheckinWindow(_env, event) {
-  const startsAt = Number(event && event.startsAt || 0);
-  const endsAt = Number(event && event.endsAt || 0);
+  const startsAt = Number(event && event.checkinStartsAt || 0) || Number(event && event.startsAt || 0);
+  const endsAt = Number(event && event.checkinEndsAt || 0) || Number(event && event.endsAt || 0);
   return { startsAt, endsAt };
 }
 
