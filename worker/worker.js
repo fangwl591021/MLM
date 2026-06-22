@@ -30,8 +30,8 @@ const POINT_SOURCE_META = {
 };
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
-const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/7f03b7c280601c9a87a7f50469c8af1d164b8d7e";
-const FRONTEND_BUILD_ID = "calendar-editor-checkin-window-20260622-1";
+const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/78aff30d5fd53f11fd405032b0079336fe85949b";
+const FRONTEND_BUILD_ID = "calendar-datetime-parse-20260622-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
