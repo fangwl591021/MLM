@@ -117,6 +117,12 @@ export default {
       }
 
       if ((url.pathname === "/console" || url.pathname === "/console.html") && request.method === "GET") {
+        const session = await verifyConsoleSession(request, env);
+        if (session.ok && !session.profile.admin) {
+          const floors = Array.isArray(session.profile.floors) ? session.profile.floors : [];
+          const floor = floors.includes(FLOOR_ADMIN) ? FLOOR_ADMIN : FLOOR_MAIN;
+          return Response.redirect(`${url.origin}/dashboard?floor=${encodeURIComponent(floor)}`, 302);
+        }
         return serveFrontendHtml("console.html", corsHeaders);
       }
 
