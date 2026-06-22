@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/7ca58ddbd6351c81b7c74a8991790e52ae13c2b1";
-const FRONTEND_BUILD_ID = "single-smart-checkin-qr-20260622-3";
+const FRONTEND_BUILD_ID = "calendar-editor-checkin-window-20260622-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -195,6 +195,24 @@ export default {
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/calendar/events" && request.method === "GET") {
+        await assertAccessManager(request, env);
+        const events = await listCalendarEvents(env, url);
+        return jsonResponse({ status: "success", events }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/calendar/events" && request.method === "POST") {
+        await assertAccessManager(request, env);
+        const body = await safeJson(request);
+        const event = await saveCalendarEvent(env, body);
+        return jsonResponse({ status: "success", event }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/calendar/events" && request.method === "DELETE") {
+        await assertAccessManager(request, env);
+        const deleted = await deleteCalendarEvent(env, url.searchParams.get("id"));
+        return jsonResponse({ status: "success", deleted }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/reward/config" && request.method === "GET") {
         const campaign = normalizeCampaign(url.searchParams.get("campaign") || "smart_202605");
         return jsonResponse({
@@ -590,7 +608,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -820,6 +838,8 @@ async function ensureCalendarEventSchema(env) {
       updated_at INTEGER NOT NULL
     )
   `).run();
+  await ensureColumn(env, "calendar_events", "checkin_starts_at", "INTEGER");
+  await ensureColumn(env, "calendar_events", "checkin_ends_at", "INTEGER");
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_calendar_events_floor_starts ON calendar_events(floor_id, starts_at)").run();
 }
 
@@ -827,7 +847,7 @@ async function fetchUpcomingCalendarEvents(env, fromMs = Date.now(), limit = 50)
   await ensureCalendarEventSchema(env);
   const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
   const rows = await env.DB.prepare(`
-    SELECT id, title, description, starts_at, ends_at, location, visibility
+    SELECT id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, visibility
     FROM calendar_events
     WHERE starts_at >= ?
     ORDER BY starts_at ASC
@@ -839,9 +859,96 @@ async function fetchUpcomingCalendarEvents(env, fromMs = Date.now(), limit = 50)
     description: stringValue(row.description),
     startsAt: numberOrZero(row.starts_at),
     endsAt: numberOrZero(row.ends_at),
+    checkinStartsAt: numberOrZero(row.checkin_starts_at),
+    checkinEndsAt: numberOrZero(row.checkin_ends_at),
     location: stringValue(row.location),
     visibility: stringValue(row.visibility || "internal"),
   }));
+}
+
+async function ensureColumn(env, tableName, columnName, definition) {
+  try {
+    await env.DB.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+  } catch (err) {
+    const message = String(err && err.message || err).toLowerCase();
+    if (!message.includes("duplicate column") && !message.includes("already exists")) throw err;
+  }
+}
+
+async function listCalendarEvents(env, url) {
+  await ensureCalendarEventSchema(env);
+  const from = Number(url.searchParams.get("from")) || taipeiStartOfDay(Date.now()) - 30 * 86400000;
+  const limit = Math.max(1, Math.min(300, Number(url.searchParams.get("limit")) || 200));
+  const rows = await env.DB.prepare(`
+    SELECT id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, visibility, updated_at
+    FROM calendar_events
+    WHERE starts_at >= ?
+    ORDER BY starts_at ASC
+    LIMIT ?
+  `).bind(from, limit).all();
+  return (rows.results || []).map(calendarEventRowToConsoleEvent);
+}
+
+async function saveCalendarEvent(env, body) {
+  await ensureCalendarEventSchema(env);
+  const title = stringValue(body.title || body.summary).trim();
+  if (!title) throw httpError("活動名稱必填", 400);
+  const startsAt = numberOrZero(body.startsAt || body.starts_at);
+  let endsAt = numberOrZero(body.endsAt || body.ends_at);
+  if (!startsAt || !endsAt) throw httpError("活動開始與結束時間必填", 400);
+  if (endsAt <= startsAt) throw httpError("活動結束時間必須晚於開始時間", 400);
+  const checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at) || Math.max(0, startsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000);
+  const checkinEndsAt = numberOrZero(body.checkinEndsAt || body.checkin_ends_at) || endsAt;
+  if (checkinEndsAt <= checkinStartsAt) throw httpError("報到結束時間必須晚於報到開始時間", 400);
+  const id = normalizeCalendarEventId(body.id) || `cal_manual_${shortHash(`${title}|${startsAt}|${stringValue(body.location)}`)}`;
+  const now = Date.now();
+  await env.DB.prepare(`
+    INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, owner_user_id, visibility, created_at, updated_at)
+    VALUES (?, '*', ?, ?, ?, ?, ?, ?, ?, '', 'public', ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      description = excluded.description,
+      starts_at = excluded.starts_at,
+      ends_at = excluded.ends_at,
+      checkin_starts_at = excluded.checkin_starts_at,
+      checkin_ends_at = excluded.checkin_ends_at,
+      location = excluded.location,
+      visibility = excluded.visibility,
+      updated_at = excluded.updated_at
+  `).bind(id, title, stringValue(body.description), startsAt, endsAt, checkinStartsAt, checkinEndsAt, stringValue(body.location), now, now).run();
+  const row = await env.DB.prepare(`
+    SELECT id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, visibility, updated_at
+    FROM calendar_events
+    WHERE id = ?
+  `).bind(id).first();
+  return calendarEventRowToConsoleEvent(row);
+}
+
+async function deleteCalendarEvent(env, idValue) {
+  await ensureCalendarEventSchema(env);
+  const id = normalizeCalendarEventId(idValue);
+  if (!id) throw httpError("活動 ID 必填", 400);
+  const result = await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
+  return Number(result && result.meta && result.meta.changes || 0);
+}
+
+function normalizeCalendarEventId(value) {
+  return stringValue(value).trim().replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, 80);
+}
+
+function calendarEventRowToConsoleEvent(row) {
+  return {
+    id: stringValue(row && row.id),
+    title: stringValue(row && row.title),
+    description: stringValue(row && row.description),
+    startsAt: numberOrZero(row && row.starts_at),
+    endsAt: numberOrZero(row && row.ends_at),
+    checkinStartsAt: numberOrZero(row && row.checkin_starts_at),
+    checkinEndsAt: numberOrZero(row && row.checkin_ends_at),
+    location: stringValue(row && row.location),
+    visibility: stringValue(row && row.visibility || "internal"),
+    updatedAt: numberOrZero(row && row.updated_at),
+  };
 }
 
 function requiresFloorAccess(pathname) {
@@ -2707,7 +2814,10 @@ async function resolveCalendarRewardContext(env, body) {
     .filter((event) => !requestedEventUid || calendarEventPublicId(event) === requestedEventUid || stringValue(event.uid) === requestedEventUid)
     .filter((event) => !locationMeta || calendarEventMatchesCheckinLocation(event, selectedLocation));
   if (!todayEvents.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}沒有行事曆活動`, 400);
-  const events = todayEvents.filter((event) => event.startsAt - earlyMs <= now && event.endsAt >= now);
+  const events = todayEvents.filter((event) => {
+    const window = calendarEventCheckinWindow(env, event);
+    return window.startsAt <= now && window.endsAt >= now;
+  });
   if (!events.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}有活動，但目前不在報到時間：${todayEvents.map((event) => formatCalendarEventBrief(event)).join("；")}`, 400);
 
   const radius = rewardGeofenceMeters(env);
@@ -2888,7 +2998,7 @@ async function fetchRewardCalendarEvents(env) {
   await ensureCalendarEventSchema(env);
   const from = taipeiStartOfDay(Date.now()) - 86400000;
   const rows = await env.DB.prepare(`
-    SELECT id, title, description, starts_at, ends_at, location
+    SELECT id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location
     FROM calendar_events
     WHERE starts_at >= ?
     ORDER BY starts_at ASC
@@ -2910,6 +3020,8 @@ function calendarEventRowToRewardEvent(row) {
     location: stringValue(row && row.location),
     startsAt,
     endsAt,
+    checkinStartsAt: numberOrZero(row && row.checkin_starts_at),
+    checkinEndsAt: numberOrZero(row && row.checkin_ends_at),
   };
 }
 
@@ -2951,18 +3063,22 @@ async function importCalendarImageToD1(env, request) {
       if (endsAt <= startsAt) endsAt += 86400000;
       const id = `cal_${event.sourceHash || shortHash(`${event.date}|${event.startTime}|${event.endTime}|${event.summary}|${event.location}`)}`;
       const existing = await env.DB.prepare("SELECT id FROM calendar_events WHERE id = ?").bind(id).first();
+      const checkinStartsAt = Math.max(0, startsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000);
+      const checkinEndsAt = endsAt;
       await env.DB.prepare(`
-        INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, location, owner_user_id, visibility, created_at, updated_at)
-        VALUES (?, '*', ?, ?, ?, ?, ?, '', 'public', ?, ?)
+        INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, owner_user_id, visibility, created_at, updated_at)
+        VALUES (?, '*', ?, ?, ?, ?, ?, ?, ?, '', 'public', ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           description = excluded.description,
           starts_at = excluded.starts_at,
           ends_at = excluded.ends_at,
+          checkin_starts_at = excluded.checkin_starts_at,
+          checkin_ends_at = excluded.checkin_ends_at,
           location = excluded.location,
           visibility = excluded.visibility,
           updated_at = excluded.updated_at
-      `).bind(id, event.summary, event.description, startsAt, endsAt, event.location, now, now).run();
+      `).bind(id, event.summary, event.description, startsAt, endsAt, checkinStartsAt, checkinEndsAt, event.location, now, now).run();
       imported += 1;
       results.push({ ...event, id, startsAt, endsAt, status: existing ? "updated" : "imported" });
     } catch (err) {
@@ -3307,15 +3423,24 @@ function rewardCheckinEarlyMinutes(env) {
   return Number.isFinite(minutes) && minutes >= 0 ? Math.round(minutes) : DEFAULT_REWARD_CHECKIN_EARLY_MINUTES;
 }
 
-function publicCalendarEvent(event, now = Date.now(), context = null, env = {}) {
+function calendarEventCheckinWindow(env, event) {
   const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
+  const startsAt = Number(event && event.checkinStartsAt || 0) || Math.max(0, Number(event && event.startsAt || 0) - earlyMs);
+  const endsAt = Number(event && event.checkinEndsAt || 0) || Number(event && event.endsAt || 0);
+  return { startsAt, endsAt };
+}
+
+function publicCalendarEvent(event, now = Date.now(), context = null, env = {}) {
+  const checkinWindow = calendarEventCheckinWindow(env, event);
   return {
     uid: event.uid,
     title: event.summary,
     location: event.location,
     startsAt: event.startsAt,
     endsAt: event.endsAt,
-    active: event.startsAt - earlyMs <= now && event.endsAt >= now,
+    checkinStartsAt: checkinWindow.startsAt,
+    checkinEndsAt: checkinWindow.endsAt,
+    active: checkinWindow.startsAt <= now && checkinWindow.endsAt >= now,
     points: context && Number(context.points) > 0 ? Number(context.points) : rewardPointsFromEvent(env, event),
     distanceMeters: context && Number.isFinite(context.distanceMeters) ? Math.round(context.distanceMeters) : null,
   };
