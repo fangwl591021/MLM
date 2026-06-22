@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/1678369347978fbc200ad4c47eff5daf7a6ad2e9";
-const FRONTEND_BUILD_ID = "calendar-timeonly-registration-20260622-2";
+const FRONTEND_BUILD_ID = "calendar-no-location-checkin-20260622-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -2241,7 +2241,7 @@ async function claimQrReward(env, body) {
   try {
     const entryLabel = rewardEntryLabel(entryMethod);
     const eventNote = calendarContext
-      ? `${entryLabel}；內建行事曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location}；距離：${Math.round(calendarContext.distanceMeters)}m`
+      ? `${entryLabel}；內建行事曆活動：${calendarContext.event.summary}；地點：${calendarContext.event.location || "未填"}`
       : `${entryLabel} ${campaign}`;
     const mutation = await pointMutation(env, {
       channel_key: POINT_OA1,
@@ -2478,10 +2478,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
           liff.login({ redirectUri: location.href });
           return;
         }
-        if(isCourseCheckin && !selectedLocation && campaign === "calendar_auto"){
-          showLocationPicker();
-          return;
-        }
+        // Fixed calendar check-in no longer asks for branch/location selection.
         await claim();
       }catch(error){
         await logStage("boot_error", error && error.message ? error.message : String(error));
@@ -2492,13 +2489,19 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       showLoading();
       const idToken = liff.getIDToken();
       if(!idToken) throw new Error("missing token");
-      await logStage("before_geolocation", "");
-      const position = await getCurrentPosition();
-      await logStage("geolocation_ok", "accuracy=" + position.coords.accuracy);
+      let claimBody = { campaign, entry, eventUid, event:eventUid, idToken };
+      if(!(isCourseCheckin && campaign === "calendar_auto")){
+        await logStage("before_geolocation", "");
+        const position = await getCurrentPosition();
+        await logStage("geolocation_ok", "accuracy=" + position.coords.accuracy);
+        claimBody = { ...claimBody, location:selectedLocation, checkinLocation:selectedLocation, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy };
+      } else {
+        await logStage("calendar_checkin_no_location", "");
+      }
       const response = await fetch(API_BASE + "/api/reward/claim", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ campaign, entry, eventUid, event:eventUid, location:selectedLocation, checkinLocation:selectedLocation, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
+        body:JSON.stringify(claimBody)
       });
       const data = await response.json().catch(() => ({}));
       if(!response.ok || data.status !== "success"){
@@ -2513,7 +2516,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       appEl.classList.remove("error");
       locationPanelEl.classList.remove("active");
       loadingIconEl.classList.remove("hidden"); successIconEl.classList.add("hidden"); plainIconEl.classList.add("hidden");
-      titleEl.textContent = "請稍後，系統處理中"; messageEl.textContent = isCourseCheckin ? "正在確認課程、時間與位置" : "正在確認課程時間";
+      titleEl.textContent = "請稍後，系統處理中"; messageEl.textContent = isCourseCheckin ? "正在確認課程與報名時間" : "正在確認課程時間";
     }
     function showLocationPicker(){
       appEl.classList.remove("error");
@@ -2796,63 +2799,32 @@ async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
 }
 
 async function resolveCalendarRewardContext(env, body) {
-  const userLat = Number(body.lat || body.latitude);
-  const userLng = Number(body.lng || body.longitude);
-  if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
-    throw httpError("請允許定位，系統才能確認是否在活動地點", 400);
-  }
-  const selectedLocation = normalizeCheckinLocation(body.checkinLocation || body.location || body.site);
-  if (selectedLocation === "other") {
-    return resolveTemporaryCheckinRewardContext(env, body);
-  }
-  const locationMeta = selectedLocation ? CHECKIN_LOCATION_META[selectedLocation] : null;
   const now = Date.now();
-  const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
   const allEvents = await fetchRewardCalendarEvents(env);
   const requestedEventUid = stringValue(body.eventUid || body.event_uid || body.event).trim();
   const todayEvents = allEvents
     .filter((event) => isSameTaipeiDate(event.startsAt, now))
-    .filter((event) => !requestedEventUid || calendarEventPublicId(event) === requestedEventUid || stringValue(event.uid) === requestedEventUid)
-    .filter((event) => !locationMeta || calendarEventMatchesCheckinLocation(event, selectedLocation));
-  if (!todayEvents.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}沒有行事曆活動`, 400);
+    .filter((event) => !requestedEventUid || calendarEventPublicId(event) === requestedEventUid || stringValue(event.uid) === requestedEventUid);
+  if (!todayEvents.length) throw httpError("今天沒有行事曆活動", 400);
   const events = todayEvents.filter((event) => {
     const window = calendarEventCheckinWindow(env, event);
     return window.startsAt <= now && window.endsAt >= now;
   });
-  if (!events.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}有活動，但目前不在報到時間：${todayEvents.map((event) => formatCalendarEventBrief(event)).join("；")}`, 400);
+  if (!events.length) throw httpError(`今天有活動，但目前不在報名時間：${todayEvents.map((event) => formatCalendarEventBrief(event)).join("；")}`, 400);
 
-  const radius = rewardGeofenceMeters(env);
-  const checked = [];
-  for (const event of events) {
-    const geo = locationMeta && Number.isFinite(locationMeta.lat) && Number.isFinite(locationMeta.lng)
-      ? { lat: locationMeta.lat, lng: locationMeta.lng }
-      : await geocodeRewardLocation(env, event.location);
-    if (!geo) {
-      checked.push({ event, distanceMeters: Number.POSITIVE_INFINITY, geo: null });
-      continue;
-    }
-    const distanceMeters = haversineMeters(userLat, userLng, geo.lat, geo.lng);
-    checked.push({ event, distanceMeters, geo });
-  }
-  checked.sort((a, b) => a.distanceMeters - b.distanceMeters);
-  const best = checked[0];
-  if (!best || !Number.isFinite(best.distanceMeters)) {
-    throw httpError("目前活動沒有可判定的地址，請確認內建行事曆地點欄位", 400);
-  }
-  if (best.distanceMeters > radius) {
-    throw httpError(`您目前距離活動地點約 ${Math.round(best.distanceMeters)} 公尺，超過允許範圍 ${radius} 公尺`, 403);
-  }
-  const points = rewardPointsFromEvent(env, best.event);
+  events.sort((a, b) => Number(a.startsAt || 0) - Number(b.startsAt || 0));
+  const event = events[0];
+  const points = rewardPointsFromEvent(env, event);
   return {
-    campaign: `calendar_${calendarEventPublicId(best.event)}`,
-    event: best.event,
+    campaign: `calendar_${calendarEventPublicId(event)}`,
+    event,
     points,
-    userLat,
-    userLng,
-    userAccuracy: Number(body.accuracy || 0) || null,
-    distanceMeters: best.distanceMeters,
-    eventLat: best.geo.lat,
-    eventLng: best.geo.lng,
+    userLat: null,
+    userLng: null,
+    userAccuracy: null,
+    distanceMeters: null,
+    eventLat: null,
+    eventLng: null,
   };
 }
 
