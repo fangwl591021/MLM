@@ -31,7 +31,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/78aff30d5fd53f11fd405032b0079336fe85949b";
-const FRONTEND_BUILD_ID = "calendar-datetime-parse-20260622-1";
+const FRONTEND_BUILD_ID = "calendar-simple-time-20260622-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -897,7 +897,7 @@ async function saveCalendarEvent(env, body) {
   let endsAt = numberOrZero(body.endsAt || body.ends_at);
   if (!startsAt || !endsAt) throw httpError("活動開始與結束時間必填", 400);
   if (endsAt <= startsAt) throw httpError("活動結束時間必須晚於開始時間", 400);
-  const checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at) || Math.max(0, startsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000);
+  const checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at) || startsAt;
   const checkinEndsAt = numberOrZero(body.checkinEndsAt || body.checkin_ends_at) || endsAt;
   if (checkinEndsAt <= checkinStartsAt) throw httpError("報到結束時間必須晚於報到開始時間", 400);
   const id = normalizeCalendarEventId(body.id) || `cal_manual_${shortHash(`${title}|${startsAt}|${stringValue(body.location)}`)}`;
@@ -3063,7 +3063,7 @@ async function importCalendarImageToD1(env, request) {
       if (endsAt <= startsAt) endsAt += 86400000;
       const id = `cal_${event.sourceHash || shortHash(`${event.date}|${event.startTime}|${event.endTime}|${event.summary}|${event.location}`)}`;
       const existing = await env.DB.prepare("SELECT id FROM calendar_events WHERE id = ?").bind(id).first();
-      const checkinStartsAt = Math.max(0, startsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000);
+      const checkinStartsAt = startsAt;
       const checkinEndsAt = endsAt;
       await env.DB.prepare(`
         INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, owner_user_id, visibility, created_at, updated_at)
@@ -3423,10 +3423,9 @@ function rewardCheckinEarlyMinutes(env) {
   return Number.isFinite(minutes) && minutes >= 0 ? Math.round(minutes) : DEFAULT_REWARD_CHECKIN_EARLY_MINUTES;
 }
 
-function calendarEventCheckinWindow(env, event) {
-  const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
-  const startsAt = Number(event && event.checkinStartsAt || 0) || Math.max(0, Number(event && event.startsAt || 0) - earlyMs);
-  const endsAt = Number(event && event.checkinEndsAt || 0) || Number(event && event.endsAt || 0);
+function calendarEventCheckinWindow(_env, event) {
+  const startsAt = Number(event && event.startsAt || 0);
+  const endsAt = Number(event && event.endsAt || 0);
   return { startsAt, endsAt };
 }
 
