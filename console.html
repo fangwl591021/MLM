@@ -654,9 +654,23 @@
       return date.toISOString().slice(0, 16);
     }
 
-    function fromDateTimeLocal(value) {
-      if (!value) return 0;
-      const ms = new Date(value).getTime();
+    function fromDateTimeLocal(input) {
+      if (!input) return 0;
+      if (typeof input === "object" && Number.isFinite(input.valueAsNumber)) return input.valueAsNumber;
+      const raw = String(typeof input === "object" ? input.value : input || "").trim();
+      if (!raw) return 0;
+      const normalized = raw.replace(/\s+/g, " ").replace(/－|—|--/g, " ");
+      const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T\s](\d{1,2}):(\d{2})/);
+      if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4]), Number(iso[5])).getTime();
+      const zh = normalized.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2}).*?(上午|下午|AM|PM)?\s*(\d{1,2}):(\d{2})/i);
+      if (zh) {
+        let hour = Number(zh[5]);
+        const meridiem = String(zh[4] || "").toUpperCase();
+        if ((meridiem === "下午" || meridiem === "PM") && hour < 12) hour += 12;
+        if ((meridiem === "上午" || meridiem === "AM") && hour === 12) hour = 0;
+        return new Date(Number(zh[1]), Number(zh[2]) - 1, Number(zh[3]), hour, Number(zh[6])).getTime();
+      }
+      const ms = new Date(raw).getTime();
       return Number.isFinite(ms) ? ms : 0;
     }
 
@@ -685,10 +699,10 @@
         id: $("calendarEventId").value.trim(),
         title: $("calendarTitle").value.trim(),
         location: $("calendarLocation").value.trim(),
-        startsAt: fromDateTimeLocal($("calendarStartsAt").value),
-        endsAt: fromDateTimeLocal($("calendarEndsAt").value),
-        checkinStartsAt: fromDateTimeLocal($("calendarCheckinStartsAt").value),
-        checkinEndsAt: fromDateTimeLocal($("calendarCheckinEndsAt").value),
+        startsAt: fromDateTimeLocal($("calendarStartsAt")),
+        endsAt: fromDateTimeLocal($("calendarEndsAt")),
+        checkinStartsAt: fromDateTimeLocal($("calendarCheckinStartsAt")),
+        checkinEndsAt: fromDateTimeLocal($("calendarCheckinEndsAt")),
         description: $("calendarDescription").value.trim(),
       };
       if (!payload.title || !payload.startsAt || !payload.endsAt) { setCalendarEditStatus("請填活動名稱、活動開始與活動結束。", false); return; }
