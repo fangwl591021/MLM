@@ -3765,7 +3765,8 @@ async function resolvePointIdentity(env, input) {
       WHERE member_ref = ?
       LIMIT 1
     `).bind(masterMemberRef).first();
-    const channelLineUserIds = await pointLineUserIdsForMember(env, masterMemberRef, member);
+    let channelLineUserIds = await pointLineUserIdsForMember(env, masterMemberRef, member);
+    channelLineUserIds = await augmentPointIdentityWithUniqueKangliAccount(env, channelLineUserIds, userName || (member && member.name));
     if (hasPointSourceLineUsers(channelLineUserIds)) {
       return {
         channelLineUserIds,
@@ -3791,7 +3792,8 @@ async function resolvePointIdentity(env, input) {
         WHERE member_ref = ?
         LIMIT 1
       `).bind(linked.master_member_ref).first();
-      const channelLineUserIds = await pointLineUserIdsForMember(env, linked.master_member_ref, member);
+      let channelLineUserIds = await pointLineUserIdsForMember(env, linked.master_member_ref, member);
+      channelLineUserIds = await augmentPointIdentityWithUniqueKangliAccount(env, channelLineUserIds, userName || (member && member.name));
       if (hasPointSourceLineUsers(channelLineUserIds)) {
         return {
           channelLineUserIds,
@@ -3817,7 +3819,8 @@ async function resolvePointIdentity(env, input) {
         WHERE member_ref = ?
         LIMIT 1
       `).bind(sourceLinked.master_member_ref).first();
-      const channelLineUserIds = await pointLineUserIdsForMember(env, sourceLinked.master_member_ref, member);
+      let channelLineUserIds = await pointLineUserIdsForMember(env, sourceLinked.master_member_ref, member);
+      channelLineUserIds = await augmentPointIdentityWithUniqueKangliAccount(env, channelLineUserIds, userName || (member && member.name));
       if (hasPointSourceLineUsers(channelLineUserIds)) {
         return {
           channelLineUserIds,
@@ -3931,6 +3934,14 @@ async function pointLineUserIdsForMember(env, memberRef, member = null) {
   return result;
 }
 
+async function augmentPointIdentityWithUniqueKangliAccount(env, channelLineUserIds, userName) {
+  const result = { ...(channelLineUserIds || {}) };
+  if (result[POINT_OA1]) return result;
+  const uniqueNameResolved = await pointSourceLineUsersFromUniquePointAccountName(env, userName);
+  const oa1UserId = stringValue(uniqueNameResolved.channelLineUserIds && uniqueNameResolved.channelLineUserIds[POINT_OA1]);
+  if (oa1UserId) result[POINT_OA1] = oa1UserId;
+  return result;
+}
 function hasPointSourceLineUsers(channelLineUserIds) {
   return POINT_CHANNELS.has(POINT_OA1) && Boolean(channelLineUserIds && (channelLineUserIds[POINT_OA1] || channelLineUserIds[POINT_OA2]));
 }
