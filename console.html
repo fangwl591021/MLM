@@ -181,6 +181,7 @@
     $("calendarSaveButton").onclick = saveCalendarEvent;
     $("calendarClearButton").onclick = clearCalendarEditor;
     $("calendarDeleteButton").onclick = deleteCalendarEvent;
+    bindCalendarEditButtons();
     const copyCheckinButton = $("copyCheckinUrl");
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
     setAuthGate(true);
@@ -743,11 +744,19 @@
     }
 
     function bindCalendarEditButtons() {
-      document.querySelectorAll("[data-edit-calendar-id]").forEach((button) => {
-        button.onclick = () => {
-          const id = button.getAttribute("data-edit-calendar-id") || "";
-          fillCalendarEditor(latestCalendarEvents.find((event) => String(event.id || event.uid || "") === id));
-        };
+      const list = $("calendarList");
+      if (!list || list.dataset.editBound === "1") return;
+      list.dataset.editBound = "1";
+      list.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-edit-calendar-id]");
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const id = button.getAttribute("data-edit-calendar-id") || "";
+        const index = Number(button.getAttribute("data-edit-calendar-index"));
+        const row = latestCalendarEvents.find((item) => String(item.id || item.uid || "") === id) || latestCalendarEvents[index];
+        if (!row) { setCalendarEditStatus("找不到這筆活動，請先重新同步。", false); return; }
+        fillCalendarEditor(row);
       });
     }
 
@@ -765,13 +774,13 @@
         list.innerHTML = '<div class="calendarEmpty">目前沒有接下來的內建課程。可在上方新增活動，或上傳月曆圖片。</div>';
         return;
       }
-      list.innerHTML = rows.slice(0, 24).map((event) => {
+      list.innerHTML = rows.slice(0, 24).map((event, index) => {
         const id = String(event.id || event.uid || "");
         return `
         <div class="calendarItem">
           <div><div class="calendarTime">${esc(fmtRange(event.startsAt, event.endsAt))}</div><div class="registrationWindow">${esc(registrationWindowText(event))}</div></div>
           <div><strong>${esc(event.title || "未命名活動")}</strong><div class="muted">${esc(event.description || "")}</div></div>
-          <div class="calendarPlace">${esc(event.location || "未填地點")}<br><button type="button" class="calendarEditButton" data-edit-calendar-id="${esc(id)}">編輯</button></div>
+          <div class="calendarPlace">${esc(event.location || "未填地點")}<br><button type="button" class="calendarEditButton" data-edit-calendar-id="${esc(id)}" data-edit-calendar-index="${index}">編輯</button></div>
         </div>`;
       }).join("");
       bindCalendarEditButtons();
