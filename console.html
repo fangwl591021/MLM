@@ -691,6 +691,8 @@
       $("calendarDescription").value = event.description || "";
       setCalendarEditStatus("已載入活動，可調整後儲存。", true);
       location.hash = "calendarPanel";
+      const editor = document.querySelector(".calendarEditor");
+      if (editor && editor.scrollIntoView) editor.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     async function saveCalendarEvent() {
