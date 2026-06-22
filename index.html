@@ -192,18 +192,19 @@
     document.querySelectorAll("[data-floor]").forEach((button) => {
       button.addEventListener("click", () => {
         const nextFloor = button.dataset.floor || "main";
+        if (!canUseFloor(nextFloor)) return;
         if (nextFloor === state.floor) return;
         cacheCurrentFloor();
         state.floor = nextFloor;
         localStorage.setItem("line_ai_floor", state.floor);
         writeFloorToUrl(state.floor);
         applyFloorCache(state.floor);
-        document.querySelectorAll("[data-floor]").forEach((item) => item.classList.toggle("active", item === button));
+        updateFloorTabs();
         if (document.querySelector(".left").classList.contains("config-open") && els.apiToken.value.trim()) loadFloorWhitelist();
         render();
         sync({ quiet: state.loaded });
       });
-      button.classList.toggle("active", button.dataset.floor === state.floor);
+      updateFloorTabs();
     });
     document.querySelectorAll("[data-filter]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -249,6 +250,7 @@
     async function boot() {
       const loginReady = await initLineLogin();
       if (loginReady === false) return;
+      enforceFloorAccess();
       render();
       setSettingsOpen(!hasAuth());
       if (hasAuth()) loadFloorWhitelist().then(render).catch(() => {});
@@ -466,6 +468,38 @@
       return localStorage.getItem("line_ai_floor") || "main";
     }
 
+    function allowedFloors() {
+      const access = state.auth.access || {};
+      if (access.admin) return Object.keys(FLOORS);
+      const floors = Array.isArray(access.floors) ? access.floors.filter((floor) => FLOORS[floor]) : [];
+      return floors.length ? floors : Object.keys(FLOORS);
+    }
+
+    function canUseFloor(floor) {
+      return allowedFloors().includes(floor);
+    }
+
+    function updateFloorTabs() {
+      const allowed = allowedFloors();
+      document.querySelectorAll("[data-floor]").forEach((button) => {
+        const floor = button.dataset.floor || "main";
+        const visible = allowed.includes(floor);
+        button.hidden = !visible;
+        button.classList.toggle("active", visible && floor === state.floor);
+      });
+    }
+
+    function enforceFloorAccess() {
+      const allowed = allowedFloors();
+      if (!allowed.includes(state.floor)) {
+        cacheCurrentFloor();
+        state.floor = allowed[0] || "main";
+        localStorage.setItem("line_ai_floor", state.floor);
+        writeFloorToUrl(state.floor);
+        applyFloorCache(state.floor);
+      }
+      updateFloorTabs();
+    }
     function writeFloorToUrl(floor) {
       const url = new URL(window.location.href);
       url.searchParams.set("floor", floor || "main");
@@ -671,6 +705,7 @@
     }
 
     function render() {
+      updateFloorTabs();
       const groups = state.threads.length ? filteredThreads().map(threadToGroup) : groupRows(filteredRows());
       if (!state.activeUserId && groups[0]) state.activeUserId = groups[0].userId;
       renderList(groups); renderMessages(groups); renderAssistant(groups);
