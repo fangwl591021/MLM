@@ -772,6 +772,7 @@
       const list = $("calendarList");
       if (!list) return;
       const rows = Array.isArray(events) ? events : [];
+      latestCalendarEvents = rows.slice();
       if (!rows.length) {
         list.innerHTML = '<div class="calendarEmpty">目前沒有接下來的內建課程。可在上方新增活動，或上傳月曆圖片。</div>';
         return;
