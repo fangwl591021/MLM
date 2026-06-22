@@ -147,7 +147,7 @@ export default {
       }
 
       if ((url.pathname === "/r/checkin" || url.pathname === "/r/course-checkin") && (request.method === "GET" || request.method === "HEAD")) {
-        return redirectToRewardLiff(env, "calendar_auto", "checkin");
+        return redirectToRewardLiff(env, "calendar_auto", "checkin", Object.fromEntries(url.searchParams.entries()));
       }
 
       if (url.pathname === "/r/nfc-test" && (request.method === "GET" || request.method === "HEAD")) {
@@ -2186,11 +2186,11 @@ async function recordRewardClientLog(env, request, body) {
   return { recorded: true };
 }
 
-function redirectToRewardLiff(env, campaign, entry) {
-  return Response.redirect(buildRewardLiffUrl(env, campaign, entry), 302);
+function redirectToRewardLiff(env, campaign, entry, extraParams = {}) {
+  return Response.redirect(buildRewardLiffUrl(env, campaign, entry, extraParams), 302);
 }
 
-function buildRewardLiffUrl(env, campaign, entry) {
+function buildRewardLiffUrl(env, campaign, entry, extraParams = {}) {
   const normalizedEntry = normalizeRewardEntry(entry || "qr");
   const liffId = normalizedEntry === "nfc" || normalizedEntry === "checkin"
     ? (stringValue(env.REWARD_NFC_LIFF_ID) || REWARD_NFC_LIFF_ID)
@@ -2198,6 +2198,9 @@ function buildRewardLiffUrl(env, campaign, entry) {
   const target = new URL(`https://liff.line.me/${encodeURIComponent(liffId)}`);
   target.searchParams.set("campaign", normalizeCampaign(campaign));
   target.searchParams.set("entry", normalizedEntry);
+  for (const [key, value] of Object.entries(extraParams || {})) {
+    if (["event", "eventUid", "location", "site"].includes(key) && stringValue(value)) target.searchParams.set(key, stringValue(value));
+  }
   return target.toString();
 }
 
@@ -2322,6 +2325,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     const params = mergedParams();
     const campaign = params.get("campaign") || "calendar_auto";
     const entry = params.get("entry") || "nfc";
+    const eventUid = params.get("event") || params.get("eventUid") || "";
     const isCourseCheckin = entry === "checkin" || entry === "calendar";
     let selectedLocation = params.get("location") || params.get("site") || "";
     const appEl = document.getElementById("app");
@@ -2382,7 +2386,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
       const response = await fetch(API_BASE + "/api/reward/claim", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ campaign, entry, location:selectedLocation, checkinLocation:selectedLocation, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
+        body:JSON.stringify({ campaign, entry, eventUid, event:eventUid, location:selectedLocation, checkinLocation:selectedLocation, idToken, lat:position.coords.latitude, lng:position.coords.longitude, accuracy:position.coords.accuracy })
       });
       const data = await response.json().catch(() => ({}));
       if(!response.ok || data.status !== "success"){
@@ -2693,8 +2697,10 @@ async function resolveCalendarRewardContext(env, body) {
   const now = Date.now();
   const earlyMs = rewardCheckinEarlyMinutes(env) * 60 * 1000;
   const allEvents = await fetchRewardCalendarEvents(env);
+  const requestedEventUid = stringValue(body.eventUid || body.event_uid || body.event).trim();
   const todayEvents = allEvents
     .filter((event) => isSameTaipeiDate(event.startsAt, now))
+    .filter((event) => !requestedEventUid || calendarEventPublicId(event) === requestedEventUid || stringValue(event.uid) === requestedEventUid)
     .filter((event) => !locationMeta || calendarEventMatchesCheckinLocation(event, selectedLocation));
   if (!todayEvents.length) throw httpError(`今天${locationMeta ? locationMeta.label : ""}沒有行事曆活動`, 400);
   const events = todayEvents.filter((event) => event.startsAt - earlyMs <= now && event.endsAt >= now);
@@ -2723,7 +2729,7 @@ async function resolveCalendarRewardContext(env, body) {
   }
   const points = rewardPointsFromEvent(env, best.event);
   return {
-    campaign: `calendar_${shortHash(best.event.uid || `${best.event.summary}:${best.event.startsAt}`)}`,
+    campaign: `calendar_${calendarEventPublicId(best.event)}`,
     event: best.event,
     points,
     userLat,
@@ -3309,6 +3315,10 @@ function publicCalendarEvent(event, now = Date.now(), context = null, env = {}) 
     points: context && Number(context.points) > 0 ? Number(context.points) : rewardPointsFromEvent(env, event),
     distanceMeters: context && Number.isFinite(context.distanceMeters) ? Math.round(context.distanceMeters) : null,
   };
+}
+
+function calendarEventPublicId(event) {
+  return shortHash(stringValue(event && event.uid) || `${stringValue(event && event.summary)}:${Number(event && event.startsAt || 0)}:${stringValue(event && event.location)}`);
 }
 
 function shortHash(value) {
