@@ -136,6 +136,12 @@ export default {
         return serveFrontendAsset(url.pathname.replace(/^\/+/, ""), corsHeaders);
       }
 
+      if (url.pathname === "/api/auth/session" && request.method === "GET") {
+        const session = await verifyConsoleSession(request, env);
+        if (!session.ok) return jsonResponse({ status: "error", message: session.message || "尚未登入" }, 401, corsHeaders);
+        const access = { allowed: true, admin: Boolean(session.profile.admin), floors: Array.isArray(session.profile.floors) ? session.profile.floors : [] };
+        return jsonResponse({ status: "success", profile: session.profile, access }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/auth/password-login" && request.method === "POST") {
         const body = await safeJson(request);
         const result = verifyPasswordLogin(body);

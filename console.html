@@ -167,7 +167,7 @@
     const DEFAULT_API = "https://mlm.fangwl591021.workers.dev";
     const $ = (id) => document.getElementById(id);
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
-    const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "" };
+    const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "", session: false };
     let latestCalendarEvents = [];
     const apiBase = $("apiBase");
     const apiToken = $("apiToken");
@@ -192,7 +192,7 @@
       try {
         const loginReady = await initLineLogin();
         if (loginReady === false) return;
-        if (auth.idToken) await sync();
+        if (auth.idToken || auth.session) await sync();
         else if (!auth.liffId && apiToken.value.trim()) await sync();
         else { setStatus("請登入", true); setAuthGate(true); }
       } catch (err) {
@@ -216,7 +216,7 @@
     }
 
     async function sync() {
-      if (!auth.idToken && (auth.liffId || !apiToken.value.trim())) {
+      if (!auth.idToken && !auth.session && (auth.liffId || !apiToken.value.trim())) {
         setStatus("請登入", true);
         setAuthGate(true);
         const loginReady = await initLineLogin();
@@ -248,13 +248,17 @@
       const liffId = config && config.data ? String(config.data.liffId || "") : "";
       auth.liffId = liffId;
       if (!liffId) {
+        const sessionReady = await initPasswordSession();
+        if (sessionReady) return true;
         auth.ready = true;
         if (!apiToken.value.trim()) showError("尚未設定 DASHBOARD_LIFF_ID，無法使用 LINE Login。");
-        return;
+        return false;
       }
       if (!window.liff) throw new Error("LINE LIFF SDK 載入失敗");
       await liff.init({ liffId });
       if (!liff.isLoggedIn()) {
+        const sessionReady = await initPasswordSession();
+        if (sessionReady) return true;
         setStatus("請登入", true);
         setAuthGate(true);
         return false;
@@ -284,6 +288,26 @@
       return true;
     }
 
+    async function initPasswordSession() {
+      try {
+        const res = await fetch(`${cleanBase(apiBase.value)}/api/auth/session`, { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") return false;
+        auth.idToken = "";
+        auth.userId = json.profile && json.profile.userId || "";
+        auth.displayName = json.profile && json.profile.displayName || "";
+        auth.pictureUrl = json.profile && json.profile.pictureUrl || "";
+        auth.access = json.access || null;
+        auth.ready = true;
+        auth.session = true;
+        setStatus(`已登入 ${auth.displayName || auth.userId}`, false);
+        setAuthGate(false);
+        if (redirectAfterLogin()) return false;
+        return true;
+      } catch (_err) {
+        return false;
+      }
+    }
     async function startLineLogin() {
       const base = cleanBase(apiBase.value);
       if (!auth.liffId) {
@@ -501,7 +525,7 @@
         resultBox.textContent = "請先選擇行事曆圖片。";
         return;
       }
-      if (!auth.idToken && (auth.liffId || !apiToken.value.trim())) {
+      if (!auth.idToken && !auth.session && (auth.liffId || !apiToken.value.trim())) {
         resultBox.className = "importResult bad";
         resultBox.textContent = "請先完成 LINE Login。";
         setAuthGate(true);
@@ -628,7 +652,7 @@
     }
 
     async function ensureCalendarAuth() {
-      if (!auth.idToken && (auth.liffId || !apiToken.value.trim())) {
+      if (!auth.idToken && !auth.session && (auth.liffId || !apiToken.value.trim())) {
         setCalendarEditStatus("請先完成 LINE Login。", false);
         setAuthGate(true);
         const loginReady = await initLineLogin();

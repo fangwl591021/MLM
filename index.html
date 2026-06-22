@@ -272,17 +272,41 @@
           els.knowledgeStatus.textContent = `LINE Login：${state.auth.displayName || state.auth.userId}`;
           return true;
         }
+        const sessionReady = await initPasswordSession();
+        if (sessionReady) return true;
         redirectToConsoleLogin();
         return false;
       } catch (err) {
         if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return false;
         state.auth.ready = false;
         showError(err.message || String(err));
+        const sessionReady = await initPasswordSession();
+        if (sessionReady) return true;
         redirectToConsoleLogin();
         return false;
       }
     }
 
+    async function initPasswordSession() {
+      try {
+        const res = await fetch(apiUrl("/api/auth/session"), { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") return false;
+        state.auth.idToken = "";
+        state.auth.userId = json.profile && json.profile.userId || "";
+        state.auth.displayName = json.profile && json.profile.displayName || "";
+        state.auth.pictureUrl = json.profile && json.profile.pictureUrl || "";
+        state.auth.access = json.access || null;
+        state.auth.ready = true;
+        els.operatorId.value = state.auth.userId;
+        if (state.auth.userId) localStorage.setItem("line_ai_operator_id", state.auth.userId);
+        if (state.auth.displayName) localStorage.setItem("line_ai_operator_name", state.auth.displayName);
+        els.knowledgeStatus.textContent = `帳密登入：${state.auth.displayName || state.auth.userId}`;
+        return true;
+      } catch (_err) {
+        return false;
+      }
+    }
     function readStoredDashboardAuth() {
       try {
         const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
@@ -302,7 +326,7 @@
       location.replace(`${apiBase()}/console?next=${encodeURIComponent(next)}`);
     }
     function hasAuth() {
-      return Boolean(state.auth.idToken);
+      return Boolean(state.auth.idToken || state.auth.userId);
     }
 
     function saveSettings() {
