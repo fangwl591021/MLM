@@ -1258,7 +1258,7 @@
     }
     function authHeaders() {
       const operator = state.auth.userId || els.operatorId.value.trim();
-      const headers = { "X-Operator-Id": operator, "X-Operator-Name": state.auth.displayName || operator };
+      const headers = { "X-Operator-Id": operator };
       if (els.apiToken.value.trim()) headers.Authorization = `Bearer ${els.apiToken.value.trim()}`;
       if (state.auth.idToken) headers["X-Line-Id-Token"] = state.auth.idToken;
       return headers;
