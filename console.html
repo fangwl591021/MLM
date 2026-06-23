@@ -220,7 +220,7 @@
         setStatus("請登入", true);
         setAuthGate(true);
         const loginReady = await initLineLogin();
-        if (loginReady === false || !auth.idToken) return;
+        if (loginReady === false || !hasConsoleAuth()) return;
       }
       localStorage.setItem("line_ai_api_base", cleanBase(apiBase.value));
       localStorage.setItem("line_ai_api_token", apiToken.value.trim());
@@ -369,6 +369,9 @@
       gate.classList.toggle("show", locked);
     }
 
+    function hasConsoleAuth() {
+      return Boolean(auth.idToken || auth.session || apiToken.value.trim());
+    }
     function authHeaders() {
       const headers = {};
       const token = apiToken.value.trim();
@@ -530,9 +533,9 @@
         resultBox.textContent = "請先完成 LINE Login。";
         setAuthGate(true);
         const loginReady = await initLineLogin();
-        if (loginReady === false || !auth.idToken) return;
+        if (loginReady === false || !hasConsoleAuth()) return;
       }
-      if (!auth.idToken && !apiToken.value.trim()) {
+      if (!hasConsoleAuth()) {
         resultBox.className = "importResult bad";
         resultBox.textContent = "請先完成 LINE Login 或輸入 Dashboard Token。";
         return;
@@ -656,9 +659,9 @@
         setCalendarEditStatus("請先完成 LINE Login。", false);
         setAuthGate(true);
         const loginReady = await initLineLogin();
-        if (loginReady === false || !auth.idToken) return false;
+        if (loginReady === false || !hasConsoleAuth()) return false;
       }
-      if (!auth.idToken && !apiToken.value.trim()) {
+      if (!hasConsoleAuth()) {
         setCalendarEditStatus("請先完成 LINE Login 或輸入 Dashboard Token。", false);
         return false;
       }
