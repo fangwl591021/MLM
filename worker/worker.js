@@ -1710,6 +1710,20 @@ function formatTaipeiDateTime(value) {
   }, {});
   return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
+function formatWetwLocalDateTime(value) {
+  const raw = stringValue(value).trim();
+  if (!raw) return "-";
+  if (/Z|[+-]\d{2}:?\d{2}$/.test(raw)) return formatTaipeiDateTime(raw);
+  const match = raw.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::\d{2})?)?/);
+  if (match) {
+    const month = match[2].padStart(2, "0");
+    const day = match[3].padStart(2, "0");
+    const hour = (match[4] || "00").padStart(2, "0");
+    const minute = (match[5] || "00").padStart(2, "0");
+    return `${month}/${day} ${hour}:${minute}`;
+  }
+  return raw;
+}
 
 async function createBindingCode(request, env) {
   const body = await safeJson(request);
@@ -2801,7 +2815,7 @@ async function fetchMemberPointLedger(env, body) {
 function wetwPointListItem(row) {
   const delta = Number(row.get_point ?? row.point_delta ?? 0);
   return {
-    datetime: formatTaipeiDateTime(row.created_at || row.createdAt || row.date || row.datetime),
+    datetime: formatWetwLocalDateTime(row.created_at || row.createdAt || row.date || row.datetime),
     eventName: kPointDisplayText(stringValue(row.event_name || row.eventName) || pointEventName({ point_delta: delta }, stringValue(row.event_content || row.shop_remark))),
     eventContent: kPointDisplayText(stringValue(row.event_content || row.eventContent || row.shop_remark) || "由 KLINK 系統記錄"),
     storeName: kPointDisplayText(stringValue(row.child_shop_name || row.shop_user_lineid || row.shop_name) || "系統"),
