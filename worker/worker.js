@@ -850,7 +850,7 @@ async function fetchAttendanceByEvent(env, limit = 20) {
       LEFT JOIN crm_members cm ON json_extract(cm.source_json, '$.LINE_user_id') = rc.line_user_id
                               OR json_extract(cm.source_json, '$.user_login') = rc.line_user_id
       WHERE rc.status = 'success'
-        AND (rc.event_uid <> '' OR rc.campaign LIKE 'calendar_%')
+        AND (rc.campaign LIKE 'calendar_%' OR rc.event_uid LIKE 'cal_%')
       ORDER BY rc.created_at DESC
       LIMIT 600
     `).all();
