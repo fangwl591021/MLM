@@ -3896,6 +3896,16 @@ async function resolvePointIdentity(env, input) {
           source: uniqueNameResolved.source || "unique_point_account_name",
         };
       }
+      const crmNameResolved = await pointSourceLineUsersFromUniqueCrmMemberName(env, userName);
+      if (hasPointSourceLineUsers(crmNameResolved.channelLineUserIds)) {
+        return {
+          channelLineUserIds: crmNameResolved.channelLineUserIds,
+          pointLineUserId: crmNameResolved.channelLineUserIds[POINT_OA1] || crmNameResolved.channelLineUserIds[POINT_OA2] || "",
+          memberRef: crmNameResolved.memberRef || "",
+          name: crmNameResolved.name || userName,
+          source: crmNameResolved.source || "unique_crm_member_name",
+        };
+      }
     }
   }
 
@@ -4020,6 +4030,35 @@ async function pointSourceLineUsersFromProfileName(env, userName) {
   return { channelLineUserIds, name };
 }
 
+async function pointSourceLineUsersFromUniqueCrmMemberName(env, userName) {
+  const queries = pointIdentityNameQueries(userName);
+  if (!queries.length || !env.DB) return { channelLineUserIds: {} };
+  for (const query of queries) {
+    const rows = await env.DB.prepare(`
+      SELECT member_ref, name, source_json
+      FROM crm_members
+      WHERE name = ?
+         OR json_extract(source_json, '$.LINE_display_name') = ?
+         OR json_extract(source_json, '$.display_name') = ?
+      ORDER BY updated_at DESC
+      LIMIT 10
+    `).bind(query, query, query).all();
+    const members = rows.results || [];
+    const uniqueRefs = new Set(members.map((row) => stringValue(row.member_ref)).filter(Boolean));
+    if (uniqueRefs.size !== 1) continue;
+    const member = members.find((row) => stringValue(row.member_ref) === Array.from(uniqueRefs)[0]) || members[0];
+    const channelLineUserIds = await pointLineUserIdsForMember(env, member.member_ref, member);
+    if (hasPointSourceLineUsers(channelLineUserIds)) {
+      return {
+        channelLineUserIds,
+        memberRef: stringValue(member.member_ref),
+        name: stringValue(member.name) || query,
+        source: "unique_crm_member_name",
+      };
+    }
+  }
+  return { channelLineUserIds: {} };
+}
 async function pointSourceLineUsersFromUniquePointAccountName(env, userName) {
   const name = stringValue(userName).trim();
   if (!name || !env.DB) return { channelLineUserIds: {} };
