@@ -804,13 +804,14 @@ async function fetchConsoleSummary(env) {
     });
   }
 
-  const [calendarCount, calendarUpcomingList, upcomingEvents, registrations, checkins, recentCheckins, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
+  const [calendarCount, calendarUpcomingList, upcomingEvents, registrations, checkins, recentCheckins, attendanceByEvent, crmMembers, pointAccounts, pointLedgerToday] = await Promise.all([
     countIfTableExists(env, "calendar_events", "starts_at >= ? AND starts_at < ?", [todayStart, todayStart + 86400000]),
     fetchUpcomingCalendarEvents(env, todayStart, 24),
     countIfTableExists(env, "calendar_events", "starts_at >= ?", [todayStart]),
     countIfTableExists(env, "event_registrations", "registered_at >= ?", [todayStart]),
     countIfTableExists(env, "reward_claims", "status = 'success' AND created_at >= datetime(?, 'unixepoch')", [Math.floor(todayStart / 1000)]),
     fetchRecentRewardCheckins(env, 12),
+    fetchAttendanceByEvent(env, 20),
     countIfTableExists(env, "crm_members", "", []),
     countIfTableExists(env, "point_accounts", "", []),
     countIfTableExists(env, "point_ledger", "created_at >= datetime(?, 'unixepoch')", [Math.floor(todayStart / 1000)]),
@@ -832,11 +833,63 @@ async function fetchConsoleSummary(env) {
     totals,
     floors,
     calendar: { today: calendarCount, upcoming: calendarUpcomingList },
-    events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins, recentCheckins, upcomingCourses: calendarUpcomingList.slice(0, 8) },
+    events: { upcoming: upcomingEvents, registrationsToday: registrations, checkinsToday: checkins, recentCheckins, upcomingCourses: calendarUpcomingList.slice(0, 8), attendanceByEvent },
     pointCrm: { members: crmMembers, pointAccounts, ledgerToday: pointLedgerToday },
   };
 }
 
+async function fetchAttendanceByEvent(env, limit = 20) {
+  if (!env.DB) return [];
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT rc.event_uid, rc.campaign, rc.line_user_id, rc.points, rc.event_title, rc.location_name, rc.created_at,
+             p.display_name AS profile_name,
+             cm.name AS crm_name
+      FROM reward_claims rc
+      LEFT JOIN profiles p ON p.user_id = rc.line_user_id
+      LEFT JOIN crm_members cm ON json_extract(cm.source_json, '$.LINE_user_id') = rc.line_user_id
+                              OR json_extract(cm.source_json, '$.user_login') = rc.line_user_id
+      WHERE rc.status = 'success'
+        AND (rc.event_uid <> '' OR rc.campaign LIKE 'calendar_%')
+      ORDER BY rc.created_at DESC
+      LIMIT 600
+    `).all();
+    const groups = new Map();
+    for (const row of results || []) {
+      const key = stringValue(row.event_uid || row.campaign || row.event_title || 'calendar');
+      if (!groups.has(key)) {
+        groups.set(key, {
+          eventUid: stringValue(row.event_uid),
+          campaign: stringValue(row.campaign),
+          eventTitle: stringValue(row.event_title) || stringValue(row.campaign) || '課程活動',
+          location: stringValue(row.location_name),
+          latestAt: stringValue(row.created_at),
+          attendeeCount: 0,
+          attendees: [],
+          _seen: new Set(),
+        });
+      }
+      const group = groups.get(key);
+      const userId = stringValue(row.line_user_id);
+      if (!userId || group._seen.has(userId)) continue;
+      group._seen.add(userId);
+      group.attendees.push({
+        userId,
+        name: stringValue(row.crm_name || row.profile_name) || shortUid(userId),
+        points: numberOrZero(row.points),
+        checkedAt: stringValue(row.created_at),
+      });
+      group.attendeeCount = group.attendees.length;
+      if (!group.location && row.location_name) group.location = stringValue(row.location_name);
+    }
+    return Array.from(groups.values()).slice(0, Math.max(1, Math.min(50, Number(limit) || 20))).map((group) => {
+      delete group._seen;
+      return group;
+    });
+  } catch (_) {
+    return [];
+  }
+}
 async function fetchRecentRewardCheckins(env, limit = 12) {
   if (!env.DB) return [];
   try {

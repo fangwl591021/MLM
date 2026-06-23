@@ -98,6 +98,19 @@
         </div>
       </section>
 
+      <section class="section" id="eventsPanel">
+        <div class="sectionHead"><h3>活動報名簽到</h3><span class="muted">依行事曆課程統計掃碼出席</span></div>
+        <div class="eventGrid">
+          <article class="card eventMetric"><span class="muted">近期課程</span><strong id="eventUpcomingCount">0</strong></article>
+          <article class="card eventMetric"><span class="muted">今日報名</span><strong id="eventRegistrationCount">0</strong></article>
+          <article class="card eventMetric"><span class="muted">今日簽到</span><strong id="eventCheckinCount">0</strong></article>
+        </div>
+        <div class="eventLists">
+          <article class="card"><div class="sectionHead"><h3>近期課程</h3></div><div id="eventCourseList" class="eventList"></div></article>
+          <article class="card"><div class="sectionHead"><h3>最近報到</h3></div><div id="eventCheckinList" class="eventList"></div></article>
+        </div>
+        <article class="card" style="margin-top:14px"><div class="sectionHead"><h3>課程出席名單</h3><span class="muted">每個行事曆活動掃碼人次</span></div><div id="eventAttendanceList" class="eventList"></div></article>
+      </section>
       <section class="section" id="calendarPanel">
         <div class="sectionHead">
           <h3>內建行事曆</h3>
@@ -623,6 +636,12 @@
       setHtml("eventCourseList", courses.length ? courses.slice(0, 8).map((event) => '<div class="eventRow"><strong>' + esc(event.title || "未命名活動") + '</strong><div class="eventMeta">' + esc(fmtRange(event.startsAt, event.endsAt)) + '<br>' + esc(event.location || "未填地點") + '</div></div>').join("") : '<div class="eventRow muted">目前沒有近期課程。</div>');
       const checkins = Array.isArray(events.recentCheckins) ? events.recentCheckins : [];
       setHtml("eventCheckinList", checkins.length ? checkins.map((item) => '<div class="eventRow"><strong>' + esc(item.eventTitle || item.campaign || "課程報到") + '</strong><div class="eventMeta">' + esc(item.userId || "") + '｜' + esc(item.points || 0) + ' 點<br>' + esc(item.createdAt || "") + (item.location ? '｜' + esc(item.location) : '') + '</div></div>').join("") : '<div class="eventRow muted">目前沒有報到紀錄。</div>');
+      const attendance = Array.isArray(events.attendanceByEvent) ? events.attendanceByEvent : [];
+      setHtml("eventAttendanceList", attendance.length ? attendance.map((event) => {
+        const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+        const names = attendees.length ? attendees.map((person) => esc(person.name || person.userId || "會員")).join("、") : "尚無名單";
+        return '<div class="eventRow"><strong>' + esc(event.eventTitle || event.campaign || "課程活動") + '｜出席 ' + esc(event.attendeeCount || attendees.length || 0) + ' 人</strong><div class="eventMeta">' + esc(event.location || "未填地點") + '<br>' + names + '</div></div>';
+      }).join("") : '<div class="eventRow muted">目前沒有課程出席資料。</div>');
     }
 
     function setText(id, value) {
