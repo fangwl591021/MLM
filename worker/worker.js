@@ -334,6 +334,17 @@ export default {
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/admin/points/stats" && request.method === "GET") {
+        const denied = await pointStatsPageDeniedResponse(request, env, url.origin, corsHeaders);
+        if (denied) return denied;
+        return pointStatsHtml(corsHeaders);
+      }
+
+      if (url.pathname === "/admin/points/stats-data" && request.method === "GET") {
+        await assertPointStatsAdminAuth(request, env);
+        const data = await listPointDailyStats(env, url);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
       if (url.pathname === "/admin/points/binding-codes" && request.method === "POST") {
         await assertPointAdminAuth(request, env);
         const result = await createBindingCode(request, env);
@@ -649,7 +660,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -1053,6 +1064,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
+  if (path === "/admin/points/stats" || path === "/admin/points/stats-data") return false;
   if (path.startsWith("/admin/points/")) return true;
   return false;
 }
@@ -4302,6 +4314,137 @@ function pointApiShopId(env, channelKey, override) {
   return wetwShopId(env);
 }
 
+function pointStatsDateFromDays(days) {
+  const start = new Date(Date.now() - (days - 1) * 86400000);
+  start.setUTCHours(0, 0, 0, 0);
+  return start.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function pointStatsWhere(scope, sinceSql, channelKey, pointType) {
+  const where = ["created_at >= ?"];
+  const bindings = [sinceSql];
+  if (scope !== "all") {
+    where.push("source NOT IN ('sync', 'import')");
+    where.push("action NOT IN ('sync', 'import')");
+    where.push("business_key NOT LIKE 'sync:%'");
+  }
+  if (channelKey && POINT_CHANNELS.has(channelKey)) {
+    where.push("channel_key = ?");
+    bindings.push(channelKey);
+  }
+  if (pointType) {
+    where.push("point_type = ?");
+    bindings.push(pointType);
+  }
+  return { where: where.join(" AND "), bindings };
+}
+
+function pointStatsTotals(rows) {
+  return rows.reduce((totals, row) => {
+    totals.days += 1;
+    totals.transactions += Number(row.transactions || 0);
+    totals.users += Number(row.unique_users || 0);
+    totals.grant_points += Number(row.grant_points || 0);
+    totals.deduct_points += Number(row.deduct_points || 0);
+    totals.net_points += Number(row.net_points || 0);
+    totals.grant_count += Number(row.grant_count || 0);
+    totals.deduct_count += Number(row.deduct_count || 0);
+    return totals;
+  }, { days: 0, transactions: 0, users: 0, grant_points: 0, deduct_points: 0, net_points: 0, grant_count: 0, deduct_count: 0 });
+}
+
+async function listPointDailyStats(env, url) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const days = clampNumber(url.searchParams.get("days") || 30, 1, 366);
+  const scope = stringValue(url.searchParams.get("scope") || "ops") === "all" ? "all" : "ops";
+  const channelKey = stringValue(url.searchParams.get("channel_key") || url.searchParams.get("channelKey"));
+  const pointType = stringValue(url.searchParams.get("point_type") || url.searchParams.get("pointType") || "gift_money");
+  const sinceSql = pointStatsDateFromDays(days);
+  const filter = pointStatsWhere(scope, sinceSql, channelKey, pointType);
+  const dailyRows = await env.DB.prepare(`
+    SELECT
+      date(datetime(created_at, '+8 hours')) AS day,
+      COUNT(*) AS transactions,
+      COUNT(DISTINCT line_user_id) AS unique_users,
+      SUM(CASE WHEN point_delta > 0 THEN point_delta ELSE 0 END) AS grant_points,
+      SUM(CASE WHEN point_delta < 0 THEN -point_delta ELSE 0 END) AS deduct_points,
+      SUM(point_delta) AS net_points,
+      SUM(CASE WHEN point_delta > 0 THEN 1 ELSE 0 END) AS grant_count,
+      SUM(CASE WHEN point_delta < 0 THEN 1 ELSE 0 END) AS deduct_count
+    FROM point_ledger
+    WHERE ${filter.where}
+    GROUP BY day
+    ORDER BY day DESC
+  `).bind(...filter.bindings).all();
+  const breakdownRows = await env.DB.prepare(`
+    SELECT
+      action,
+      source,
+      COUNT(*) AS transactions,
+      COUNT(DISTINCT line_user_id) AS unique_users,
+      SUM(CASE WHEN point_delta > 0 THEN point_delta ELSE 0 END) AS grant_points,
+      SUM(CASE WHEN point_delta < 0 THEN -point_delta ELSE 0 END) AS deduct_points,
+      SUM(point_delta) AS net_points
+    FROM point_ledger
+    WHERE ${filter.where}
+    GROUP BY action, source
+    ORDER BY transactions DESC, action ASC, source ASC
+    LIMIT 30
+  `).bind(...filter.bindings).all();
+  const recentRows = await env.DB.prepare(`
+    SELECT id, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_name, note, created_at
+    FROM point_ledger
+    WHERE ${filter.where}
+    ORDER BY id DESC
+    LIMIT 80
+  `).bind(...filter.bindings).all();
+  const daily = (dailyRows.results || []).map((row) => ({
+    day: stringValue(row.day),
+    transactions: Number(row.transactions || 0),
+    unique_users: Number(row.unique_users || 0),
+    grant_points: Number(row.grant_points || 0),
+    deduct_points: Number(row.deduct_points || 0),
+    net_points: Number(row.net_points || 0),
+    grant_count: Number(row.grant_count || 0),
+    deduct_count: Number(row.deduct_count || 0),
+  }));
+  const breakdown = (breakdownRows.results || []).map((row) => ({
+    action: stringValue(row.action),
+    source: stringValue(row.source),
+    transactions: Number(row.transactions || 0),
+    unique_users: Number(row.unique_users || 0),
+    grant_points: Number(row.grant_points || 0),
+    deduct_points: Number(row.deduct_points || 0),
+    net_points: Number(row.net_points || 0),
+  }));
+  const recent = (recentRows.results || []).map((row) => ({
+    id: Number(row.id || 0),
+    channel_key: stringValue(row.channel_key),
+    source_label: pointSourceMeta(row.channel_key)?.label || stringValue(row.channel_key),
+    line_user_id: stringValue(row.line_user_id),
+    action: stringValue(row.action),
+    point_type: stringValue(row.point_type),
+    point_delta: Number(row.point_delta || 0),
+    balance_after: Number(row.balance_after || 0),
+    source: stringValue(row.source),
+    business_key: stringValue(row.business_key),
+    operator_name: stringValue(row.operator_name),
+    note: kPointDisplayText(row.note),
+    created_at: stringValue(row.created_at),
+    created_at_text: formatTaipeiDateTime(row.created_at),
+  }));
+  return {
+    days,
+    scope,
+    since: sinceSql,
+    channel_key: POINT_CHANNELS.has(channelKey) ? channelKey : "",
+    point_type: pointType,
+    totals: pointStatsTotals(daily),
+    daily,
+    breakdown,
+    recent,
+  };
+}
 async function listPointLedger(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
@@ -4734,6 +4877,93 @@ async function writeCrmSyncLog(env, syncType, rows, status, source) {
   `).bind(syncType, source, rows, status).run();
 }
 
+function pointStatsHtml(headers) {
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KLINK 點數統計</title>
+  <style>
+    :root{--green:#06c755;--ink:#0f172a;--muted:#64748b;--border:#d8e0eb;--bg:#f6f8fb;--bad:#b42318;--orange:#f97316}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,"Noto Sans TC",sans-serif;background:var(--bg);color:var(--ink)}
+    header{position:sticky;top:0;z-index:3;background:#fff;border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+    h1{margin:0;font-size:28px;line-height:1.2}.sub{margin-top:6px;color:var(--muted);font-size:14px}.wrap{padding:22px;max-width:1500px;margin:0 auto}
+    .toolbar{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:12px;margin-bottom:16px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:13px;font-weight:800;color:#334155}
+    select,input,button{font:inherit;border:1px solid var(--border);border-radius:10px;background:#fff;padding:12px 14px;color:var(--ink)}button{cursor:pointer;font-weight:900}.primary{background:var(--green);border-color:var(--green);color:#fff}
+    .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.card,.panel{background:#fff;border:1px solid var(--border);border-radius:14px}.card{padding:16px}.label{font-size:13px;color:var(--muted);font-weight:800}.metric{margin-top:8px;font-size:30px;font-weight:900}.good{color:#0f8a43}.bad{color:var(--bad)}.net{color:#1d4ed8}
+    .grid{display:grid;grid-template-columns:1.4fr .9fr;gap:16px;margin-top:16px}.panel h2{font-size:20px;margin:0;padding:16px 18px;border-bottom:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse}th,td{padding:12px 14px;border-bottom:1px solid #edf1f7;text-align:right;vertical-align:top}th:first-child,td:first-child{text-align:left}th{font-size:13px;color:#475569;background:#f8fafc}.empty{padding:26px;color:var(--muted)}
+    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;background:#eef2ff;color:#1e3a8a;font-size:12px;font-weight:900}.muted{color:var(--muted)}.recent{margin-top:16px}.uid{font-size:12px;color:#64748b;word-break:break-all}.note{max-width:360px;text-align:left;color:#475569}.error{margin:14px 0;padding:14px 16px;border-radius:12px;background:#fff1f2;color:#be123c;border:1px solid #fecdd3;display:none}
+    @media(max-width:1000px){.toolbar,.cards,.grid{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.wrap{padding:14px}th,td{padding:10px 8px;font-size:13px}.tableWrap{overflow:auto}.metric{font-size:24px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>點數統計</h1><div class="sub">每日 K 點進出、扣贈統計與最近流水。資料來源：本系統 point_ledger。</div></div>
+    <button onclick="location.href='/console'">回主控台</button>
+  </header>
+  <main class="wrap">
+    <section class="toolbar">
+      <div class="field"><label>期間</label><select id="days"><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="90">近 90 天</option><option value="180">近 180 天</option><option value="366">近 366 天</option></select></div>
+      <div class="field"><label>統計範圍</label><select id="scope"><option value="ops" selected>營運進出</option><option value="all">含同步/匯入</option></select></div>
+      <div class="field"><label>平台</label><select id="channel"><option value="">全部平台</option><option value="oa1">康立智能 1086</option><option value="oa2">康立全球 1584</option></select></div>
+      <div class="field"><label>K 點類型</label><input id="pointType" value="gift_money" /></div>
+      <div class="field"><label>&nbsp;</label><button id="refresh" class="primary">重新整理</button></div>
+    </section>
+    <div id="error" class="error"></div>
+    <section class="cards">
+      <div class="card"><div class="label">總贈點</div><div id="grant" class="metric good">0</div></div>
+      <div class="card"><div class="label">總扣點</div><div id="deduct" class="metric bad">0</div></div>
+      <div class="card"><div class="label">淨增減</div><div id="net" class="metric net">0</div></div>
+      <div class="card"><div class="label">流水筆數</div><div id="transactions" class="metric">0</div></div>
+      <div class="card"><div class="label">每日觸及人次加總</div><div id="users" class="metric">0</div></div>
+    </section>
+    <section class="grid">
+      <div class="panel"><h2>每日進出</h2><div class="tableWrap"><table><thead><tr><th>日期</th><th>贈點</th><th>扣點</th><th>淨額</th><th>筆數</th><th>人數</th></tr></thead><tbody id="daily"></tbody></table></div></div>
+      <div class="panel"><h2>來源分類</h2><div class="tableWrap"><table><thead><tr><th>類型</th><th>來源</th><th>贈</th><th>扣</th><th>淨</th></tr></thead><tbody id="breakdown"></tbody></table></div></div>
+    </section>
+    <section class="panel recent"><h2>最近流水</h2><div class="tableWrap"><table><thead><tr><th>時間</th><th>平台</th><th>UID</th><th>進出</th><th>餘額</th><th>備註</th></tr></thead><tbody id="recent"></tbody></table></div></section>
+  </main>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>Number(n||0).toLocaleString('zh-TW',{maximumFractionDigits:2});
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function trEmpty(cols,msg){return '<tr><td class="empty" colspan="'+cols+'">'+esc(msg)+'</td></tr>';}
+function signed(n){const v=Number(n||0);return (v>0?'+':'')+fmt(v);}
+async function load(){
+  $('error').style.display='none';
+  const params=new URLSearchParams({days:$('days').value,scope:$('scope').value,point_type:$('pointType').value.trim()||'gift_money'});
+  if($('channel').value) params.set('channel_key',$('channel').value);
+  try{
+    const res=await fetch('/admin/points/stats-data?'+params.toString(),{credentials:'same-origin'});
+    if(res.status===401){location.href='/login?next=/admin/points/stats';return;}
+    const json=await res.json().catch(()=>({}));
+    if(!res.ok||json.status!=='success') throw new Error(json.message||'讀取失敗');
+    render(json.data||{});
+  }catch(err){$('error').textContent=err&&err.message?err.message:String(err);$('error').style.display='block';}
+}
+function render(data){
+  const totals=data.totals||{};
+  $('grant').textContent=fmt(totals.grant_points);
+  $('deduct').textContent=fmt(totals.deduct_points);
+  $('net').textContent=signed(totals.net_points);
+  $('transactions').textContent=fmt(totals.transactions);
+  $('users').textContent=fmt(totals.users);
+  const daily=data.daily||[];
+  $('daily').innerHTML=daily.length?daily.map(r=>'<tr><td><strong>'+esc(r.day)+'</strong></td><td class="good">'+fmt(r.grant_points)+'</td><td class="bad">'+fmt(r.deduct_points)+'</td><td class="net">'+signed(r.net_points)+'</td><td>'+fmt(r.transactions)+'</td><td>'+fmt(r.unique_users)+'</td></tr>').join(''):trEmpty(6,'目前沒有點數進出資料');
+  const breakdown=data.breakdown||[];
+  $('breakdown').innerHTML=breakdown.length?breakdown.map(r=>'<tr><td><span class="pill">'+esc(r.action||'-')+'</span></td><td>'+esc(r.source||'-')+'</td><td class="good">'+fmt(r.grant_points)+'</td><td class="bad">'+fmt(r.deduct_points)+'</td><td>'+signed(r.net_points)+'</td></tr>').join(''):trEmpty(5,'目前沒有分類資料');
+  const recent=data.recent||[];
+  $('recent').innerHTML=recent.length?recent.map(r=>'<tr><td>'+esc(r.created_at_text||r.created_at)+'</td><td>'+esc(r.source_label||r.channel_key)+'</td><td class="uid">'+esc(r.line_user_id)+'</td><td class="'+(Number(r.point_delta)>=0?'good':'bad')+'">'+signed(r.point_delta)+'</td><td>'+fmt(r.balance_after)+'</td><td class="note">'+esc(r.note||r.operator_name||r.action)+'</td></tr>').join(''):trEmpty(6,'目前沒有流水');
+}
+['days','scope','channel'].forEach(id=>$(id).addEventListener('change',load));
+$('refresh').addEventListener('click',load);
+load();
+</script>
+</body>
+</html>`, { status: 200, headers: { ...headers, "Content-Type": "text/html; charset=utf-8" } });
+}
 function crmAdminToolHtml(headers) {
   return new Response(`<!doctype html>
 <html lang="zh-Hant">
@@ -6442,7 +6672,23 @@ async function assertDashboardAuth(request, env) {
 async function assertPointAdminAuth(request, env) {
   return assertDashboardAuth(request, env);
 }
+async function assertPointStatsAdminAuth(request, env) {
+  const auth = await assertDashboardAuth(request, env);
+  if (auth.adminToken || auth.admin) return auth;
+  throw httpError("只有系統管理員可查看點數統計", 403);
+}
 
+async function pointStatsPageDeniedResponse(request, env, origin, corsHeaders) {
+  try {
+    await assertPointStatsAdminAuth(request, env);
+    return null;
+  } catch (error) {
+    const status = error && error.status ? Number(error.status) : 500;
+    if (status === 401) return Response.redirect(`${origin}/login?next=/admin/points/stats`, 302);
+    if (status === 403) return new Response(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>權限不足</title><style>body{margin:0;font-family:Arial,"Noto Sans TC",sans-serif;background:#f8fafc;color:#0f172a;display:grid;place-items:center;min-height:100vh}.box{background:#fff;border:1px solid #d8e0eb;border-radius:16px;padding:28px;max-width:520px}h1{margin:0 0 12px;font-size:26px}p{color:#64748b;line-height:1.7}a{display:inline-block;margin-top:12px;color:#057a38;font-weight:800}</style></head><body><div class="box"><h1>權限不足</h1><p>點數統計包含全站每日進出資料，請使用系統管理員帳號登入。</p><a href="/login?next=/admin/points/stats">重新登入</a></div></body></html>`, { status: 403, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
+    throw error;
+  }
+}
 async function assertAccessManager(request, env) {
   const auth = await assertDashboardAuth(request, env);
   if (auth.adminToken || auth.admin) return auth;
