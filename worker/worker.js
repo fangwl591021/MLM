@@ -4320,23 +4320,72 @@ function pointStatsDateFromDays(days) {
   return start.toISOString().slice(0, 19).replace("T", " ");
 }
 
-function pointStatsWhere(scope, sinceSql, channelKey, pointType) {
-  const where = ["created_at >= ?"];
+function pointStatsWhere(scope, sinceSql, channelKey, pointType, alias = "") {
+  const prefix = alias ? `${alias}.` : "";
+  const where = [`${prefix}created_at >= ?`];
   const bindings = [sinceSql];
   if (scope !== "all") {
-    where.push("source NOT IN ('sync', 'import')");
-    where.push("action NOT IN ('sync', 'import')");
-    where.push("business_key NOT LIKE 'sync:%'");
+    where.push(`${prefix}source NOT IN ('sync', 'import')`);
+    where.push(`${prefix}action NOT IN ('sync', 'import')`);
+    where.push(`${prefix}business_key NOT LIKE 'sync:%'`);
   }
   if (channelKey && POINT_CHANNELS.has(channelKey)) {
-    where.push("channel_key = ?");
+    where.push(`${prefix}channel_key = ?`);
     bindings.push(channelKey);
   }
   if (pointType) {
-    where.push("point_type = ?");
+    where.push(`${prefix}point_type = ?`);
     bindings.push(pointType);
   }
   return { where: where.join(" AND "), bindings };
+}
+
+function pointStatsUserNameSql(alias = "pl") {
+  return `COALESCE(
+    NULLIF((
+      SELECT cm.name
+      FROM crm_members cm
+      WHERE cm.member_ref = ${alias}.master_member_ref
+         OR json_extract(cm.source_json, '$.LINE_user_id') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.user_login') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.line_user_id') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.lineUserId') = ${alias}.line_user_id
+      ORDER BY cm.updated_at DESC
+      LIMIT 1
+    ), ''),
+    NULLIF((
+      SELECT json_extract(cm.source_json, '$.LINE_display_name')
+      FROM crm_members cm
+      WHERE cm.member_ref = ${alias}.master_member_ref
+         OR json_extract(cm.source_json, '$.LINE_user_id') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.user_login') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.line_user_id') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.lineUserId') = ${alias}.line_user_id
+      ORDER BY cm.updated_at DESC
+      LIMIT 1
+    ), ''),
+    NULLIF((
+      SELECT json_extract(cm.source_json, '$.display_name')
+      FROM crm_members cm
+      WHERE cm.member_ref = ${alias}.master_member_ref
+         OR json_extract(cm.source_json, '$.LINE_user_id') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.user_login') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.line_user_id') = ${alias}.line_user_id
+         OR json_extract(cm.source_json, '$.lineUserId') = ${alias}.line_user_id
+      ORDER BY cm.updated_at DESC
+      LIMIT 1
+    ), ''),
+    NULLIF((
+      SELECT p.display_name
+      FROM profiles p
+      WHERE p.user_id = ${alias}.line_user_id
+        AND p.display_name IS NOT NULL
+        AND p.display_name <> ''
+        AND p.display_name <> p.user_id
+      ORDER BY p.updated_at DESC
+      LIMIT 1
+    ), '')
+  )`;
 }
 
 function pointStatsTotals(rows) {
@@ -4353,6 +4402,13 @@ function pointStatsTotals(rows) {
   }, { days: 0, transactions: 0, users: 0, grant_points: 0, deduct_points: 0, net_points: 0, grant_count: 0, deduct_count: 0 });
 }
 
+function pointStatsMemberName(row) {
+  const name = stringValue(row && row.user_name).trim();
+  if (name) return name;
+  const uid = stringValue(row && row.line_user_id);
+  return uid ? `${uid.slice(0, 10)}...${uid.slice(-6)}` : "未命名會員";
+}
+
 async function listPointDailyStats(env, url) {
   if (!env.DB) throw httpError("DB is not configured", 500);
   const days = clampNumber(url.searchParams.get("days") || 30, 1, 366);
@@ -4360,44 +4416,77 @@ async function listPointDailyStats(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key") || url.searchParams.get("channelKey"));
   const pointType = stringValue(url.searchParams.get("point_type") || url.searchParams.get("pointType") || "gift_money");
   const sinceSql = pointStatsDateFromDays(days);
-  const filter = pointStatsWhere(scope, sinceSql, channelKey, pointType);
+  const filter = pointStatsWhere(scope, sinceSql, channelKey, pointType, "pl");
+  const userNameSql = pointStatsUserNameSql("pl");
   const dailyRows = await env.DB.prepare(`
     SELECT
-      date(datetime(created_at, '+8 hours')) AS day,
+      date(datetime(pl.created_at, '+8 hours')) AS day,
       COUNT(*) AS transactions,
-      COUNT(DISTINCT line_user_id) AS unique_users,
-      SUM(CASE WHEN point_delta > 0 THEN point_delta ELSE 0 END) AS grant_points,
-      SUM(CASE WHEN point_delta < 0 THEN -point_delta ELSE 0 END) AS deduct_points,
-      SUM(point_delta) AS net_points,
-      SUM(CASE WHEN point_delta > 0 THEN 1 ELSE 0 END) AS grant_count,
-      SUM(CASE WHEN point_delta < 0 THEN 1 ELSE 0 END) AS deduct_count
-    FROM point_ledger
+      COUNT(DISTINCT pl.line_user_id) AS unique_users,
+      SUM(CASE WHEN pl.point_delta > 0 THEN pl.point_delta ELSE 0 END) AS grant_points,
+      SUM(CASE WHEN pl.point_delta < 0 THEN -pl.point_delta ELSE 0 END) AS deduct_points,
+      SUM(pl.point_delta) AS net_points,
+      SUM(CASE WHEN pl.point_delta > 0 THEN 1 ELSE 0 END) AS grant_count,
+      SUM(CASE WHEN pl.point_delta < 0 THEN 1 ELSE 0 END) AS deduct_count
+    FROM point_ledger pl
     WHERE ${filter.where}
     GROUP BY day
     ORDER BY day DESC
   `).bind(...filter.bindings).all();
   const breakdownRows = await env.DB.prepare(`
     SELECT
-      action,
-      source,
+      pl.action AS action,
+      pl.source AS source,
       COUNT(*) AS transactions,
-      COUNT(DISTINCT line_user_id) AS unique_users,
-      SUM(CASE WHEN point_delta > 0 THEN point_delta ELSE 0 END) AS grant_points,
-      SUM(CASE WHEN point_delta < 0 THEN -point_delta ELSE 0 END) AS deduct_points,
-      SUM(point_delta) AS net_points
-    FROM point_ledger
+      COUNT(DISTINCT pl.line_user_id) AS unique_users,
+      SUM(CASE WHEN pl.point_delta > 0 THEN pl.point_delta ELSE 0 END) AS grant_points,
+      SUM(CASE WHEN pl.point_delta < 0 THEN -pl.point_delta ELSE 0 END) AS deduct_points,
+      SUM(pl.point_delta) AS net_points
+    FROM point_ledger pl
     WHERE ${filter.where}
-    GROUP BY action, source
+    GROUP BY pl.action, pl.source
     ORDER BY transactions DESC, action ASC, source ASC
     LIMIT 30
   `).bind(...filter.bindings).all();
   const recentRows = await env.DB.prepare(`
-    SELECT id, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, business_key, operator_name, note, created_at
-    FROM point_ledger
+    SELECT pl.id, pl.channel_key, pl.line_user_id, ${userNameSql} AS user_name, pl.action, pl.point_type, pl.point_delta, pl.balance_after, pl.source, pl.business_key, pl.operator_name, pl.note, pl.created_at
+    FROM point_ledger pl
     WHERE ${filter.where}
-    ORDER BY id DESC
+    ORDER BY pl.id DESC
     LIMIT 80
   `).bind(...filter.bindings).all();
+  const memberRows = await env.DB.prepare(`
+    SELECT
+      date(datetime(pl.created_at, '+8 hours')) AS day,
+      pl.line_user_id,
+      ${userNameSql} AS user_name,
+      COUNT(*) AS transactions,
+      SUM(CASE WHEN pl.point_delta > 0 THEN pl.point_delta ELSE 0 END) AS grant_points,
+      SUM(CASE WHEN pl.point_delta < 0 THEN -pl.point_delta ELSE 0 END) AS deduct_points,
+      SUM(pl.point_delta) AS net_points
+    FROM point_ledger pl
+    WHERE ${filter.where}
+    GROUP BY day, pl.line_user_id
+    ORDER BY day DESC, transactions DESC, ABS(net_points) DESC
+    LIMIT 1200
+  `).bind(...filter.bindings).all();
+  const dailyMembers = new Map();
+  for (const row of memberRows.results || []) {
+    const day = stringValue(row.day);
+    if (!day) continue;
+    const list = dailyMembers.get(day) || [];
+    if (list.length < 12) {
+      list.push({
+        line_user_id: stringValue(row.line_user_id),
+        name: pointStatsMemberName(row),
+        transactions: Number(row.transactions || 0),
+        grant_points: Number(row.grant_points || 0),
+        deduct_points: Number(row.deduct_points || 0),
+        net_points: Number(row.net_points || 0),
+      });
+    }
+    dailyMembers.set(day, list);
+  }
   const daily = (dailyRows.results || []).map((row) => ({
     day: stringValue(row.day),
     transactions: Number(row.transactions || 0),
@@ -4407,6 +4496,7 @@ async function listPointDailyStats(env, url) {
     net_points: Number(row.net_points || 0),
     grant_count: Number(row.grant_count || 0),
     deduct_count: Number(row.deduct_count || 0),
+    members: dailyMembers.get(stringValue(row.day)) || [],
   }));
   const breakdown = (breakdownRows.results || []).map((row) => ({
     action: stringValue(row.action),
@@ -4422,6 +4512,7 @@ async function listPointDailyStats(env, url) {
     channel_key: stringValue(row.channel_key),
     source_label: pointSourceMeta(row.channel_key)?.label || stringValue(row.channel_key),
     line_user_id: stringValue(row.line_user_id),
+    user_name: pointStatsMemberName(row),
     action: stringValue(row.action),
     point_type: stringValue(row.point_type),
     point_delta: Number(row.point_delta || 0),
@@ -4444,8 +4535,7 @@ async function listPointDailyStats(env, url) {
     breakdown,
     recent,
   };
-}
-async function listPointLedger(env, url) {
+}async function listPointLedger(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
@@ -4894,7 +4984,7 @@ function pointStatsHtml(headers) {
     .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.card,.panel{background:#fff;border:1px solid var(--border);border-radius:14px}.card{padding:16px}.label{font-size:13px;color:var(--muted);font-weight:800}.metric{margin-top:8px;font-size:30px;font-weight:900}.good{color:#0f8a43}.bad{color:var(--bad)}.net{color:#1d4ed8}
     .grid{display:grid;grid-template-columns:1.4fr .9fr;gap:16px;margin-top:16px}.panel h2{font-size:20px;margin:0;padding:16px 18px;border-bottom:1px solid var(--border)}
     table{width:100%;border-collapse:collapse}th,td{padding:12px 14px;border-bottom:1px solid #edf1f7;text-align:right;vertical-align:top}th:first-child,td:first-child{text-align:left}th{font-size:13px;color:#475569;background:#f8fafc}.empty{padding:26px;color:var(--muted)}
-    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;background:#eef2ff;color:#1e3a8a;font-size:12px;font-weight:900}.muted{color:var(--muted)}.recent{margin-top:16px}.uid{font-size:12px;color:#64748b;word-break:break-all}.note{max-width:360px;text-align:left;color:#475569}.error{margin:14px 0;padding:14px 16px;border-radius:12px;background:#fff1f2;color:#be123c;border:1px solid #fecdd3;display:none}
+    .pill{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;background:#eef2ff;color:#1e3a8a;font-size:12px;font-weight:900}.muted{color:var(--muted)}.recent{margin-top:16px}.name{font-weight:900;text-align:left}.members{display:flex;flex-wrap:wrap;gap:6px;max-width:460px}.member{display:inline-flex;border-radius:999px;background:#ecfdf5;color:#047857;padding:4px 8px;font-size:12px;font-weight:800}.uid{font-size:12px;color:#64748b;word-break:break-all}.note{max-width:360px;text-align:left;color:#475569}.error{margin:14px 0;padding:14px 16px;border-radius:12px;background:#fff1f2;color:#be123c;border:1px solid #fecdd3;display:none}
     @media(max-width:1000px){.toolbar,.cards,.grid{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.wrap{padding:14px}th,td{padding:10px 8px;font-size:13px}.tableWrap{overflow:auto}.metric{font-size:24px}}
   </style>
 </head>
@@ -4920,10 +5010,10 @@ function pointStatsHtml(headers) {
       <div class="card"><div class="label">每日觸及人次加總</div><div id="users" class="metric">0</div></div>
     </section>
     <section class="grid">
-      <div class="panel"><h2>每日進出</h2><div class="tableWrap"><table><thead><tr><th>日期</th><th>贈點</th><th>扣點</th><th>淨額</th><th>筆數</th><th>人數</th></tr></thead><tbody id="daily"></tbody></table></div></div>
+      <div class="panel"><h2>每日進出</h2><div class="tableWrap"><table><thead><tr><th>日期</th><th>會員</th><th>贈點</th><th>扣點</th><th>淨額</th><th>筆數</th><th>人數</th></tr></thead><tbody id="daily"></tbody></table></div></div>
       <div class="panel"><h2>來源分類</h2><div class="tableWrap"><table><thead><tr><th>類型</th><th>來源</th><th>贈</th><th>扣</th><th>淨</th></tr></thead><tbody id="breakdown"></tbody></table></div></div>
     </section>
-    <section class="panel recent"><h2>最近流水</h2><div class="tableWrap"><table><thead><tr><th>時間</th><th>平台</th><th>UID</th><th>進出</th><th>餘額</th><th>備註</th></tr></thead><tbody id="recent"></tbody></table></div></section>
+    <section class="panel recent"><h2>最近流水</h2><div class="tableWrap"><table><thead><tr><th>時間</th><th>會員</th><th>平台</th><th>UID</th><th>進出</th><th>餘額</th><th>備註</th></tr></thead><tbody id="recent"></tbody></table></div></section>
   </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -4931,6 +5021,7 @@ const fmt=n=>Number(n||0).toLocaleString('zh-TW',{maximumFractionDigits:2});
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function trEmpty(cols,msg){return '<tr><td class="empty" colspan="'+cols+'">'+esc(msg)+'</td></tr>';}
 function signed(n){const v=Number(n||0);return (v>0?'+':'')+fmt(v);}
+function memberBadges(members){const list=Array.isArray(members)?members:[];return '<div class="members">'+(list.length?list.map(m=>'<span class="member">'+esc(m.name||m.line_user_id||'未命名')+'</span>').join(''):'<span class="muted">無名單</span>')+'</div>';}
 async function load(){
   $('error').style.display='none';
   const params=new URLSearchParams({days:$('days').value,scope:$('scope').value,point_type:$('pointType').value.trim()||'gift_money'});
@@ -4951,11 +5042,11 @@ function render(data){
   $('transactions').textContent=fmt(totals.transactions);
   $('users').textContent=fmt(totals.users);
   const daily=data.daily||[];
-  $('daily').innerHTML=daily.length?daily.map(r=>'<tr><td><strong>'+esc(r.day)+'</strong></td><td class="good">'+fmt(r.grant_points)+'</td><td class="bad">'+fmt(r.deduct_points)+'</td><td class="net">'+signed(r.net_points)+'</td><td>'+fmt(r.transactions)+'</td><td>'+fmt(r.unique_users)+'</td></tr>').join(''):trEmpty(6,'目前沒有點數進出資料');
+  $('daily').innerHTML=daily.length?daily.map(r=>'<tr><td><strong>'+esc(r.day)+'</strong></td><td>'+memberBadges(r.members)+'</td><td class="good">'+fmt(r.grant_points)+'</td><td class="bad">'+fmt(r.deduct_points)+'</td><td class="net">'+signed(r.net_points)+'</td><td>'+fmt(r.transactions)+'</td><td>'+fmt(r.unique_users)+'</td></tr>').join(''):trEmpty(7,'目前沒有點數進出資料');
   const breakdown=data.breakdown||[];
   $('breakdown').innerHTML=breakdown.length?breakdown.map(r=>'<tr><td><span class="pill">'+esc(r.action||'-')+'</span></td><td>'+esc(r.source||'-')+'</td><td class="good">'+fmt(r.grant_points)+'</td><td class="bad">'+fmt(r.deduct_points)+'</td><td>'+signed(r.net_points)+'</td></tr>').join(''):trEmpty(5,'目前沒有分類資料');
   const recent=data.recent||[];
-  $('recent').innerHTML=recent.length?recent.map(r=>'<tr><td>'+esc(r.created_at_text||r.created_at)+'</td><td>'+esc(r.source_label||r.channel_key)+'</td><td class="uid">'+esc(r.line_user_id)+'</td><td class="'+(Number(r.point_delta)>=0?'good':'bad')+'">'+signed(r.point_delta)+'</td><td>'+fmt(r.balance_after)+'</td><td class="note">'+esc(r.note||r.operator_name||r.action)+'</td></tr>').join(''):trEmpty(6,'目前沒有流水');
+  $('recent').innerHTML=recent.length?recent.map(r=>'<tr><td>'+esc(r.created_at_text||r.created_at)+'</td><td class="name">'+esc(r.user_name||'未命名會員')+'</td><td>'+esc(r.source_label||r.channel_key)+'</td><td class="uid">'+esc(r.line_user_id)+'</td><td class="'+(Number(r.point_delta)>=0?'good':'bad')+'">'+signed(r.point_delta)+'</td><td>'+fmt(r.balance_after)+'</td><td class="note">'+esc(r.note||r.operator_name||r.action)+'</td></tr>').join(''):trEmpty(7,'目前沒有流水');
 }
 ['days','scope','channel'].forEach(id=>$(id).addEventListener('change',load));
 $('refresh').addEventListener('click',load);
