@@ -3667,6 +3667,7 @@ async function listPointBalances(env, url) {
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
+  const pointTypes = pointBalanceQueryTypes(url.searchParams.get("point_type") || url.searchParams.get("pointType"));
   if (lineUserId) {
     if (channelKey) {
       try {
@@ -4566,6 +4567,7 @@ async function listPointDailyStats(env, url) {
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
+  const pointTypes = pointBalanceQueryTypes(url.searchParams.get("point_type") || url.searchParams.get("pointType"));
   if (lineUserId) {
     const ledgers = [];
     const sourceMap = { [POINT_OA1]: lineUserId, [POINT_OA2]: lineUserId };
