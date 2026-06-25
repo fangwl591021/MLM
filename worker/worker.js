@@ -2749,7 +2749,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
     <section id="empty" class="state hidden">目前沒有點數紀錄</section>
     <section id="tableWrap" class="tableWrap hidden">
       <table>
-        <thead><tr><th>點數統計</th><th>活動名稱</th><th>日期時間</th><th>活動內容</th><th>消費店家</th></tr></thead>
+        <thead><tr><th>本次異動</th><th>活動名稱</th><th>日期時間</th><th>活動內容</th><th>消費店家</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </section>
@@ -2811,7 +2811,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
       rowsEl.innerHTML = data.items.map((item, index) => {
         const amountClass = Number(item.amount || 0) >= 0 ? "pos" : "neg";
         return "<tr>" +
-          "<td class='amount " + amountClass + "'>" + esc(formatPoint(item.amount)) + "</td>" +
+          "<td class='amount " + amountClass + "'>" + esc(formatMovement(item.amount)) + "</td>" +
           "<td>" + esc(item.eventName) + "</td>" +
           "<td>" + esc(item.datetime) + "</td>" +
           "<td>" + esc(item.eventContent) + "</td>" +
@@ -2825,7 +2825,14 @@ function pointsTallLiffHtml(env, corsHeaders) {
       const text = Number.isInteger(number) ? String(number) : number.toFixed(2);
       return text + "點";
     }
-    function isExpiredTokenError(error){
+    function formatMovement(value){
+      const number = Number(value || 0);
+      const abs = Math.abs(number);
+      const text = Number.isInteger(abs) ? String(abs) : abs.toFixed(2);
+      if(number < 0) return "扣 " + text + "點";
+      if(number > 0) return "增 " + text + "點";
+      return "0點";
+    }    function isExpiredTokenError(error){
       const message = String(error && error.message ? error.message : "");
       const code = String(error && error.code ? error.code : "");
       return code === "line_id_token_expired" || /IdToken expired|token expired|登入逾時|驗證失敗/.test(message);
