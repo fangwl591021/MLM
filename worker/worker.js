@@ -1331,7 +1331,7 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
       // consumed by the ad hoc NFC testing setup flow
     } else if (isSmartDailyRewardEvent(channelKey, event)) {
-      if (userId) await handleSmartRewardBalanceDisplay(env, provider, event, userId);
+      if (userId) await handleKeywordAutomation(env, config.floor, provider, event, userId, event.message.text);
     } else if (isSmartPointQueryEvent(channelKey, event)) {
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
     } else {
@@ -1343,12 +1343,9 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
 }
 
 function isSmartDailyRewardEvent(channelKey, event) {
-  return channelKey === POINT_OA1
-    && event
-    && event.type === "message"
-    && event.message
-    && event.message.type === "text"
-    && normalizeTextKeyword(event.message.text) === normalizeTextKeyword("簽到贈K點");
+  if (channelKey !== POINT_OA1 || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
+  const text = normalizeTextKeyword(event.message.text);
+  return ["簽到贈K點", "會員打卡", "每日簽到贈點"].map(normalizeTextKeyword).includes(text);
 }
 
 function isSmartPointQueryEvent(channelKey, event) {
@@ -5573,11 +5570,9 @@ async function matchKeywordRule(env, floor, text) {
 async function applyDailyKeywordReward(env, rule, userId) {
   const rewardDate = taipeiDate();
   const channelKey = stringValue(rule.channel_key) || POINT_OA1;
-  const pointType = stringValue(rule.point_type) || "gift_money";
+  const pointType = "gift_money";
   const keyword = stringValue(rule.keyword);
-  const snapshot = await fetchWetwPointSnapshot(env, channelKey, userId, pointType, 10, {
-    shop_id: memberCheckinShopId(env),
-  });
+  const points = Math.max(1, Number(rule.points || 5));
   const existingSameDay = await env.DB.prepare(`
     SELECT id, keyword, points, balance_after, status
     FROM daily_keyword_rewards
@@ -5585,18 +5580,63 @@ async function applyDailyKeywordReward(env, rule, userId) {
     ORDER BY id ASC
     LIMIT 1
   `).bind(userId, channelKey, pointType, rewardDate).first();
-  if (!existingSameDay) {
+
+  if (existingSameDay) {
+    const balance = await fetchDailyKeywordGiftBalance(env, channelKey, userId);
     await env.DB.prepare(`
-    INSERT OR IGNORE INTO daily_keyword_rewards (rule_id, keyword, line_user_id, channel_key, point_type, points, reward_date, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 0, ?, 'checked', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `).bind(rule.id, keyword, userId, channelKey, pointType, rewardDate).run();
+      UPDATE daily_keyword_rewards
+      SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(balance, "duplicate_mother_site_gift_money_query", existingSameDay.id).run();
+    return { readonly: false, duplicate: true, points: Number(existingSameDay.points || points), balance_after: balance };
   }
-  await env.DB.prepare(`
-    UPDATE daily_keyword_rewards
-    SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
-  `).bind(snapshot.balance, "read_only_mother_site_query", rule.id, userId, rewardDate).run();
-  return { readonly: true, duplicate: Boolean(existingSameDay), points: 0, balance_after: snapshot.balance };
+
+  const inserted = await env.DB.prepare(`
+    INSERT OR IGNORE INTO daily_keyword_rewards (rule_id, keyword, line_user_id, channel_key, point_type, points, reward_date, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
+
+  if (inserted && inserted.meta && inserted.meta.changes === 0) {
+    const balance = await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    return { readonly: false, duplicate: true, points, balance_after: balance };
+  }
+
+  try {
+    const mutation = await pointMutation(env, {
+      channel_key: channelKey,
+      line_user_id: userId,
+      chat_line_user_id: userId,
+      point_type: pointType,
+      points,
+      operator_name: "關鍵字自動贈點",
+      note: `${keyword} 每日打卡贈點`,
+    }, "grant");
+    const balance = Number.isFinite(Number(mutation && mutation.balance_after))
+      ? Number(mutation.balance_after)
+      : await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    await env.DB.prepare(`
+      UPDATE daily_keyword_rewards
+      SET balance_after = ?, status = 'claimed', message = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+    `).bind(balance, "gift_money_granted", rule.id, userId, rewardDate).run();
+    return { readonly: false, duplicate: false, points, balance_after: balance };
+  } catch (error) {
+    await env.DB.prepare(`
+      UPDATE daily_keyword_rewards
+      SET status = 'failed', message = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+    `).bind(error && error.message ? error.message.slice(0, 240) : String(error).slice(0, 240), rule.id, userId, rewardDate).run();
+    throw error;
+  }
+}
+
+async function fetchDailyKeywordGiftBalance(env, channelKey, userId) {
+  const resolved = await resolvePointIdentity(env, { chatLineUserId: userId }).catch(() => null);
+  const sourceLineUserId = stringValue(resolved && resolved.channelLineUserIds && resolved.channelLineUserIds[channelKey]) || userId;
+  const snapshot = await fetchWetwPointSnapshot(env, channelKey, sourceLineUserId, "gift_money", 10, {
+    shop_id: memberCheckinShopId(env),
+  });
+  return snapshot.balance;
 }
 
 function normalizeTextKeyword(value) {
