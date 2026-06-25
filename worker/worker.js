@@ -681,7 +681,7 @@ async function serveFrontendHtml(fileName, corsHeaders) {
     });
   }
 
-  const html = rewriteFrontendLinks(await response.text());
+  const html = rewriteFrontendLinks(await response.text()).replaceAll("可用K點合計", "扣除後可用K點");
   return new Response(html, {
     status: 200,
     headers: {
