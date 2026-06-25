@@ -986,7 +986,7 @@
         const rowHtml = rows.length
           ? rows.map((row) => `<div class="pointRow"><span>${esc(pointTypeName(row.point_type))}<small> ${esc(shortUid(row.line_user_id))}</small></span><strong>${esc(formatPoint(row.balance))}</strong></div>`).join("")
           : '<div class="pointRow"><span>目前沒有K點資料</span><strong>0</strong></div>';
-        return `<button type="button" class="pointSource ${source.deductPriority ? "priority" : ""} ${selected ? "selected" : ""} ${linked ? "" : "empty"}" data-point-source="${esc(source.key)}"><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K點" : "只能扣K點"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>可用K點合計</span><strong>${esc(formatPoint(total))}</strong></div></div><div class="pointPick">${selected ? "目前操作此平台" : "點選切換到此平台"}</div></button>`;
+        return `<button type="button" class="pointSource ${source.deductPriority ? "priority" : ""} ${selected ? "selected" : ""} ${linked ? "" : "empty"}" data-point-source="${esc(source.key)}"><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K點" : "只能扣K點"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>扣除後可用K點</span><strong>${esc(formatPoint(total))}</strong></div></div><div class="pointPick">${selected ? "目前操作此平台" : "點選切換到此平台"}</div></button>`;
       }).join("");
       document.querySelectorAll("[data-point-source]").forEach((button) => {
         button.onclick = () => {
