@@ -36,7 +36,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "console-point-stats-link-20260625-1";
+const FRONTEND_BUILD_ID = "point-type-balance-20260625-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -3667,17 +3667,16 @@ async function listPointBalances(env, url) {
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
-
   if (lineUserId) {
     if (channelKey) {
       try {
-        const row = await livePointBalanceRow(env, channelKey, lineUserId, "gift_money");
-        if (pointBalanceRowsHaveData([row])) return { balances: [row], resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
+        const rows = await livePointBalanceRows(env, channelKey, lineUserId, pointTypes);
+        if (pointBalanceRowsHaveData(rows)) return { balances: rows, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
       } catch (_err) {
         // Continue to an explicit chat->mother-site binding when the clicked chat UID is not a mother-site UID.
       }
     }
-    const exactBalances = await livePointBalancesForUser(env, lineUserId);
+    const exactBalances = await livePointBalancesForUser(env, lineUserId, pointTypes);
     if (pointBalanceRowsHaveData(exactBalances)) {
       return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
     }
@@ -3685,8 +3684,8 @@ async function listPointBalances(env, url) {
     const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const resolvedRows = channelKey
-        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, "gift_money")
-        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, "gift_money");
+        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, pointTypes)
+        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, pointTypes);
       return {
         balances: resolvedRows.map((row) => ({
           ...row,
@@ -3711,8 +3710,8 @@ async function listPointBalances(env, url) {
     const resolved = await resolvePointIdentity(env, { masterMemberRef });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const rows = channelKey
-        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, "gift_money")
-        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, "gift_money");
+        ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, pointTypes)
+        : await livePointBalancesForSourceUsers(env, resolved.channelLineUserIds, pointTypes);
       return {
         balances: rows.map((row) => ({ ...row, resolved_member_ref: resolved.memberRef, resolved_from_name: resolved.name })),
         resolved: { member_ref: resolved.memberRef, name: resolved.name, channel_line_user_ids: resolved.channelLineUserIds, source: resolved.source },
@@ -3730,11 +3729,30 @@ async function listPointBalances(env, url) {
 function pointBalanceRowsHaveData(rows) {
   return (Array.isArray(rows) ? rows : []).some((row) => Boolean(row && row.local_account) || Number(row && row.live_rows || 0) > 0 || Number(row && row.balance || 0) !== 0);
 }
-async function livePointBalancesForUser(env, lineUserId) {
+function pointBalanceQueryTypes(value) {
+  const type = stringValue(value || "all").trim();
+  if (type && type !== "all") return [type];
+  return ["gift_money", "system_point"];
+}
+
+async function livePointBalanceRows(env, channelKey, lineUserId, pointTypes) {
+  const balances = [];
+  const types = Array.isArray(pointTypes) && pointTypes.length ? pointTypes : pointBalanceQueryTypes("all");
+  for (const pointType of types) {
+    try {
+      balances.push(await livePointBalanceRow(env, channelKey, lineUserId, pointType));
+    } catch (_err) {
+      // A member may not have every point type in a source.
+    }
+  }
+  return balances;
+}
+
+async function livePointBalancesForUser(env, lineUserId, pointTypes = ["gift_money"]) {
   const balances = [];
   for (const channelKey of [POINT_OA1, POINT_OA2]) {
     try {
-      balances.push(await livePointBalanceRow(env, channelKey, lineUserId, "gift_money"));
+      balances.push(...await livePointBalanceRows(env, channelKey, lineUserId, pointTypes));
     } catch (_err) {
       // A LINE uid may not exist in every source. Keep the other source usable.
     }
@@ -3742,13 +3760,13 @@ async function livePointBalancesForUser(env, lineUserId) {
   return balances;
 }
 
-async function livePointBalancesForSourceUsers(env, channelLineUserIds, pointType) {
+async function livePointBalancesForSourceUsers(env, channelLineUserIds, pointTypes) {
   const balances = [];
   for (const channelKey of [POINT_OA1, POINT_OA2]) {
     const sourceLineUserId = stringValue(channelLineUserIds && channelLineUserIds[channelKey]);
     if (!sourceLineUserId) continue;
     try {
-      balances.push(await livePointBalanceRow(env, channelKey, sourceLineUserId, pointType));
+      balances.push(...await livePointBalanceRows(env, channelKey, sourceLineUserId, pointTypes));
     } catch (_err) {
       // Keep the other source usable when a source-specific UID is stale or unavailable.
     }
@@ -4548,7 +4566,6 @@ async function listPointDailyStats(env, url) {
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
-
   if (lineUserId) {
     const ledgers = [];
     const sourceMap = { [POINT_OA1]: lineUserId, [POINT_OA2]: lineUserId };
