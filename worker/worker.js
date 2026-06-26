@@ -36,7 +36,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "combined-k-balance-20260625-2";
+const FRONTEND_BUILD_ID = "gift-money-only-20260626-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -681,7 +681,11 @@ async function serveFrontendHtml(fileName, corsHeaders) {
     });
   }
 
-  const html = rewriteFrontendLinks(await response.text()).replaceAll("可用K點合計", "扣除後可用K點");
+  const html = rewriteFrontendLinks(await response.text())
+    .replaceAll("point_type=all&limit=200", "point_type=gift_money&limit=200")
+    .replaceAll("<label>K點類型<select id=\"pointType\"><option value=\"gift_money\">購物金</option><option value=\"system_point\">原始點數</option></select></label>", "<input id=\"pointType\" type=\"hidden\" value=\"gift_money\" />")
+    .replaceAll("可用K點合計", "K點餘額")
+    .replaceAll("扣除後可用K點", "K點餘額");
   return new Response(html, {
     status: 200,
     headers: {
@@ -1955,7 +1959,7 @@ async function pointMutation(env, body, action) {
     if (sourceLineUserId) lineUserId = sourceLineUserId;
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
-    const exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, stringValue(body.point_type || body.pointType) || "gift_money", 1, body).catch(() => null);
+    const exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => null);
     if (!exactSnapshot || !Array.isArray(exactSnapshot.rows) || !exactSnapshot.rows.length) {
       throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
     }
@@ -1970,7 +1974,7 @@ async function pointMutation(env, body, action) {
   const input = {
     channelKey,
     lineUserId,
-    pointType: stringValue(body.point_type || body.pointType) || "gift_money",
+    pointType: "gift_money",
     pointDelta: delta,
     action,
     source: "admin",
@@ -3729,10 +3733,8 @@ async function listPointBalances(env, url) {
 function pointBalanceRowsHaveData(rows) {
   return (Array.isArray(rows) ? rows : []).some((row) => Boolean(row && row.local_account) || Number(row && row.live_rows || 0) > 0 || Number(row && row.balance || 0) !== 0);
 }
-function pointBalanceQueryTypes(value) {
-  const type = stringValue(value || "all").trim();
-  if (type && type !== "all") return [type];
-  return ["gift_money", "system_point"];
+function pointBalanceQueryTypes(_value) {
+  return ["gift_money"];
 }
 
 async function livePointBalanceRows(env, channelKey, lineUserId, pointTypes) {
