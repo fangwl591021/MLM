@@ -241,9 +241,9 @@ INSERT OR IGNORE INTO keyword_rules (
   'daily_point_reward',
   'oa1',
   'gift_money',
-  5,
+  10,
   0,
   100,
-  '簽到成功，已贈送 5 K點。',
-  '您今天已經簽到過，明天再來領取 5 K點。'
+  '簽到成功，已贈送 10 K點。',
+  '您今天已經簽到過，明天再來領取 10 K點。'
 );

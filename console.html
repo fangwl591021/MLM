@@ -198,6 +198,7 @@
     bindCalendarEditButtons();
     const copyCheckinButton = $("copyCheckinUrl");
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
+    ["calendarEventDate", "calendarStartsAt"].forEach((id) => { const el = $(id); if (el) el.addEventListener("change", () => syncCalendarCheckinStartDefault()); });
     setAuthGate(true);
     renderSmartCheckinQr();
     boot();
@@ -720,6 +721,20 @@
       return Number.isFinite(ms) ? ms : 0;
     }
 
+    function defaultCheckinStartsAt(event) {
+      const startsAt = Number(event && event.startsAt || 0);
+      const checkinStartsAt = Number(event && event.checkinStartsAt || 0);
+      if (!startsAt) return checkinStartsAt || 0;
+      return checkinStartsAt && checkinStartsAt < startsAt ? checkinStartsAt : startsAt - 60 * 60 * 1000;
+    }
+    function syncCalendarCheckinStartDefault(force) {
+      const eventDate = $("calendarEventDate").value;
+      const startsAt = dateTimeFromParts(eventDate, $("calendarStartsAt").value);
+      if (!startsAt) return;
+      const current = dateTimeFromParts(eventDate, $("calendarRegistrationStartsAt").value);
+      if (force || !current || current >= startsAt) $("calendarRegistrationStartsAt").value = toTimeOnly(startsAt - 60 * 60 * 1000);
+    }
+
     function clearCalendarEditor() {
       ["calendarEventId", "calendarTitle", "calendarLocation", "calendarEventDate", "calendarStartsAt", "calendarEndsAt", "calendarRegistrationStartsAt", "calendarRegistrationEndsAt", "calendarDescription"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
       setCalendarEditStatus("", true);
@@ -733,7 +748,7 @@
       $("calendarEventDate").value = toDateOnly(event.startsAt);
       $("calendarStartsAt").value = toTimeOnly(event.startsAt);
       $("calendarEndsAt").value = toTimeOnly(event.endsAt);
-      $("calendarRegistrationStartsAt").value = toTimeOnly(event.checkinStartsAt || event.startsAt);
+      $("calendarRegistrationStartsAt").value = toTimeOnly(defaultCheckinStartsAt(event));
       $("calendarRegistrationEndsAt").value = toTimeOnly(event.checkinEndsAt || event.endsAt);
       $("calendarDescription").value = event.description || "";
       setCalendarEditStatus("已載入活動，可調整後儲存。", true);
@@ -751,7 +766,7 @@
         location: $("calendarLocation").value.trim(),
         startsAt: dateTimeFromParts(eventDate, $("calendarStartsAt").value),
         endsAt: dateTimeFromParts(eventDate, $("calendarEndsAt").value),
-        checkinStartsAt: dateTimeFromParts(eventDate, $("calendarRegistrationStartsAt").value),
+        checkinStartsAt: dateTimeFromParts(eventDate, $("calendarRegistrationStartsAt").value) || (dateTimeFromParts(eventDate, $("calendarStartsAt").value) - 60 * 60 * 1000),
         checkinEndsAt: dateTimeFromParts(eventDate, $("calendarRegistrationEndsAt").value),
         description: $("calendarDescription").value.trim(),
       };

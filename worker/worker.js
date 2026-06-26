@@ -36,7 +36,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "source-binding-20260626-1";
+const FRONTEND_BUILD_ID = "checkin-points-20260626-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -50,8 +50,8 @@ const NFC_TEST_CAMPAIGN_PREFIX = "nfc_test_";
 const DEFAULT_PUBLIC_BASE_URL = "https://mlm.fangwl591021.workers.dev";
 
 const DEFAULT_REWARD_GEOFENCE_METERS = 50;
-const DEFAULT_REWARD_CALENDAR_POINTS = 5;
-const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 90;
+const DEFAULT_REWARD_CALENDAR_POINTS = 10;
+const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 60;
 const CHECKIN_LOCATION_META = {
   taipei: { label: "台北", keywords: ["台北", "臺北", "南京東路五段108", "台北總公司"], lat: 25.0513143, lng: 121.5621864 },
   taichung: { label: "台中", keywords: ["台中", "臺中", "市政路500", "台中營業處"], lat: 24.159265, lng: 120.636989 },
@@ -1008,8 +1008,9 @@ async function saveCalendarEvent(env, body) {
   let endsAt = numberOrZero(body.endsAt || body.ends_at);
   if (!startsAt || !endsAt) throw httpError("活動開始與結束時間必填", 400);
   if (endsAt <= startsAt) throw httpError("活動結束時間必須晚於開始時間", 400);
-  const checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at);
+  let checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at);
   const checkinEndsAt = numberOrZero(body.checkinEndsAt || body.checkin_ends_at);
+  if (!checkinStartsAt || checkinStartsAt >= startsAt) checkinStartsAt = startsAt - 60 * 60 * 1000;
   if (!checkinStartsAt || !checkinEndsAt) throw httpError("報名開始與結束時間必填", 400);
   if (checkinEndsAt <= checkinStartsAt) throw httpError("報名結束時間必須晚於報名開始時間", 400);
   const id = normalizeCalendarEventId(body.id) || `cal_manual_${shortHash(`${title}|${startsAt}|${stringValue(body.location)}`)}`;
@@ -1461,7 +1462,7 @@ async function ensureNfcTestTables(env) {
       address TEXT NOT NULL DEFAULT '',
       starts_at INTEGER,
       ends_at INTEGER,
-      points INTEGER NOT NULL DEFAULT 5,
+      points INTEGER NOT NULL DEFAULT 10,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
@@ -2652,7 +2653,7 @@ function rewardCompactNfcLiffHtml(env, corsHeaders) {
     function showSuccess(data){
       const duplicate = data && data.duplicate;
       const eventTitle = data && data.event && data.event.title ? data.event.title : "";
-      const points = data && data.points ? data.points : 5;
+      const points = data && data.points ? data.points : 10;
       appEl.classList.remove("error");
       locationPanelEl.classList.remove("active");
       loadingIconEl.classList.add("hidden"); successIconEl.classList.remove("hidden"); plainIconEl.classList.add("hidden");
@@ -3168,7 +3169,7 @@ async function importCalendarImageToD1(env, request) {
       if (endsAt <= startsAt) endsAt += 86400000;
       const id = `cal_${event.sourceHash || shortHash(`${event.date}|${event.startTime}|${event.endTime}|${event.summary}|${event.location}`)}`;
       const existing = await env.DB.prepare("SELECT id FROM calendar_events WHERE id = ?").bind(id).first();
-      const checkinStartsAt = startsAt;
+      const checkinStartsAt = startsAt - 60 * 60 * 1000;
       const checkinEndsAt = endsAt;
       await env.DB.prepare(`
         INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, owner_user_id, visibility, created_at, updated_at)
@@ -5576,7 +5577,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   const channelKey = stringValue(rule.channel_key) || POINT_OA1;
   const pointType = "gift_money";
   const keyword = stringValue(rule.keyword);
-  const points = Math.max(1, Number(rule.points || 5));
+  const points = Math.max(1, Number(rule.points || 10));
   const existingSameDay = await env.DB.prepare(`
     SELECT id, keyword, points, balance_after, status
     FROM daily_keyword_rewards
