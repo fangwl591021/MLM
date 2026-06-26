@@ -36,7 +36,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "calendar-points-20260626-3";
+const FRONTEND_BUILD_ID = "calendar-month-nav-20260626-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -989,14 +989,17 @@ async function ensureColumn(env, tableName, columnName, definition) {
 async function listCalendarEvents(env, url) {
   await ensureCalendarEventSchema(env);
   const from = Number(url.searchParams.get("from")) || taipeiStartOfDay(Date.now()) - 30 * 86400000;
-  const limit = Math.max(1, Math.min(300, Number(url.searchParams.get("limit")) || 200));
-  const rows = await env.DB.prepare(`
+  const to = Number(url.searchParams.get("to")) || 0;
+  const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit")) || 200));
+  const where = to > from ? "starts_at >= ? AND starts_at < ?" : "starts_at >= ?";
+  const statement = env.DB.prepare(`
     SELECT id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, visibility, updated_at
     FROM calendar_events
-    WHERE starts_at >= ?
+    WHERE ${where}
     ORDER BY starts_at ASC
     LIMIT ?
-  `).bind(from, limit).all();
+  `);
+  const rows = to > from ? await statement.bind(from, to, limit).all() : await statement.bind(from, limit).all();
   return (rows.results || []).map(calendarEventRowToConsoleEvent);
 }
 

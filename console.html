@@ -16,7 +16,7 @@
     .shell{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:24px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:28px}.logo{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:#fff;font-weight:800;box-shadow:0 14px 28px rgba(6,199,85,.18)}h1,h2,h3,p{margin:0}.brand h1{font-size:22px}.brand p,.muted{color:var(--muted);font-size:13px}.nav{display:grid;gap:8px;margin-top:22px}.nav a{display:flex;align-items:center;justify-content:space-between;border-radius:14px;padding:12px 14px;color:#263244;text-decoration:none;font-weight:700}.nav a.active,.nav a:hover{background:#effcf4;color:#067a35}.settings{display:grid;gap:8px;margin-top:26px}.settingsToggle{height:40px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;font-weight:800}.settingsPanel{display:none;gap:8px}.settings.open .settingsPanel{display:grid}.settings label{font-size:12px;color:#5d6675;font-weight:700}.settings input{width:100%;height:40px;border:1px solid var(--border);border-radius:10px;padding:0 11px;outline:none}.settings input:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.sync{height:42px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800}
     .calendarImport{margin-bottom:14px}.importGrid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:12px}.fileBox{min-height:44px;border:1px dashed #bfd0e6;border-radius:12px;background:#f8fafc;padding:10px}.fileBox input{width:100%}.importButton{height:44px;border:0;border-radius:12px;background:var(--line);color:#fff;font-weight:850;padding:0 18px}.importButton:disabled{opacity:.55;cursor:not-allowed}.importResult{margin-top:12px;border-radius:12px;background:#f8fafc;padding:12px;color:#344054;line-height:1.55;white-space:pre-wrap}.importResult.ok{background:#effcf4;color:#067a35}.importResult.bad{background:#fff1f3;color:#b42318}
     main{padding:26px 30px}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}.top h2{font-size:30px}.status{border:1px solid #b6ecc8;border-radius:999px;background:#effcf4;color:#067a35;padding:8px 12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 12px 28px rgba(16,24,40,.04)}.metric{font-size:34px;font-weight:850;margin-top:10px}.metric.warn{color:var(--orange)}.metric.danger{color:var(--red)}.section{margin-top:18px}.sectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.sectionHead h3{font-size:18px}.sectionActions{display:flex;align-items:center;gap:8px}.openLink{height:34px;display:inline-flex;align-items:center;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:0 12px;text-decoration:none;font-weight:800}.chartGrid{display:grid;grid-template-columns:1.25fr .75fr;gap:14px}.chartCard{min-height:270px}.bars{display:grid;gap:14px;margin-top:18px}.barRow{display:grid;grid-template-columns:108px minmax(0,1fr) 52px;gap:12px;align-items:center}.barLabel{font-weight:800}.barTrack{height:18px;border-radius:999px;background:#edf2f7;overflow:hidden}.barFill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#06c755,#38d995);transition:width .35s ease}.barFill.blue{background:linear-gradient(90deg,#315b9c,#76a9ff)}.barFill.orange{background:linear-gradient(90deg,#ff9f1c,#ffd166)}.barFill.red{background:linear-gradient(90deg,#d92d20,#ff7a70)}.barValue{text-align:right;color:#344054;font-weight:800}.donutWrap{display:grid;grid-template-columns:150px minmax(0,1fr);gap:18px;align-items:center;margin-top:12px}.donut{width:150px;height:150px;border-radius:50%;background:conic-gradient(#06c755 0deg,#06c755 var(--doneDeg,0deg),#ff9f1c var(--doneDeg,0deg),#ff9f1c var(--pendingDeg,0deg),#d92d20 var(--pendingDeg,0deg),#d92d20 360deg);position:relative}.donut::after{content:"";position:absolute;inset:28px;border-radius:50%;background:#fff}.donutCenter{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-weight:850;z-index:1}.legend{display:grid;gap:10px}.legendItem{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#4b5563}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}.dot.green{background:#06c755}.dot.orange{background:#ff9f1c}.dot.red{background:#d92d20}.insight{margin-top:14px;border-radius:14px;background:#f8fafc;padding:12px;color:#4b5563;line-height:1.5}.calendarFrame{width:100%;height:620px;border:0;border-radius:16px;background:#fff}.calendarShell{padding:0;overflow:hidden}.calendarNote{padding:14px 18px;border-top:1px solid #edf1f5;color:#667085;font-size:13px}.floors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.floorTitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.badge{border-radius:999px;background:#eef2f7;color:#344054;padding:5px 10px;font-size:12px;font-weight:800}.badge.green{background:#e7f8ef;color:#067a35}.badge.red{background:#fff1f3;color:#c01048}.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.mini div{border-radius:12px;background:#f8fafc;padding:12px}.mini strong{display:block;font-size:22px}.latest{margin-top:14px;padding-top:14px;border-top:1px solid #edf1f5;color:#4b5563;line-height:1.5}.modules{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.module{display:block;color:inherit;text-decoration:none}.module strong{display:block;margin-bottom:8px;font-size:16px}.table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:14px;background:#fff}.table th,.table td{border-bottom:1px solid #edf1f5;padding:12px;text-align:left}.table th{color:#5d6675;font-size:12px;background:#f8fafc}.authGate{display:none;margin-bottom:18px;border:1px solid #b6ecc8;background:#effcf4;border-radius:18px;padding:18px}.authGate.show{display:flex;align-items:center;justify-content:space-between;gap:16px}.authGate strong{display:block;font-size:20px;margin-bottom:6px}.authGate button{height:42px;border:0;border-radius:12px;background:var(--line);color:#fff;font-weight:850;padding:0 18px}body.auth-locked{background:#f5f7fb}body.auth-locked .shell{display:block;min-height:100vh}body.auth-locked .side{display:none}body.auth-locked main{min-height:100vh;padding:24px;display:grid;place-items:center}body.auth-locked main>:not(#authGate):not(#errorBox){display:none!important}body.auth-locked .authGate.show{width:min(520px,100%);margin:0;display:grid;gap:18px;justify-items:start;border-color:#b6ecc8;background:#fff;box-shadow:0 24px 60px rgba(16,24,40,.12);padding:28px}body.auth-locked .authGate strong{font-size:26px}body.auth-locked .authGate button{width:100%;height:48px}.error{margin-top:14px;border:1px solid #fecdd3;background:#fff1f3;color:#b42318;border-radius:12px;padding:12px;font-weight:700}.hide{display:none}@media(max-width:1100px){.shell{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--border)}.grid,.floors,.modules,.chartGrid{grid-template-columns:1fr}.donutWrap{grid-template-columns:1fr}.calendarFrame{height:520px}.top{display:block}.status{display:inline-block;margin-top:12px}}
-    .eventGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.eventMetric{padding:12px}.eventMetric strong{display:block;font-size:24px;margin-top:4px}.eventLists{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}.eventList{display:grid;gap:7px}.eventRow{border:1px solid #edf1f5;border-radius:10px;background:#fbfdff;padding:9px 10px}.eventRow strong{display:block;margin-bottom:3px;font-size:14px}.eventMeta{color:#667085;font-size:12px;line-height:1.4}.eventFold{border:1px solid #edf1f5;border-radius:12px;background:#fff;padding:0;overflow:hidden}.eventFold summary{cursor:pointer;padding:10px 12px;font-weight:900;list-style:none}.eventFold summary::-webkit-details-marker{display:none}.eventFold summary::after{content:"展開";float:right;color:#667085;font-size:12px}.eventFold[open] summary::after{content:"收合"}.eventFold .eventList{padding:0 12px 12px}.attendanceCard{margin-top:10px;padding:14px}.checkinFlow{margin-top:14px;border:1px solid #b6ecc8;background:#effcf4;border-radius:14px;padding:14px}.flowSteps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.flowSteps div{background:#fff;border:1px solid #d9f3e2;border-radius:12px;padding:10px;font-weight:800;color:#067a35}.checkinLink{margin-top:10px;display:flex;gap:8px;align-items:center}.checkinLink input{flex:1;height:38px;border:1px solid var(--border);border-radius:10px;padding:0 10px}.checkinLink button{height:38px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800;padding:0 12px}@media(max-width:900px){.eventGrid,.eventLists,.flowSteps{grid-template-columns:1fr}}.calendarMonth{background:#fff;border-top:1px solid #edf1f5;padding:16px 18px}.monthHeader{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.monthHeader strong{font-size:18px}.monthHeader span{color:#667085;font-size:13px}.weekRow,.monthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.weekRow span{text-align:center;color:#667085;font-size:12px;font-weight:800;padding:8px 0;background:#f8fafc;border-top:1px solid #edf1f5;border-bottom:1px solid #edf1f5}.monthCell{min-height:118px;border-right:1px solid #edf1f5;border-bottom:1px solid #edf1f5;padding:8px;background:#fff}.monthCell:nth-child(7n+1){border-left:1px solid #edf1f5}.monthCell.hasEvent{background:#f7fffb}.mutedCell{background:#f8fafc}.monthDay{font-weight:850;color:#263244;margin-bottom:6px}.monthEvent{border-radius:8px;background:#e7f8ef;color:#067a35;padding:5px 6px;margin-top:5px;line-height:1.25}.monthEvent span{display:block;font-size:11px;font-weight:800}.monthEvent strong{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthEvent small{display:block;font-size:11px;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthMore{font-size:12px;color:#315b9c;font-weight:800;margin-top:6px}.calendarList{display:grid;gap:10px;padding:16px 18px 18px;background:#fff}.calendarItem{display:grid;grid-template-columns:170px minmax(0,1fr) 150px;gap:14px;align-items:center;border:1px solid #edf1f5;border-radius:14px;padding:13px 14px;background:#fbfdff}.calendarItem strong{display:block;font-size:16px}.calendarTime{color:#315b9c;font-weight:850}.calendarPlace{color:#667085;font-size:13px;text-align:right}.smartQr{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;align-items:center;border:1px solid #d9f3e2;background:#f7fffb;border-radius:14px;padding:14px;margin:12px 0 18px}.smartQr img{width:118px;height:118px;border:1px solid #dbe3ee;border-radius:10px;background:#fff;padding:6px}.smartQrActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.smartQrActions a,.smartQrActions button{min-height:34px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:6px 12px;text-decoration:none;font-size:13px;font-weight:850}.smartQrActions button{cursor:pointer}.calendarUrl{color:#667085;font-size:11px;word-break:break-all}.calendarEditor{border:1px solid #edf1f5;background:#fbfdff;border-radius:14px;padding:14px;margin:0 0 18px}.calendarEditor strong{display:block;margin-bottom:6px}.editorGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.editorGrid label{display:grid;gap:6px;color:#344054;font-size:13px;font-weight:800}.calendarEditor input,.calendarEditor textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.calendarEditor textarea{min-height:76px;resize:vertical;margin-top:10px}.calendarEditor .sectionActions{margin-top:10px}.secondaryButton{height:38px;border:1px solid var(--border);border-radius:10px;background:#fff;color:#344054;font-weight:850;padding:0 12px}.dangerButton{height:38px;border:1px solid #fecdd3;border-radius:10px;background:#fff1f3;color:#b42318;font-weight:850;padding:0 12px}.calendarEditButton{height:32px;border:1px solid #bfd0e6;border-radius:9px;background:#fff;color:#315b9c;font-weight:850;padding:0 10px}.registrationWindow{color:#067a35;font-size:12px;font-weight:800;margin-top:4px}.calendarEmpty{padding:30px;text-align:center;color:#667085;background:#fff;border-top:1px solid #edf1f5}@media(max-width:760px){.calendarItem{grid-template-columns:1fr}.calendarPlace,.calendarUrl{text-align:left}.smartQr{grid-template-columns:1fr}}  </style>
+    .eventGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.eventMetric{padding:12px}.eventMetric strong{display:block;font-size:24px;margin-top:4px}.eventLists{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}.eventList{display:grid;gap:7px}.eventRow{border:1px solid #edf1f5;border-radius:10px;background:#fbfdff;padding:9px 10px}.eventRow strong{display:block;margin-bottom:3px;font-size:14px}.eventMeta{color:#667085;font-size:12px;line-height:1.4}.eventFold{border:1px solid #edf1f5;border-radius:12px;background:#fff;padding:0;overflow:hidden}.eventFold summary{cursor:pointer;padding:10px 12px;font-weight:900;list-style:none}.eventFold summary::-webkit-details-marker{display:none}.eventFold summary::after{content:"展開";float:right;color:#667085;font-size:12px}.eventFold[open] summary::after{content:"收合"}.eventFold .eventList{padding:0 12px 12px}.attendanceCard{margin-top:10px;padding:14px}.checkinFlow{margin-top:14px;border:1px solid #b6ecc8;background:#effcf4;border-radius:14px;padding:14px}.flowSteps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.flowSteps div{background:#fff;border:1px solid #d9f3e2;border-radius:12px;padding:10px;font-weight:800;color:#067a35}.checkinLink{margin-top:10px;display:flex;gap:8px;align-items:center}.checkinLink input{flex:1;height:38px;border:1px solid var(--border);border-radius:10px;padding:0 10px}.checkinLink button{height:38px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800;padding:0 12px}@media(max-width:900px){.eventGrid,.eventLists,.flowSteps{grid-template-columns:1fr}}.calendarMonth{background:#fff;border-top:1px solid #edf1f5;padding:16px 18px}.monthHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.monthHeader strong{font-size:18px}.monthHeader span{color:#667085;font-size:13px}.monthControls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.monthControls button{height:34px;border:1px solid var(--border);border-radius:9px;background:#fff;color:#344054;font-weight:850;padding:0 10px;cursor:pointer}.monthControls button:hover{border-color:#9fb5d1;color:#0f172a}.weekRow,.monthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.weekRow span{text-align:center;color:#667085;font-size:12px;font-weight:800;padding:8px 0;background:#f8fafc;border-top:1px solid #edf1f5;border-bottom:1px solid #edf1f5}.monthCell{min-height:118px;border-right:1px solid #edf1f5;border-bottom:1px solid #edf1f5;padding:8px;background:#fff}.monthCell:nth-child(7n+1){border-left:1px solid #edf1f5}.monthCell.hasEvent{background:#f7fffb}.mutedCell{background:#f8fafc}.monthDay{font-weight:850;color:#263244;margin-bottom:6px}.monthEvent{border-radius:8px;background:#e7f8ef;color:#067a35;padding:5px 6px;margin-top:5px;line-height:1.25}.monthEvent span{display:block;font-size:11px;font-weight:800}.monthEvent strong{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthEvent small{display:block;font-size:11px;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthMore{font-size:12px;color:#315b9c;font-weight:800;margin-top:6px}.calendarList{display:grid;gap:10px;padding:16px 18px 18px;background:#fff}.calendarItem{display:grid;grid-template-columns:170px minmax(0,1fr) 150px;gap:14px;align-items:center;border:1px solid #edf1f5;border-radius:14px;padding:13px 14px;background:#fbfdff}.calendarItem strong{display:block;font-size:16px}.calendarTime{color:#315b9c;font-weight:850}.calendarPlace{color:#667085;font-size:13px;text-align:right}.smartQr{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;align-items:center;border:1px solid #d9f3e2;background:#f7fffb;border-radius:14px;padding:14px;margin:12px 0 18px}.smartQr img{width:118px;height:118px;border:1px solid #dbe3ee;border-radius:10px;background:#fff;padding:6px}.smartQrActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.smartQrActions a,.smartQrActions button{min-height:34px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:6px 12px;text-decoration:none;font-size:13px;font-weight:850}.smartQrActions button{cursor:pointer}.calendarUrl{color:#667085;font-size:11px;word-break:break-all}.calendarEditor{border:1px solid #edf1f5;background:#fbfdff;border-radius:14px;padding:14px;margin:0 0 18px}.calendarEditor strong{display:block;margin-bottom:6px}.editorGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.editorGrid label{display:grid;gap:6px;color:#344054;font-size:13px;font-weight:800}.calendarEditor input,.calendarEditor textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.calendarEditor textarea{min-height:76px;resize:vertical;margin-top:10px}.calendarEditor .sectionActions{margin-top:10px}.secondaryButton{height:38px;border:1px solid var(--border);border-radius:10px;background:#fff;color:#344054;font-weight:850;padding:0 12px}.dangerButton{height:38px;border:1px solid #fecdd3;border-radius:10px;background:#fff1f3;color:#b42318;font-weight:850;padding:0 12px}.calendarEditButton{height:32px;border:1px solid #bfd0e6;border-radius:9px;background:#fff;color:#315b9c;font-weight:850;padding:0 10px}.registrationWindow{color:#067a35;font-size:12px;font-weight:800;margin-top:4px}.calendarEmpty{padding:30px;text-align:center;color:#667085;background:#fff;border-top:1px solid #edf1f5}@media(max-width:760px){.calendarItem{grid-template-columns:1fr}.calendarPlace,.calendarUrl{text-align:left}.smartQr{grid-template-columns:1fr}}  </style>
 </head>
 <body class="auth-locked">
   <div class="shell">
@@ -154,6 +154,7 @@
             </div>
             <div id="calendarImportResult" class="importResult hide"></div>
           </div>
+          <div class="monthControls" aria-label="行事曆月份切換"><button id="calendarPrevMonth" type="button">上個月</button><button id="calendarTodayMonth" type="button">本月</button><button id="calendarNextMonth" type="button">下個月</button></div>
           <div id="calendarMonth" class="calendarMonth"></div>
           <div id="calendarList" class="calendarList"></div>
           <div class="calendarNote">內建行事曆為課程展示、NFC 感應與 QR 掃碼報到的共同來源。</div>
@@ -183,6 +184,8 @@
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "", session: false };
     let latestCalendarEvents = [];
+    let calendarViewDate = new Date();
+    calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
     const apiBase = $("apiBase");
     const apiToken = $("apiToken");
     const settingsBox = $("settingsBox");
@@ -195,6 +198,9 @@
     $("calendarSaveButton").onclick = saveCalendarEvent;
     $("calendarClearButton").onclick = clearCalendarEditor;
     $("calendarDeleteButton").onclick = deleteCalendarEvent;
+    $("calendarPrevMonth").onclick = () => shiftCalendarMonth(-1);
+    $("calendarTodayMonth").onclick = () => { const now = new Date(); calendarViewDate = new Date(now.getFullYear(), now.getMonth(), 1); loadCalendarMonth(); };
+    $("calendarNextMonth").onclick = () => shiftCalendarMonth(1);
     bindCalendarEditButtons();
     const copyCheckinButton = $("copyCheckinUrl");
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
@@ -248,6 +254,7 @@
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         render(json.data);
+        await loadCalendarMonth();
         setStatus("已同步", false);
       } catch (err) {
         if (handleAuthExpired(err)) return;
@@ -524,7 +531,7 @@
           location: event.location || "",
           visibility: "public",
         })).filter((event) => Number(event.startsAt));
-        renderCalendarMonth(rows);
+        renderCalendarMonth(rows, calendarViewDate);
         renderCalendarList(rows);
         renderEventPanel({ events: { upcoming: rows.length, registrationsToday: 0, checkinsToday: 0, upcomingCourses: rows, recentCheckins: [] } });
         if (rows.length && $("status").textContent === "未同步") setStatus("行事曆已載入", false);
@@ -580,7 +587,9 @@
         });
         resultBox.className = "importResult ok";
         resultBox.textContent = `完成：寫入 ${imported} 筆，略過 ${skipped} 筆。\n${lines.join("\n")}`;
-        sync();
+        const firstImported = (json.events || []).find((event) => event.date && (event.status === "imported" || event.status === "updated"));
+        if (firstImported) setCalendarViewFromDate(firstImported.date);
+        await sync();
       } catch (err) {
         if (handleAuthExpired(err)) {
           resultBox.className = "importResult bad";
@@ -610,7 +619,7 @@
       $("eventCheckins").textContent = data.events && data.events.checkinsToday || 0;
       renderCharts(data);
       const calendarEvents = data.calendar && data.calendar.upcoming || [];
-      renderCalendarMonth(calendarEvents);
+      renderCalendarMonth(calendarEvents, calendarViewDate);
       renderCalendarList(calendarEvents);
       renderEventPanel(data);
       $("floorCards").innerHTML = (data.floors || []).map((floor) => `
@@ -824,6 +833,51 @@
       });
     }
 
+
+    function setCalendarViewFromTimestamp(value) {
+      const date = new Date(Number(value || Date.now()));
+      if (!Number.isNaN(date.getTime())) calendarViewDate = new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+
+    function setCalendarViewFromDate(value) {
+      const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return;
+      calendarViewDate = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+    }
+
+    function calendarMonthRange() {
+      const start = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
+      const end = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1);
+      return { from: start.getTime(), to: end.getTime() };
+    }
+
+    function shiftCalendarMonth(delta) {
+      calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + Number(delta || 0), 1);
+      loadCalendarMonth();
+    }
+
+    async function loadCalendarMonth() {
+      if (!hasConsoleAuth()) {
+        renderCalendarMonth(latestCalendarEvents, calendarViewDate);
+        return;
+      }
+      const range = calendarMonthRange();
+      try {
+        const url = new URL(cleanBase(apiBase.value) + "/api/calendar/events");
+        url.searchParams.set("from", String(range.from));
+        url.searchParams.set("to", String(range.to));
+        url.searchParams.set("limit", "500");
+        const res = await fetch(url.toString(), { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "行事曆載入失敗");
+        const rows = Array.isArray(json.events) ? json.events : [];
+        renderCalendarMonth(rows, calendarViewDate);
+        renderCalendarList(rows);
+      } catch (err) {
+        if (handleAuthExpired(err)) return;
+        showError(err.message || String(err));
+      }
+    }
     function registrationWindowText(event) {
       const start = event.checkinStartsAt || event.startsAt || 0;
       const end = event.checkinEndsAt || event.endsAt || 0;
@@ -851,16 +905,12 @@
       bindCalendarEditButtons();
     }
 
-    function renderCalendarMonth(events) {
+    function renderCalendarMonth(events, viewDate) {
       const target = $("calendarMonth");
       if (!target) return;
       const rows = Array.isArray(events) ? events.slice() : [];
-      if (!rows.length) {
-        target.innerHTML = "<div class=\"calendarEmpty\">目前沒有內建行事曆資料。</div>";
-        return;
-      }
       rows.sort((a, b) => Number(a.startsAt || 0) - Number(b.startsAt || 0));
-      const base = new Date(Number(rows[0].startsAt || Date.now()));
+      const base = viewDate instanceof Date && !Number.isNaN(viewDate.getTime()) ? viewDate : (rows.length ? new Date(Number(rows[0].startsAt || Date.now())) : new Date());
       const year = base.getFullYear();
       const month = base.getMonth();
       const first = new Date(year, month, 1);
@@ -883,7 +933,7 @@
         const moreHtml = dayEvents.length > 3 ? "<div class=\"monthMore\">+" + (dayEvents.length - 3) + " 筆</div>" : "";
         cells.push("<div class=\"monthCell" + (dayEvents.length ? " hasEvent" : "") + "\"><div class=\"monthDay\">" + day + "</div>" + eventHtml + moreHtml + "</div>");
       }
-      target.innerHTML = "<div class=\"monthHeader\"><strong>" + year + " 年 " + (month + 1) + " 月</strong><span>" + rows.length + " 筆活動</span></div><div class=\"weekRow\"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class=\"monthGrid\">" + cells.join("") + "</div>";
+      target.innerHTML = "<div class=\"monthHeader\"><strong>" + year + " 年 " + (month + 1) + " 月</strong><span>" + rows.length + " 筆活動</span></div><div class=\"weekRow\"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class=\"monthGrid\">" + cells.join("") + "</div>" + (rows.length ? "" : "<div class=\"calendarEmpty\">此月份目前沒有內建行事曆資料。</div>");
     }
 
     function timeOnly(value) {
