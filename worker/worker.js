@@ -36,14 +36,14 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "checkin-points-20260626-2";
+const FRONTEND_BUILD_ID = "calendar-points-20260626-3";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
 const DEFAULT_REWARD_POINTS = 1;
 const REWARD_CAMPAIGN_POINTS = {
   smart_202605: 1,
-  smart_202605_5: 5,
+  smart_202605_5: 10,
 };
 const REWARD_CALENDAR_AUTO = "calendar_auto";
 const NFC_TEST_CAMPAIGN_PREFIX = "nfc_test_";
@@ -2509,7 +2509,7 @@ function rewardNfcInstructionsHtml(request, env, corsHeaders) {
     <section class="grid">
       <div class="card"><h2>NFC 寫入流程</h2><ol><li>手機安裝 NFC Tools 或同類型 NFC 寫入工具。</li><li>選擇 Write / Add a record / URL。</li><li>貼上上方短網址。</li><li>靠近 NFC Tag 寫入。</li><li>用另一支手機感應測試。</li></ol></div>
       <div class="card"><h2>發點判定流程</h2><ol><li>會員感應 NFC。</li><li>LINE LIFF 驗證會員 UID。</li><li>系統讀取內建行事曆目前進行中的活動。</li><li>手機定位在活動地點範圍內才發放 K點。</li><li>同一活動同一會員只可領取一次。</li></ol></div>
-      <div class="card warn"><h2>備用固定 5 K點入口</h2><p>如果某場活動暫時不使用日曆定位，可寫入固定活動入口。</p><code>${escapeHtml(fixedUrl)}</code></div>
+      <div class="card warn"><h2>備用固定 10 K點入口</h2><p>如果某場活動暫時不使用日曆定位，可寫入固定活動入口。</p><code>${escapeHtml(fixedUrl)}</code></div>
     </section>
   </main>
 </body>
@@ -3215,7 +3215,7 @@ async function extractCalendarEventsFromImage(env, imageDataUrl, fileName) {
     "3. 台北總公司地址固定為：台北市南京東路五段108號8樓。",
     "4. 台中營業處地址固定為：台中市西屯區市政路500號4樓之6。",
     "5. 高雄營業處地址固定為：高雄市苓雅區光華一路206號24樓之1。",
-    "6. description 請放講師、地點、報名限制、K點等文字；若圖片沒有 K點，系統會用預設 5 K點。",
+    "6. description 請放講師、地點、報名限制、K點等文字；若圖片沒有 K點，系統會用預設 10 K點。",
     `fileName: ${fileName}`,
   ].join("\n");
   const response = await fetch(apiUrl, {
@@ -3298,7 +3298,7 @@ function normalizeCalendarImportEvents(payload, fileName) {
       speaker ? `講師/負責人：${speaker}` : "",
       locationName ? `地點：${locationName}` : "",
       `匯入來源：${fileName}`,
-      `K點：5`,
+      `K點：10`,
     ].filter(Boolean);
     events.push({
       date,
