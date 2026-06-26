@@ -942,9 +942,6 @@
         state.pointResolved = json.resolved || null;
         state.pointAlternatives = [];
         state.pointChannelUserIds = state.pointResolved && state.pointResolved.channel_line_user_ids ? state.pointResolved.channel_line_user_ids : {};
-        if (state.pointResolved && state.pointResolved.source === "exact_chat_uid" && state.pointUserId) {
-          POINT_SOURCES.forEach((source) => { state.pointChannelUserIds[source.key] = state.pointUserId; });
-        }
         state.pointBalances.forEach((row) => {
           if (row.channel_key && row.line_user_id && !state.pointChannelUserIds[row.channel_key]) state.pointChannelUserIds[row.channel_key] = row.line_user_id;
         });
@@ -954,9 +951,7 @@
           ? `聊天室UID ${state.pointUserId} · 綁定母站UID ${state.pointMutationUserId}`
           : `聊天室UID ${state.pointUserId || "未選擇"} · 直接用此 UID 查母站`;
         renderPointBind();
-        const priority = POINT_SOURCES.find((source) => source.deductPriority && pointSourceTotal(source.key) > 0);
-        const funded = POINT_SOURCES.find((source) => pointSourceTotal(source.key) > 0);
-        els.pointSource.value = priority ? priority.key : (funded ? funded.key : (els.pointSource.value || POINT_SOURCES[0].key));
+        updatePointSourceOptions();
         renderPointSources();
         updatePointActionState();
         await loadPointLedger();
@@ -983,14 +978,17 @@
         const total = pointSourceTotal(source.key);
         const selected = els.pointSource.value === source.key;
         const linked = Boolean(state.pointChannelUserIds[source.key]);
+        const available = pointSourceAvailable(source.key);
         const rowHtml = rows.length
           ? rows.map((row) => `<div class="pointRow"><span>${esc(pointTypeName(row.point_type))}<small> ${esc(shortUid(row.line_user_id))}</small></span><strong>${esc(formatPoint(row.balance))}</strong></div>`).join("")
           : '<div class="pointRow"><span>目前沒有K點資料</span><strong>0</strong></div>';
-        return `<button type="button" class="pointSource ${source.deductPriority ? "priority" : ""} ${selected ? "selected" : ""} ${linked ? "" : "empty"}" data-point-source="${esc(source.key)}"><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K點" : "只能扣K點"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>K點餘額</span><strong>${esc(formatPoint(total))}</strong></div></div><div class="pointPick">${selected ? "目前操作此平台" : "點選切換到此平台"}</div></button>`;
+        return `<button type="button" class="pointSource ${source.deductPriority ? "priority" : ""} ${selected ? "selected" : ""} ${available ? "" : "empty"}" data-point-source="${esc(source.key)}" ${available ? "" : "disabled"}><h4><span>${esc(source.name)} <small>${esc(source.loginId)}</small></span><span class="label ${source.canGrant ? "pointLabel" : "pointLabel restricted"}">${source.canGrant ? "可贈扣K點" : "只能扣K點"}</span></h4><div class="pointRows">${rowHtml}<div class="pointRow"><span>K點餘額</span><strong>${esc(formatPoint(total))}</strong></div></div><div class="pointPick">${available ? (selected ? "目前操作此平台" : "點選切換到此平台") : "未綁定此平台"}</div></button>`;
       }).join("");
       document.querySelectorAll("[data-point-source]").forEach((button) => {
         button.onclick = () => {
-          els.pointSource.value = button.dataset.pointSource || els.pointSource.value;
+          const key = button.dataset.pointSource || els.pointSource.value;
+          if (!pointSourceAvailable(key)) return;
+          els.pointSource.value = key;
           renderPointSources();
           updatePointActionState();
         };
@@ -1063,6 +1061,18 @@
         .filter((row) => row.channel_key === sourceKey)
         .reduce((sum, row) => sum + Number(row.balance || 0), 0);
     }
+    function pointSourceAvailable(sourceKey) {
+      return Boolean(state.pointChannelUserIds[sourceKey]) || state.pointBalances.some((row) => row.channel_key === sourceKey);
+    }
+    function updatePointSourceOptions() {
+      const availableSources = POINT_SOURCES.filter((source) => pointSourceAvailable(source.key));
+      const sources = availableSources.length ? availableSources : POINT_SOURCES;
+      els.pointSource.innerHTML = sources.map((source) => `<option value="${esc(source.key)}">${esc(source.name)} · ${esc(source.loginId)}${source.canGrant ? "" : " · 只能扣"}</option>`).join("");
+      const priority = availableSources.find((source) => source.deductPriority && pointSourceTotal(source.key) > 0);
+      const funded = availableSources.find((source) => pointSourceTotal(source.key) > 0);
+      const currentAvailable = availableSources.some((source) => source.key === els.pointSource.value);
+      els.pointSource.value = priority ? priority.key : (funded ? funded.key : (currentAvailable ? els.pointSource.value : (availableSources[0] && availableSources[0].key) || POINT_SOURCES[0].key));
+    }
     function pointTypeName(value) {
       if (value === "gift_money") return "K點";
       if (value === "system_point") return "系統點數(未使用)";
@@ -1116,13 +1126,14 @@
       const restricted = source && source.canGrant === false;
       els.pointGrant.disabled = restricted;
       if (state.pointNeedsBind) els.pointGrant.disabled = true;
-      els.pointDeduct.disabled = Boolean(state.pointNeedsBind);
+      els.pointDeduct.disabled = Boolean(state.pointNeedsBind) || !pointSourceAvailable(source.key);
       els.pointGrant.title = restricted ? "康立全球只允許扣K點" : "";
       els.pointGrant.textContent = restricted ? `${source.name} 不可贈` : `${source.name} 贈K點`;
       els.pointDeduct.textContent = `${source.name} 扣K點`;
       const current = els.pointMessage.textContent || "";
       if (restricted && (!current || current.includes("未來不再贈"))) els.pointMessage.textContent = "康立全球未來不再贈K點，此來源只能扣K點。";
       if (!restricted && current.includes("未來不再贈")) els.pointMessage.textContent = "";
+      if (!pointSourceAvailable(source.key)) els.pointMessage.textContent = `${source.name} 尚未綁定母站會員，不能操作此平台。`;
       if (state.pointNeedsBind) els.pointMessage.textContent = "尚未綁定母站會員，請先搜尋並選擇會員。";
     }
     async function searchPointMember() {
