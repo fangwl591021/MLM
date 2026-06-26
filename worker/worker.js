@@ -5496,7 +5496,6 @@ function messageFromD1(thread, message) {
 }
 
 async function processLineWebhook(env, floor, provider, payload) {
-  await attachLineProfiles(payload, provider);
   for (const event of payload.events || []) {
     if (!event || event.type !== "message" || !event.message || event.message.type !== "text") continue;
     const userId = event.source && event.source.userId ? event.source.userId : "";
@@ -5656,31 +5655,14 @@ async function saveIncomingMessage(env, floor, provider, event, userId, text) {
   const sourceType = stringValue(event.source && event.source.type) || "user";
   const sourceId = stringValue((event.source && (event.source.groupId || event.source.roomId)) || userId);
   const threadId = threadIdFor(floor, userId);
-  const profile = await resolveProfile(env, floor, provider, userId, event.source || {}, event.userProfile || null);
-  const analysis = await analyzeMessage(env, floor, text, userId, profile.displayName || userId);
-  const status = analysis.isImportant ? STATUS_IMPORTANT : STATUS_PENDING;
-  const risk = analysis.isImportant ? "high" : "low";
   const messageId = stringValue(event.message.id) || `${threadId}:${now}:${crypto.randomUUID()}`;
+  const rawJson = JSON.stringify(event);
+  const current = await env.DB.prepare("SELECT tags, note, display_name, picture_url FROM threads WHERE id = ? AND floor_id = ?").bind(threadId, floor).first();
 
-  await upsertProfile(env, {
-    floor,
-    userId,
-    displayName: profile.displayName,
-    pictureUrl: profile.pictureUrl,
-    sourceType,
-    sourceId,
-    profileStatus: profile.profileStatus,
-    profileError: profile.profileError,
-    now,
-  });
-
-  const current = await env.DB.prepare("SELECT tags, note FROM threads WHERE id = ? AND floor_id = ?").bind(threadId, floor).first();
   await env.DB.prepare(`
     INSERT INTO threads (id, floor_id, user_id, source_type, source_id, display_name, picture_url, summary, status, risk, tags, note, last_message_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
-      display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE threads.display_name END,
-      picture_url = CASE WHEN excluded.picture_url != '' THEN excluded.picture_url ELSE threads.picture_url END,
       source_type = CASE WHEN excluded.source_type != '' THEN excluded.source_type ELSE threads.source_type END,
       source_id = CASE WHEN excluded.source_id != '' THEN excluded.source_id ELSE threads.source_id END,
       summary = excluded.summary,
@@ -5694,11 +5676,11 @@ async function saveIncomingMessage(env, floor, provider, event, userId, text) {
     userId,
     sourceType,
     sourceId,
-    profile.displayName || "",
-    profile.pictureUrl || "",
+    current ? stringValue(current.display_name) : "",
+    current ? stringValue(current.picture_url) : "",
     text,
-    status,
-    risk,
+    STATUS_PENDING,
+    "low",
     current ? current.tags : "[]",
     current ? current.note : "",
     now,
@@ -5717,12 +5699,62 @@ async function saveIncomingMessage(env, floor, provider, event, userId, text) {
     USER_ROLE,
     "text",
     text,
+    "",
+    "[]",
+    0,
+    "neutral",
+    rawJson,
+    now,
+  ).run();
+
+  const profile = await resolveProfile(env, floor, provider, userId, event.source || {}, event.userProfile || null);
+  await upsertProfile(env, {
+    floor,
+    userId,
+    displayName: profile.displayName,
+    pictureUrl: profile.pictureUrl,
+    sourceType,
+    sourceId,
+    profileStatus: profile.profileStatus,
+    profileError: profile.profileError,
+    now,
+  });
+
+  const analysis = await analyzeMessage(env, floor, text, userId, profile.displayName || userId);
+  const status = analysis.isImportant ? STATUS_IMPORTANT : STATUS_PENDING;
+  const risk = analysis.isImportant ? "high" : "low";
+
+  await env.DB.prepare(`
+    UPDATE threads
+    SET display_name = CASE WHEN ? != '' THEN ? ELSE display_name END,
+        picture_url = CASE WHEN ? != '' THEN ? ELSE picture_url END,
+        status = ?,
+        risk = ?,
+        updated_at = ?
+    WHERE id = ? AND floor_id = ?
+  `).bind(
+    profile.displayName || "",
+    profile.displayName || "",
+    profile.pictureUrl || "",
+    profile.pictureUrl || "",
+    status,
+    risk,
+    now,
+    threadId,
+    floor,
+  ).run();
+
+  await env.DB.prepare(`
+    UPDATE messages
+    SET category = ?, suggestions = ?, important = ?, sentiment = ?
+    WHERE id = ? AND floor_id = ?
+  `).bind(
     analysis.category,
     JSON.stringify(analysis.suggestions || []),
     analysis.isImportant ? 1 : 0,
     analysis.sentiment || "neutral",
-    JSON.stringify(event),
-    now,
+    messageId,
+    floor,
   ).run();
 
   if (analysis.isImportant) {
