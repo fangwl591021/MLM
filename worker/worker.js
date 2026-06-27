@@ -7138,13 +7138,17 @@ const DEFAULT_CHECKIN_TEMPLATE = {
     {
       imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
       imageLink: "",
-      imageSize: "full",
+      bubbleSize: "nano",
+      imageAspectRatio: "400:600",
+      imageAspectMode: "cover",
       buttons: [{ label: "簽到贈點", type: "message", text: "會員打卡", uri: "", color: "" }],
     },
     {
       imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/94f5d7aa7084fc056863902be7adec78.jpg",
       imageLink: "",
-      imageSize: "full",
+      bubbleSize: "nano",
+      imageAspectRatio: "400:600",
+      imageAspectMode: "cover",
       buttons: [{ label: "點數查詢", type: "uri", text: "", uri: "https://liff.line.me/2007221311-c9SEkcRL", color: "#FF0000" }],
     },
   ],
@@ -7195,7 +7199,9 @@ function normalizeCheckinTemplatePage(page) {
   return {
     imageUrl: stringValue(raw.imageUrl || raw.image_url || raw.url).trim(),
     imageLink: stringValue(raw.imageLink || raw.image_link || raw.link || raw.actionUri).trim(),
-    imageSize: normalizeFlexImageSize(raw.imageSize || raw.image_size || raw.size),
+    bubbleSize: normalizeFlexBubbleSize(raw.bubbleSize || raw.bubble_size || raw.imageSize || raw.image_size || raw.size),
+    imageAspectRatio: normalizeFlexAspectRatio(raw.imageAspectRatio || raw.image_aspect_ratio || raw.aspectRatio || raw.aspect_ratio),
+    imageAspectMode: normalizeFlexAspectMode(raw.imageAspectMode || raw.image_aspect_mode || raw.aspectMode || raw.aspect_mode),
     buttons: buttons.map(normalizeCheckinTemplateButton).filter((button) => button.label).slice(0, 4),
   };
 }
@@ -7212,9 +7218,19 @@ function normalizeCheckinTemplateButton(button) {
   };
 }
 
-function normalizeFlexImageSize(value) {
-  const size = stringValue(value || "full").trim().toLowerCase();
-  return ["full", "5xl", "4xl", "3xl", "xxl", "xl", "lg", "md", "sm"].includes(size) ? size : "full";
+function normalizeFlexBubbleSize(value) {
+  const size = stringValue(value || "nano").trim().toLowerCase();
+  return ["nano", "micro", "deca", "hecto", "kilo", "mega", "giga"].includes(size) ? size : "nano";
+}
+
+function normalizeFlexAspectRatio(value) {
+  const ratio = stringValue(value || "400:600").trim().replace(/[：]/g, ":");
+  return /^\d{1,4}:\d{1,4}$/.test(ratio) ? ratio : "400:600";
+}
+
+function normalizeFlexAspectMode(value) {
+  const mode = stringValue(value || "cover").trim().toLowerCase();
+  return ["cover", "fit"].includes(mode) ? mode : "cover";
 }
 function normalizeHexColor(value) {
   const text = stringValue(value).trim();
@@ -7263,14 +7279,15 @@ function buildCheckinTemplateBubble(page) {
   const image = {
     type: "image",
     url: page.imageUrl,
-    size: normalizeFlexImageSize(page.imageSize),
-    aspectMode: "cover",
-    aspectRatio: "2:3",
+    size: "full",
+    aspectMode: normalizeFlexAspectMode(page.imageAspectMode),
+    aspectRatio: normalizeFlexAspectRatio(page.imageAspectRatio),
     gravity: "top",
   };
   if (page.imageLink) image.action = { type: "uri", uri: page.imageLink };
   const bubble = {
     type: "bubble",
+    size: normalizeFlexBubbleSize(page.bubbleSize),
     body: {
       type: "box",
       layout: "vertical",

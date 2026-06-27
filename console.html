@@ -24,7 +24,7 @@
     .templateDesigner label{display:grid;gap:7px;color:#344054;font-size:14px;font-weight:850;min-width:0}.templateDesigner input,.templateDesigner select,.templateDesigner textarea{width:100%;min-width:0;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.templateDesigner textarea{min-height:86px;resize:vertical}.templateControls .templateBlock:first-child{display:grid;grid-template-columns:1fr;gap:12px}.templateControls .templateBlock:first-child .templateBlockHead{margin-bottom:0}.templateSwitch{display:flex!important;align-items:center!important;grid-template-columns:none!important}.templateSwitch input{width:16px!important;height:16px!important;min-width:16px!important}.templateUploadRow label{min-width:0}.templateUploadRow .openLink{align-self:end;justify-content:center}.templateImageUpload>input[data-field=imageUrl]{height:42px}.templateButtonGrid{grid-template-columns:minmax(150px,1fr) 120px!important}.templateButtonGrid label:nth-child(3),.templateButtonGrid label:nth-child(4),.templateButtonGrid label:nth-child(5){grid-column:auto}.templateButtonGrid .dangerButton{align-self:end}.templateColorRow{grid-template-columns:42px minmax(86px,1fr)!important}.templateColorRow input[type=color]{padding:2px!important}.templatePage .sectionActions{margin-top:10px}.templatePreviewPane{position:sticky;top:18px;align-self:start}.templateVisualPreview{align-items:flex-start}.templatePhoneImage span{padding:18px;line-height:1.5}@media(min-width:1380px){.templateButtonGrid{grid-template-columns:minmax(140px,1fr) 120px minmax(140px,1fr) minmax(150px,1fr) 140px auto!important}}@media(max-width:1180px){.templatePreviewPane{position:static}.templateButtonGrid{grid-template-columns:1fr!important}}
   </style>
   <style>
-    .templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 120px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}
+    .templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 110px 120px 110px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}
   </style>
 </head>
 <body class="auth-locked">
@@ -956,13 +956,17 @@
           {
             imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
             imageLink: "",
-            imageSize: "full",
+            bubbleSize: "nano",
+            imageAspectRatio: "400:600",
+            imageAspectMode: "cover",
             buttons: [{ label: "\u7c3d\u5230\u8d08\u9ede", type: "message", text: "\u6703\u54e1\u6253\u5361", uri: "", color: "" }],
           },
           {
             imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/94f5d7aa7084fc056863902be7adec78.jpg",
             imageLink: "",
-            imageSize: "full",
+            bubbleSize: "nano",
+            imageAspectRatio: "400:600",
+            imageAspectMode: "cover",
             buttons: [{ label: "\u9ede\u6578\u67e5\u8a62", type: "uri", text: "", uri: "https://liff.line.me/2007221311-c9SEkcRL", color: "#FF0000" }],
           },
         ],
@@ -970,18 +974,31 @@
     }
 
     function defaultTemplatePage() {
-      return { imageUrl: "", imageLink: "", imageSize: "full", buttons: [defaultTemplateButton("message")] };
+      return { imageUrl: "", imageLink: "", bubbleSize: "nano",
+            imageAspectRatio: "400:600",
+            imageAspectMode: "cover", buttons: [defaultTemplateButton("message")] };
     }
 
-    const TEMPLATE_IMAGE_SIZES = ["full", "5xl", "4xl", "3xl", "xxl", "xl", "lg", "md", "sm"];
-    function normalizeTemplateImageSize(value) {
-      const size = String(value || "full").trim().toLowerCase();
-      return TEMPLATE_IMAGE_SIZES.includes(size) ? size : "full";
+    const TEMPLATE_BUBBLE_SIZES = ["nano", "micro", "deca", "hecto", "kilo", "mega", "giga"];
+    const TEMPLATE_ASPECT_MODES = ["cover", "fit"];
+    function normalizeTemplateBubbleSize(value) {
+      const size = String(value || "nano").trim().toLowerCase();
+      return TEMPLATE_BUBBLE_SIZES.includes(size) ? size : "nano";
     }
 
-    function renderTemplateImageSizeOptions(current) {
-      const selected = normalizeTemplateImageSize(current);
-      return TEMPLATE_IMAGE_SIZES.map((size) => `<option value="${size}" ${size === selected ? "selected" : ""}>${size}</option>`).join("");
+    function normalizeTemplateAspectRatio(value) {
+      const ratio = String(value || "400:600").trim().replace(/[：]/g, ":");
+      return /^\d{1,4}:\d{1,4}$/.test(ratio) ? ratio : "400:600";
+    }
+
+    function normalizeTemplateAspectMode(value) {
+      const mode = String(value || "cover").trim().toLowerCase();
+      return TEMPLATE_ASPECT_MODES.includes(mode) ? mode : "cover";
+    }
+
+    function renderTemplateOptions(options, current, normalizer) {
+      const selected = normalizer(current);
+      return options.map((item) => `<option value="${item}" ${item === selected ? "selected" : ""}>${item}</option>`).join("");
     }
     function defaultTemplateButton(type) {
       return { label: type === "uri" ? "\u958b\u555f\u9023\u7d50" : "\u7c3d\u5230\u8d08\u9ede", type: type || "message", text: type === "uri" ? "" : "\u6703\u54e1\u6253\u5361", uri: "", color: "" };
@@ -1051,7 +1068,9 @@
         pages: pages.slice(0, 12).map((page) => ({
           imageUrl: String(page.imageUrl || page.image_url || ""),
           imageLink: String(page.imageLink || page.image_link || ""),
-          imageSize: normalizeTemplateImageSize(page.imageSize || page.image_size || page.size),
+          bubbleSize: normalizeTemplateBubbleSize(page.bubbleSize || page.bubble_size || page.imageSize || page.image_size || page.size),
+          imageAspectRatio: normalizeTemplateAspectRatio(page.imageAspectRatio || page.image_aspect_ratio || page.aspectRatio || page.aspect_ratio),
+          imageAspectMode: normalizeTemplateAspectMode(page.imageAspectMode || page.image_aspect_mode || page.aspectMode || page.aspect_mode),
           buttons: (Array.isArray(page.buttons) && page.buttons.length ? page.buttons : [defaultTemplateButton("message")]).slice(0, 4).map((button) => ({
             label: String(button.label || "\u6309\u9215"),
             type: button.type === "uri" ? "uri" : "message",
@@ -1077,11 +1096,13 @@
               <a class="openLink" href="${esc(page.imageUrl || '#')}" target="_blank" rel="noopener">查看圖片</a>
             </div>
             <input data-field="imageUrl" type="url" value="${esc(page.imageUrl)}" placeholder="上傳後自動產生圖片 URL，也可貼 HTTPS 圖片網址" />
-            <div class="templateImageStatus">圖片會以 2:3 裁切預覽；建議尺寸 400 x 600，檔案 1MB 內。</div>
+            <div class="templateImageStatus">圖片依下方比例裁切預覽；建議尺寸 400 x 600，檔案 1MB 內。</div>
           </div>
           <div class="templateGrid templateImageOptions" style="margin-top:10px">
             <label>點圖連結<input data-field="imageLink" type="url" value="${esc(page.imageLink)}" placeholder="點圖片後開啟的網址，可空白" /></label>
-            <label>圖片 Size<select data-field="imageSize">${renderTemplateImageSizeOptions(page.imageSize)}</select></label>
+            <label>卡片 Size<select data-field="bubbleSize">${renderTemplateOptions(TEMPLATE_BUBBLE_SIZES, page.bubbleSize, normalizeTemplateBubbleSize)}</select></label>
+            <label>圖片比例<input data-field="imageAspectRatio" type="text" value="${esc(normalizeTemplateAspectRatio(page.imageAspectRatio))}" placeholder="400:600" /></label>
+            <label>圖片模式<select data-field="imageAspectMode">${renderTemplateOptions(TEMPLATE_ASPECT_MODES, page.imageAspectMode, normalizeTemplateAspectMode)}</select></label>
           </div>
           <div class="templateButtons">
             ${buttons.map((button, buttonIndex) => renderTemplateButton(button, buttonIndex)).join("")}
@@ -1178,7 +1199,7 @@
           };
           return { label: get("label") || "\u6309\u9215", type: get("type") === "uri" ? "uri" : "message", text: get("text"), uri: get("uri"), color: get("color") };
         }).filter((button) => button.label && (button.type === "uri" ? button.uri : button.text));
-        return { imageUrl: valueOf("imageUrl"), imageLink: valueOf("imageLink"), imageSize: normalizeTemplateImageSize(valueOf("imageSize")), buttons };
+        return { imageUrl: valueOf("imageUrl"), imageLink: valueOf("imageLink"), bubbleSize: normalizeTemplateBubbleSize(valueOf("bubbleSize")), imageAspectRatio: normalizeTemplateAspectRatio(valueOf("imageAspectRatio")), imageAspectMode: normalizeTemplateAspectMode(valueOf("imageAspectMode")), buttons };
       });
       const keywordsRaw = $("templateKeywords") ? $("templateKeywords").value : "";
       const keywords = keywordsRaw.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean);
@@ -1222,10 +1243,11 @@
           contents: pages.slice(0, 12).map((page) => {
             const bubble = {
               type: "bubble",
+              size: normalizeTemplateBubbleSize(page.bubbleSize),
               body: {
                 type: "box",
                 layout: "vertical",
-                contents: [{ type: "image", url: page.imageUrl, size: normalizeTemplateImageSize(page.imageSize), aspectMode: "cover", aspectRatio: "2:3", gravity: "top", ...(page.imageLink ? { action: { type: "uri", uri: page.imageLink } } : {}) }],
+                contents: [{ type: "image", url: page.imageUrl, size: "full", aspectMode: normalizeTemplateAspectMode(page.imageAspectMode), aspectRatio: normalizeTemplateAspectRatio(page.imageAspectRatio), gravity: "top", ...(page.imageLink ? { action: { type: "uri", uri: page.imageLink } } : {}) }],
                 paddingAll: "0px",
               },
             };
