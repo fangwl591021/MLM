@@ -3830,6 +3830,15 @@ async function applyPointMutation(env, input) {
     : Number(input.pointDelta || 0);
 
   await env.DB.prepare(`
+    INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(account_key) DO UPDATE SET
+      master_member_ref = COALESCE(excluded.master_member_ref, point_accounts.master_member_ref),
+      balance = excluded.balance,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, pointType, balanceAfter).run();
+
+  await env.DB.prepare(`
     INSERT INTO point_ledger (account_key, master_member_ref, channel_key, line_user_id, action, point_type, point_delta, balance_after, source, source_event_id, business_key, operator_id, operator_name, note)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(accountKey, masterMemberRef, input.channelKey, input.lineUserId, input.action, pointType, Number(input.pointDelta || 0), balanceAfter, input.source, input.sourceEventId || null, businessKey, input.operatorId || "", input.operatorName || "", input.note || null).run();
