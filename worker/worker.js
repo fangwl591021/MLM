@@ -7138,11 +7138,13 @@ const DEFAULT_CHECKIN_TEMPLATE = {
     {
       imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
       imageLink: "",
+      imageSize: "full",
       buttons: [{ label: "簽到贈點", type: "message", text: "會員打卡", uri: "", color: "" }],
     },
     {
       imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/94f5d7aa7084fc056863902be7adec78.jpg",
       imageLink: "",
+      imageSize: "full",
       buttons: [{ label: "點數查詢", type: "uri", text: "", uri: "https://liff.line.me/2007221311-c9SEkcRL", color: "#FF0000" }],
     },
   ],
@@ -7193,6 +7195,7 @@ function normalizeCheckinTemplatePage(page) {
   return {
     imageUrl: stringValue(raw.imageUrl || raw.image_url || raw.url).trim(),
     imageLink: stringValue(raw.imageLink || raw.image_link || raw.link || raw.actionUri).trim(),
+    imageSize: normalizeFlexImageSize(raw.imageSize || raw.image_size || raw.size),
     buttons: buttons.map(normalizeCheckinTemplateButton).filter((button) => button.label).slice(0, 4),
   };
 }
@@ -7209,6 +7212,10 @@ function normalizeCheckinTemplateButton(button) {
   };
 }
 
+function normalizeFlexImageSize(value) {
+  const size = stringValue(value || "full").trim().toLowerCase();
+  return ["full", "5xl", "4xl", "3xl", "xxl", "xl", "lg", "md", "sm"].includes(size) ? size : "full";
+}
 function normalizeHexColor(value) {
   const text = stringValue(value).trim();
   return /^#[0-9a-f]{6}$/i.test(text) ? text.toUpperCase() : "";
@@ -7256,7 +7263,7 @@ function buildCheckinTemplateBubble(page) {
   const image = {
     type: "image",
     url: page.imageUrl,
-    size: "full",
+    size: normalizeFlexImageSize(page.imageSize),
     aspectMode: "cover",
     aspectRatio: "2:3",
     gravity: "top",
