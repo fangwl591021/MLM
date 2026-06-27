@@ -663,11 +663,12 @@ export default {
         await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const userId = stringValue(body.userId);
-        const text = stringValue(body.text);
-        if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text are required" }, 400, corsHeaders);
+        const lineMessages = Array.isArray(body.lineMessages) ? body.lineMessages : (Array.isArray(body.messages) ? body.messages : null);
+        const text = stringValue(body.text) || (lineMessages ? lineMessagesDisplayText(lineMessages) : "");
+        if (!userId || !text) return jsonResponse({ status: "error", message: "userId and text or lineMessages are required" }, 400, corsHeaders);
 
         const now = Date.now();
-        await saveAdminMessage(env, { floor, userId, userName: stringValue(body.userName), text, createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
+        await saveAdminMessage(env, { floor, userId, userName: stringValue(body.userName), text, messageType: stringValue(body.messageType || (lineMessages ? "line" : "text")), lineMessages, rawJson: body.rawJson || (lineMessages ? { direction: "outgoing", source: "log-reply", lineMessages } : {}), createdAt: now, status: STATUS_DONE, category: "\u88dc\u8a18\u4e0d\u63a8\u9001" });
         ctx.waitUntil(backupGas(env, {
           type: "SAVE_ADMIN_REPLY",
           data: { userId, userName: stringValue(body.userName), text, time: now, category: "\u88dc\u8a18\u4e0d\u63a8\u9001", status: STATUS_DONE },
@@ -6054,8 +6055,39 @@ function threadFromD1(row, messages) {
   };
 }
 
+function normalizeStoredLinePayload(rawJson, fallbackType = "text") {
+  const raw = rawJson && typeof rawJson === "object" ? rawJson : {};
+  if (Array.isArray(raw.lineMessages)) return { direction: raw.direction || "outgoing", messages: raw.lineMessages };
+  if (Array.isArray(raw.messages)) return { direction: raw.direction || "outgoing", messages: raw.messages };
+  if (raw.lineMessage && typeof raw.lineMessage === "object") return { direction: raw.direction || "outgoing", messages: [raw.lineMessage] };
+  if (raw.message && typeof raw.message === "object") return { direction: raw.direction || "incoming", messages: [raw.message] };
+  if (raw.type && raw.type !== "message") return { direction: raw.direction || "outgoing", messages: [raw] };
+  if (fallbackType && fallbackType !== "text") return { direction: raw.direction || "unknown", messages: [{ type: fallbackType }] };
+  return null;
+}
+
+function lineMessageDisplayText(message) {
+  const item = message && typeof message === "object" ? message : {};
+  const type = stringValue(item.type || "text");
+  if (type === "text") return stringValue(item.text);
+  if (type === "image") return "[圖片]";
+  if (type === "video") return "[影片]";
+  if (type === "audio") return "[音訊]";
+  if (type === "location") return stringValue(item.title || item.address) || "[位置]";
+  if (type === "sticker") return "[貼圖]";
+  if (type === "flex") return stringValue(item.altText) || "[Flex 訊息]";
+  if (type === "template") return stringValue(item.altText) || "[Template 訊息]";
+  return type ? `[${type}]` : "[LINE 訊息]";
+}
+
+function lineMessagesDisplayText(messages) {
+  const items = Array.isArray(messages) ? messages : [];
+  return items.map(lineMessageDisplayText).filter(Boolean).join("\n") || "[LINE 訊息]";
+}
 function messageFromD1(thread, message) {
   const suggestions = parseJsonArray(message.suggestions);
+  const rawJson = parseJsonObject(message.raw_json);
+  const linePayload = normalizeStoredLinePayload(rawJson, message.message_type);
   const raw = {
     "\u6642\u9593": message.created_at,
     "\u8eab\u4efd": message.sender_role === ADMIN_ROLE ? "admin" : "user",
@@ -6069,6 +6101,7 @@ function messageFromD1(thread, message) {
     "\u72c0\u614b": normalizeStatusForDisplay(thread.status),
     "\u7528\u6236\u540d\u7a31": thread.display_name || "",
     "\u982d\u50cfURL": thread.picture_url || "",
+    "LINEPayload": linePayload,
   };
   return {
     id: message.id,
@@ -6081,19 +6114,22 @@ function messageFromD1(thread, message) {
     category: message.category,
     suggestions,
     important: Boolean(message.important),
+    rawJson,
+    linePayload,
     raw,
   };
 }
 
 async function processLineWebhook(env, floor, provider, payload, options = {}) {
   for (const event of payload.events || []) {
-    if (!event || event.type !== "message" || !event.message || event.message.type !== "text") continue;
+    if (!event || event.type !== "message" || !event.message) continue;
     const userId = event.source && event.source.userId ? event.source.userId : "";
-    const text = stringValue(event.message.text);
+    const messageType = stringValue(event.message.type || "text");
+    const text = messageType === "text" ? stringValue(event.message.text) : lineMessageDisplayText(event.message);
     if (!userId || !text) continue;
-    const templateReplied = options.skipCheckinTemplateReply !== true && await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text);
+    const templateReplied = messageType === "text" && options.skipCheckinTemplateReply !== true && await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text);
     await saveIncomingMessage(env, floor, provider, event, userId, text);
-    if (templateReplied) continue;
+    if (templateReplied || messageType !== "text") continue;
     await handleKeywordAutomation(env, floor, provider, event, userId, text);
   }
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
@@ -6293,7 +6329,7 @@ async function saveIncomingMessage(env, floor, provider, event, userId, text) {
     threadId,
     userId,
     USER_ROLE,
-    "text",
+    stringValue(event.message && event.message.type) || "text",
     text,
     "",
     "[]",
@@ -6316,7 +6352,8 @@ async function saveIncomingMessage(env, floor, provider, event, userId, text) {
     now,
   });
 
-  const analysis = await analyzeMessage(env, floor, text, userId, profile.displayName || userId);
+  const canAnalyze = stringValue(event.message && event.message.type || "text") === "text";
+  const analysis = canAnalyze ? await analyzeMessage(env, floor, text, userId, profile.displayName || userId) : { category: "LINE 訊息", suggestions: [], isImportant: false, sentiment: "neutral" };
   const status = analysis.isImportant ? STATUS_IMPORTANT : STATUS_PENDING;
   const risk = analysis.isImportant ? "high" : "low";
 
@@ -6376,7 +6413,10 @@ async function saveIncomingMessage(env, floor, provider, event, userId, text) {
 async function saveAdminMessage(env, input) {
   const floor = input.floor || FLOOR_MAIN;
   const userId = stringValue(input.userId);
-  const text = stringValue(input.text);
+  const lineMessages = Array.isArray(input.lineMessages) ? input.lineMessages : null;
+  const text = stringValue(input.text) || (lineMessages ? lineMessagesDisplayText(lineMessages) : "");
+  const messageType = stringValue(input.messageType || (lineMessages && lineMessages.length === 1 ? lineMessages[0].type : (lineMessages ? "line" : "text"))) || "text";
+  const rawPayload = input.rawJson || (lineMessages ? { direction: "outgoing", lineMessages } : {});
   const now = Number(input.createdAt || Date.now());
   const threadId = threadIdFor(floor, userId);
   const profile = await getProfile(env, floor, userId);
@@ -6398,7 +6438,7 @@ async function saveAdminMessage(env, input) {
   await env.DB.prepare(`
     INSERT INTO messages (id, floor_id, thread_id, user_id, sender_role, message_type, text, category, suggestions, important, sentiment, raw_json, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(messageId, floor, threadId, userId, ADMIN_ROLE, "text", text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", "{}", now).run();
+  `).bind(messageId, floor, threadId, userId, ADMIN_ROLE, messageType, text, input.category || "\u4eba\u5de5\u56de\u8986", "[]", 0, "neutral", JSON.stringify(rawPayload || {}), now).run();
 
   await learnFromAdminReply(env, {
     floor,
@@ -6407,6 +6447,7 @@ async function saveAdminMessage(env, input) {
     userName: name,
     replyText: text,
     replyMessageId: messageId,
+    messageType,
     category: input.category || "\u4eba\u5de5\u56de\u8986",
     createdAt: now,
     tags: current ? current.tags : "[]",
@@ -6415,6 +6456,7 @@ async function saveAdminMessage(env, input) {
 
 async function learnFromAdminReply(env, input) {
   if (!env.DB) return null;
+  if (stringValue(input.messageType || "text") !== "text") return null;
   const replyText = stringValue(input.replyText).trim();
   if (!replyText || replyText.length < 2) return null;
   if (!isLearnableAdminReply(input.category, replyText)) return null;
@@ -7259,7 +7301,20 @@ async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, te
   const template = await getCheckinTemplate(env);
   if (!isCheckinTemplateTrigger(template, text)) return false;
   const flex = buildCheckinTemplateFlex(template);
-  await replyOrPushLineMessages(provider, event.replyToken, userId, [flex]);
+  const delivery = await replyOrPushLineMessages(provider, event.replyToken, userId, [flex]);
+  if (delivery && delivery.ok) {
+    await saveAdminMessage(env, {
+      floor,
+      userId,
+      text: lineMessagesDisplayText([flex]),
+      messageType: "flex",
+      lineMessages: [flex],
+      rawJson: { direction: "outgoing", source: "checkin-template", lineMessages: [flex], delivery: { status: delivery.status } },
+      createdAt: Date.now(),
+      status: STATUS_DONE,
+      category: "LINE Flex"
+    });
+  }
   return true;
 }
 
