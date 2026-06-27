@@ -118,7 +118,7 @@ export default {
         }, 200, corsHeaders);
       }
 
-      if ((url.pathname === "/console" || url.pathname === "/console.html") && request.method === "GET") {
+      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && request.method === "GET") {
         const session = await verifyConsoleSession(request, env);
         if (session.ok && !session.profile.admin) {
           const floors = Array.isArray(session.profile.floors) ? session.profile.floors : [];
@@ -701,7 +701,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };

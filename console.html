@@ -24,7 +24,7 @@
     .templateDesigner label{display:grid;gap:7px;color:#344054;font-size:14px;font-weight:850;min-width:0}.templateDesigner input,.templateDesigner select,.templateDesigner textarea{width:100%;min-width:0;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.templateDesigner textarea{min-height:86px;resize:vertical}.templateControls .templateBlock:first-child{display:grid;grid-template-columns:1fr;gap:12px}.templateControls .templateBlock:first-child .templateBlockHead{margin-bottom:0}.templateSwitch{display:flex!important;align-items:center!important;grid-template-columns:none!important}.templateSwitch input{width:16px!important;height:16px!important;min-width:16px!important}.templateUploadRow label{min-width:0}.templateUploadRow .openLink{align-self:end;justify-content:center}.templateImageUpload>input[data-field=imageUrl]{height:42px}.templateButtonGrid{grid-template-columns:minmax(150px,1fr) 120px!important}.templateButtonGrid label:nth-child(3),.templateButtonGrid label:nth-child(4),.templateButtonGrid label:nth-child(5){grid-column:auto}.templateButtonGrid .dangerButton{align-self:end}.templateColorRow{grid-template-columns:42px minmax(86px,1fr)!important}.templateColorRow input[type=color]{padding:2px!important}.templatePage .sectionActions{margin-top:10px}.templatePreviewPane{position:sticky;top:18px;align-self:start}.templateVisualPreview{align-items:flex-start}.templatePhoneImage span{padding:18px;line-height:1.5}@media(min-width:1380px){.templateButtonGrid{grid-template-columns:minmax(140px,1fr) 120px minmax(140px,1fr) minmax(150px,1fr) 140px auto!important}}@media(max-width:1180px){.templatePreviewPane{position:static}.templateButtonGrid{grid-template-columns:1fr!important}}
   </style>
   <style>
-    .templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 110px 120px 110px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}
+    body.template-page .side{display:none}body.template-page .shell{display:block}body.template-page main{max-width:1500px;margin:0 auto;padding:24px}body.template-page main>:not(#authGate):not(#checkinTemplatePanel):not(#errorBox){display:none!important}body:not(.template-page) #checkinTemplatePanel{display:none!important}body:not(.template-page) .templateBackLink{display:none!important}.templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 110px 120px 110px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}
   </style>
 </head>
 <body class="auth-locked">
@@ -39,7 +39,7 @@
         <a href="#calendarPanel">行事曆 <span>已接入</span></a>
         <a href="#crmPanel">CRM / 點數 <span>已接入</span></a>
         <a href="https://mlm.fangwl591021.workers.dev/admin/points/stats" target="_blank" rel="noopener">點數統計 <span>日報表</span></a>
-        <a href="#eventsPanel">活動報名簽到 <span>已接入</span></a><a href="#checkinTemplatePanel">簽到模板 <span>Flex</span></a>
+        <a href="#eventsPanel">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
       <section class="settings" id="settingsBox">
@@ -122,7 +122,7 @@
         <article class="card attendanceCard"><div class="sectionHead"><h3>課程出席名單</h3><span class="muted">每個行事曆活動掃碼人次</span></div><div id="eventAttendanceList" class="eventList"></div></article>
       </section>
             <section class="section" id="checkinTemplatePanel">
-        <div class="sectionHead"><h3>簽到贈點活動模板</h3><span class="muted">所見即所得 LINE Flex 多頁活動卡</span></div>
+        <div class="sectionHead"><h3>簽到贈點活動模板</h3><div class="sectionActions"><span class="muted">所見即所得 LINE Flex 多頁活動卡</span><a id="templateBackLink" class="openLink templateBackLink" href="/console">返回主控台</a></div></div>
         <article class="card templateDesigner">
           <div class="templateDesignerGrid">
             <div class="templateControls">
@@ -219,6 +219,8 @@
     const $ = (id) => document.getElementById(id);
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "", session: false };
+    const isTemplatePage = location.pathname === "/checkin-template" || location.pathname === "/checkin-template.html";
+    if (isTemplatePage) document.body.classList.add("template-page");
     let latestCalendarEvents = [];
     let checkinTemplateDraft = null;
     let calendarViewDate = new Date();
@@ -286,6 +288,11 @@
       setStatus("同步中", false);
       showError("");
       try {
+        if (isTemplatePage) {
+          await loadCheckinTemplate();
+          setStatus("模板已同步", false);
+          return;
+        }
         const res = await fetch(`${cleanBase(apiBase.value)}/api/console/summary`, {
           headers: authHeaders(),
         });
