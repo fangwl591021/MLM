@@ -1370,7 +1370,18 @@ async function handlePointWebhook(request, env, ctx, channelKey, corsHeaders) {
   if (!validLine) return jsonResponse({ success: false, status: "error", message: "Invalid LINE signature" }, 401, corsHeaders);
 
   const payload = JSON.parse(rawBody);
-  ctx.waitUntil(processPointWebhook(env, channelKey, config, payload, rawBody, signature).catch((error) => {
+  const provider = {
+    floor: config.floor,
+    id: config.floor,
+    label: config.label,
+    channelSecret: config.channelSecret,
+    accessToken: config.accessToken,
+  };
+  const fastTemplateReplies = await replyCheckinTemplateForPayload(env, config.floor, provider, payload).catch((error) => {
+    console.error("fast checkin template reply failed", error && error.stack ? error.stack : error);
+    return 0;
+  });
+  ctx.waitUntil(processPointWebhook(env, channelKey, config, payload, rawBody, signature, { skipCheckinTemplateReply: fastTemplateReplies > 0 }).catch((error) => {
     console.error("processPointWebhook failed", error && error.stack ? error.stack : error);
   }));
 
@@ -1380,6 +1391,7 @@ async function handlePointWebhook(request, env, ctx, channelKey, corsHeaders) {
     channel_key: channelKey,
     floor: config.floor,
     queued_events: Array.isArray(payload.events) ? payload.events.length : 0,
+    fast_template_replies: fastTemplateReplies,
   }, 200, corsHeaders);
 }
 
@@ -1795,7 +1807,7 @@ function buildPointQueryReply(balance, ledger) {
   return lines.join("\n");
 }
 
-async function processPointWebhook(env, channelKey, config, payload, rawBody, signature) {
+async function processPointWebhook(env, channelKey, config, payload, rawBody, signature, options = {}) {
   await upsertPointChannel(env, config);
   let checkinEvents = 0;
   const monitorEvents = [];
@@ -1843,7 +1855,7 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
     monitorEvents.push(event);
   }
 
-  if (config.monitor && monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
+  if (config.monitor && monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents }, { skipCheckinTemplateReply: options.skipCheckinTemplateReply === true });
 
   let forwarded = null;
   if (config.forwardUrl) {
@@ -6073,14 +6085,15 @@ function messageFromD1(thread, message) {
   };
 }
 
-async function processLineWebhook(env, floor, provider, payload) {
+async function processLineWebhook(env, floor, provider, payload, options = {}) {
   for (const event of payload.events || []) {
     if (!event || event.type !== "message" || !event.message || event.message.type !== "text") continue;
     const userId = event.source && event.source.userId ? event.source.userId : "";
     const text = stringValue(event.message.text);
     if (!userId || !text) continue;
+    const templateReplied = options.skipCheckinTemplateReply !== true && await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text);
     await saveIncomingMessage(env, floor, provider, event, userId, text);
-    if (await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text)) continue;
+    if (templateReplied) continue;
     await handleKeywordAutomation(env, floor, provider, event, userId, text);
   }
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
@@ -7207,6 +7220,17 @@ function isCheckinTemplateTrigger(template, text) {
   return (template.keywords || []).some((keyword) => normalizeTextKeyword(keyword) === normalizedText);
 }
 
+async function replyCheckinTemplateForPayload(env, floor, provider, payload) {
+  let count = 0;
+  for (const event of payload && payload.events || []) {
+    if (!event || event.type !== "message" || !event.message || event.message.type !== "text") continue;
+    const userId = event.source && event.source.userId ? event.source.userId : "";
+    const text = stringValue(event.message.text);
+    if (!userId || !text) continue;
+    if (await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text)) count += 1;
+  }
+  return count;
+}
 async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, text) {
   if (floor !== FLOOR_MAIN && floor !== FLOOR_SMART) return false;
   const template = await getCheckinTemplate(env);
