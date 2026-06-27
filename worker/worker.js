@@ -141,6 +141,9 @@ export default {
       if (url.pathname.startsWith("/docs/") && request.method === "GET") {
         return serveFrontendAsset(url.pathname.replace(/^\/+/, ""), corsHeaders);
       }
+      if (url.pathname.startsWith("/assets/checkin-template/") && request.method === "GET") {
+        return serveCheckinTemplateImage(env, url.pathname, corsHeaders);
+      }
 
       if (url.pathname === "/api/auth/session" && request.method === "GET") {
         const session = await verifyConsoleSession(request, env);
@@ -604,6 +607,11 @@ export default {
         await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const data = await saveCheckinTemplate(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+      if (url.pathname === "/api/checkin-template/upload-image" && request.method === "POST") {
+        await assertDashboardAuth(request, env);
+        const data = await uploadCheckinTemplateImage(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -6831,6 +6839,60 @@ function normalizeKnowledgePayload(payload) {
       return { category, question, answer };
     }),
   };
+}
+const CHECKIN_TEMPLATE_IMAGE_PREFIX = "checkin_template_image:";
+const CHECKIN_TEMPLATE_IMAGE_MAX_BYTES = 1024 * 1024;
+
+async function uploadCheckinTemplateImage(request, env) {
+  await ensureAppMetaSchema(env);
+  const form = await request.formData();
+  const file = form.get("image");
+  if (!file || typeof file.arrayBuffer !== "function") throw httpError("請上傳圖片檔。", 400);
+  const mimeType = stringValue(file.type || "").toLowerCase();
+  const supported = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  if (!supported.has(mimeType)) throw httpError("圖片格式僅支援 JPG、PNG、WEBP、GIF。", 400);
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > CHECKIN_TEMPLATE_IMAGE_MAX_BYTES) throw httpError("圖片檔案過大，請壓到 1MB 以內。", 400);
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : mimeType === "image/gif" ? "gif" : "jpg";
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}.${ext}`;
+  const now = Date.now();
+  const data = {
+    id,
+    mimeType,
+    size: buffer.byteLength,
+    fileName: stringValue(file.name || id).slice(0, 160),
+    base64: arrayBufferToBase64(buffer),
+    createdAt: now,
+  };
+  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?)").bind(CHECKIN_TEMPLATE_IMAGE_PREFIX + id, JSON.stringify(data), now).run();
+  return { id, url: `${publicBaseUrl(env)}/assets/checkin-template/${encodeURIComponent(id)}`, mimeType, size: buffer.byteLength };
+}
+
+async function serveCheckinTemplateImage(env, pathname, corsHeaders) {
+  await ensureAppMetaSchema(env);
+  const id = decodeURIComponent(String(pathname || "").split("/").pop() || "");
+  if (!id || id.includes("..") || id.includes("/")) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT value, updated_at FROM app_meta WHERE key = ?").bind(CHECKIN_TEMPLATE_IMAGE_PREFIX + id).first();
+  if (!row || !row.value) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  let data = null;
+  try { data = JSON.parse(row.value); } catch (_err) { data = null; }
+  if (!data || !data.base64 || !data.mimeType) return new Response("Invalid image data", { status: 500, headers: corsHeaders });
+  return new Response(base64ToUint8Array(data.base64), {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": data.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "ETag": `"${id}-${row.updated_at || 0}"`,
+    },
+  });
+}
+
+function base64ToUint8Array(value) {
+  const binary = atob(String(value || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 const CHECKIN_TEMPLATE_META_KEY = "checkin_reward_template";
 const DEFAULT_CHECKIN_TEMPLATE = {
