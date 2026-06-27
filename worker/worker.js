@@ -579,6 +579,19 @@ export default {
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/checkin-template" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await getCheckinTemplate(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/checkin-template" && request.method === "POST") {
+        await assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const data = await saveCheckinTemplate(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/conversation-meta" && request.method === "POST") {
         await assertDashboardAuth(request, env);
         const body = await safeJson(request);
@@ -660,7 +673,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -1072,7 +1085,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/floor-whitelist") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
-  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild") return true;
+  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
   if (path === "/admin/points/stats" || path === "/admin/points/stats-data") return false;
   if (path.startsWith("/admin/points/")) return true;
@@ -5502,6 +5515,7 @@ async function processLineWebhook(env, floor, provider, payload) {
     const text = stringValue(event.message.text);
     if (!userId || !text) continue;
     await saveIncomingMessage(env, floor, provider, event, userId, text);
+    if (await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text)) continue;
     await handleKeywordAutomation(env, floor, provider, event, userId, text);
   }
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
@@ -6479,6 +6493,185 @@ function normalizeKnowledgePayload(payload) {
     }),
   };
 }
+const CHECKIN_TEMPLATE_META_KEY = "checkin_reward_template";
+const DEFAULT_CHECKIN_TEMPLATE = {
+  active: true,
+  keywords: ["簽到贈點活動"],
+  altText: "簽到贈點活動",
+  pages: [
+    {
+      imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
+      imageLink: "",
+      buttons: [{ label: "簽到贈點", type: "message", text: "會員打卡", uri: "", color: "" }],
+    },
+    {
+      imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/94f5d7aa7084fc056863902be7adec78.jpg",
+      imageLink: "",
+      buttons: [{ label: "點數查詢", type: "uri", text: "", uri: "https://liff.line.me/2007221311-c9SEkcRL", color: "#FF0000" }],
+    },
+  ],
+};
+
+async function ensureAppMetaSchema(env) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)").run();
+}
+
+async function getCheckinTemplate(env) {
+  await ensureAppMetaSchema(env);
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(CHECKIN_TEMPLATE_META_KEY).first();
+  if (!row || !row.value) return normalizeCheckinTemplate(DEFAULT_CHECKIN_TEMPLATE);
+  try {
+    return normalizeCheckinTemplate(JSON.parse(row.value));
+  } catch (_err) {
+    return normalizeCheckinTemplate(DEFAULT_CHECKIN_TEMPLATE);
+  }
+}
+
+async function saveCheckinTemplate(env, input) {
+  await ensureAppMetaSchema(env);
+  const data = normalizeCheckinTemplate(input);
+  const now = Date.now();
+  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(CHECKIN_TEMPLATE_META_KEY, JSON.stringify(data), now).run();
+  return data;
+}
+
+function normalizeCheckinTemplate(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const keywords = Array.isArray(source.keywords)
+    ? source.keywords
+    : stringValue(source.keyword || source.trigger || "簽到贈點活動").split(/[\n,，]/);
+  const pages = Array.isArray(source.pages) ? source.pages : [];
+  const normalizedPages = pages.map(normalizeCheckinTemplatePage).filter((page) => page.imageUrl).slice(0, 12);
+  return {
+    active: source.active !== false,
+    keywords: uniqueSuggestions(keywords.map((item) => stringValue(item).trim()).filter(Boolean)).slice(0, 12),
+    altText: stringValue(source.altText || source.alt_text || "簽到贈點活動").slice(0, 400),
+    pages: normalizedPages.length ? normalizedPages : DEFAULT_CHECKIN_TEMPLATE.pages.map(normalizeCheckinTemplatePage),
+  };
+}
+
+function normalizeCheckinTemplatePage(page) {
+  const raw = page && typeof page === "object" ? page : {};
+  const buttons = Array.isArray(raw.buttons) ? raw.buttons : [];
+  return {
+    imageUrl: stringValue(raw.imageUrl || raw.image_url || raw.url).trim(),
+    imageLink: stringValue(raw.imageLink || raw.image_link || raw.link || raw.actionUri).trim(),
+    buttons: buttons.map(normalizeCheckinTemplateButton).filter((button) => button.label).slice(0, 4),
+  };
+}
+
+function normalizeCheckinTemplateButton(button) {
+  const raw = button && typeof button === "object" ? button : {};
+  const type = stringValue(raw.type || raw.actionType || "message").toLowerCase() === "uri" ? "uri" : "message";
+  return {
+    label: stringValue(raw.label || "按鈕").slice(0, 40),
+    type,
+    text: stringValue(raw.text || raw.message || "會員打卡").slice(0, 300),
+    uri: stringValue(raw.uri || raw.url || "").trim(),
+    color: normalizeHexColor(raw.color),
+  };
+}
+
+function normalizeHexColor(value) {
+  const text = stringValue(value).trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text.toUpperCase() : "";
+}
+
+function isCheckinTemplateTrigger(template, text) {
+  if (!template || template.active === false) return false;
+  const normalizedText = normalizeTextKeyword(text);
+  return (template.keywords || []).some((keyword) => normalizeTextKeyword(keyword) === normalizedText);
+}
+
+async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, text) {
+  if (floor !== FLOOR_MAIN) return false;
+  const template = await getCheckinTemplate(env);
+  if (!isCheckinTemplateTrigger(template, text)) return false;
+  const flex = buildCheckinTemplateFlex(template);
+  await replyOrPushLineMessages(provider, event.replyToken, userId, [flex]);
+  return true;
+}
+
+function buildCheckinTemplateFlex(template) {
+  const data = normalizeCheckinTemplate(template);
+  return {
+    type: "flex",
+    altText: data.altText || "簽到贈點活動",
+    contents: {
+      type: "carousel",
+      contents: data.pages.map(buildCheckinTemplateBubble),
+    },
+  };
+}
+
+function buildCheckinTemplateBubble(page) {
+  const image = {
+    type: "image",
+    url: page.imageUrl,
+    size: "full",
+    aspectMode: "cover",
+    aspectRatio: "2:3",
+    gravity: "top",
+  };
+  if (page.imageLink) image.action = { type: "uri", uri: page.imageLink };
+  const bubble = {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [image],
+      paddingAll: "0px",
+    },
+  };
+  if (page.buttons && page.buttons.length) {
+    bubble.footer = {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: page.buttons.map(buildCheckinTemplateButton),
+    };
+  }
+  return bubble;
+}
+
+function buildCheckinTemplateButton(button) {
+  const action = button.type === "uri"
+    ? { type: "uri", label: button.label, uri: button.uri || "https://liff.line.me/2007221311-c9SEkcRL" }
+    : { type: "message", label: button.label, text: button.text || button.label };
+  const item = { type: "button", action, height: "sm", style: "primary" };
+  if (button.color) item.color = button.color;
+  return item;
+}
+async function pushLineMessages(provider, userId, messages) {
+  if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
+  const response = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.accessToken}` },
+    body: JSON.stringify({ to: userId, messages }),
+  });
+  const detail = await response.text();
+  return { ok: response.ok, status: response.status, detail };
+}
+
+async function replyLineMessages(provider, replyToken, messages) {
+  if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
+  if (!replyToken) return { ok: false, status: 400, detail: "reply token is empty" };
+  const response = await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.accessToken}` },
+    body: JSON.stringify({ replyToken, messages }),
+  });
+  const detail = await response.text();
+  return { ok: response.ok, status: response.status, detail };
+}
+
+async function replyOrPushLineMessages(provider, replyToken, userId, messages) {
+  const reply = await replyLineMessages(provider, replyToken, messages);
+  if (reply.ok || !userId) return reply;
+  return pushLineMessages(provider, userId, messages);
+}
+
 async function pushLineMessage(provider, userId, text) {
   if (!provider.accessToken) return { ok: false, status: 500, detail: "LINE channel access token is not configured" };
   const response = await fetch("https://api.line.me/v2/bot/message/push", {

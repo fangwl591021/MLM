@@ -16,7 +16,7 @@
     .shell{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:24px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:28px}.logo{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--line);color:#fff;font-weight:800;box-shadow:0 14px 28px rgba(6,199,85,.18)}h1,h2,h3,p{margin:0}.brand h1{font-size:22px}.brand p,.muted{color:var(--muted);font-size:13px}.nav{display:grid;gap:8px;margin-top:22px}.nav a{display:flex;align-items:center;justify-content:space-between;border-radius:14px;padding:12px 14px;color:#263244;text-decoration:none;font-weight:700}.nav a.active,.nav a:hover{background:#effcf4;color:#067a35}.settings{display:grid;gap:8px;margin-top:26px}.settingsToggle{height:40px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;font-weight:800}.settingsPanel{display:none;gap:8px}.settings.open .settingsPanel{display:grid}.settings label{font-size:12px;color:#5d6675;font-weight:700}.settings input{width:100%;height:40px;border:1px solid var(--border);border-radius:10px;padding:0 11px;outline:none}.settings input:focus{border-color:var(--line);box-shadow:0 0 0 3px rgba(6,199,85,.12)}.sync{height:42px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800}
     .calendarImport{margin-bottom:14px}.importGrid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:12px}.fileBox{min-height:44px;border:1px dashed #bfd0e6;border-radius:12px;background:#f8fafc;padding:10px}.fileBox input{width:100%}.importButton{height:44px;border:0;border-radius:12px;background:var(--line);color:#fff;font-weight:850;padding:0 18px}.importButton:disabled{opacity:.55;cursor:not-allowed}.importResult{margin-top:12px;border-radius:12px;background:#f8fafc;padding:12px;color:#344054;line-height:1.55;white-space:pre-wrap}.importResult.ok{background:#effcf4;color:#067a35}.importResult.bad{background:#fff1f3;color:#b42318}
     main{padding:26px 30px}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}.top h2{font-size:30px}.status{border:1px solid #b6ecc8;border-radius:999px;background:#effcf4;color:#067a35;padding:8px 12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 12px 28px rgba(16,24,40,.04)}.metric{font-size:34px;font-weight:850;margin-top:10px}.metric.warn{color:var(--orange)}.metric.danger{color:var(--red)}.section{margin-top:18px}.sectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.sectionHead h3{font-size:18px}.sectionActions{display:flex;align-items:center;gap:8px}.openLink{height:34px;display:inline-flex;align-items:center;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:0 12px;text-decoration:none;font-weight:800}.chartGrid{display:grid;grid-template-columns:1.25fr .75fr;gap:14px}.chartCard{min-height:270px}.bars{display:grid;gap:14px;margin-top:18px}.barRow{display:grid;grid-template-columns:108px minmax(0,1fr) 52px;gap:12px;align-items:center}.barLabel{font-weight:800}.barTrack{height:18px;border-radius:999px;background:#edf2f7;overflow:hidden}.barFill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#06c755,#38d995);transition:width .35s ease}.barFill.blue{background:linear-gradient(90deg,#315b9c,#76a9ff)}.barFill.orange{background:linear-gradient(90deg,#ff9f1c,#ffd166)}.barFill.red{background:linear-gradient(90deg,#d92d20,#ff7a70)}.barValue{text-align:right;color:#344054;font-weight:800}.donutWrap{display:grid;grid-template-columns:150px minmax(0,1fr);gap:18px;align-items:center;margin-top:12px}.donut{width:150px;height:150px;border-radius:50%;background:conic-gradient(#06c755 0deg,#06c755 var(--doneDeg,0deg),#ff9f1c var(--doneDeg,0deg),#ff9f1c var(--pendingDeg,0deg),#d92d20 var(--pendingDeg,0deg),#d92d20 360deg);position:relative}.donut::after{content:"";position:absolute;inset:28px;border-radius:50%;background:#fff}.donutCenter{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-weight:850;z-index:1}.legend{display:grid;gap:10px}.legendItem{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#4b5563}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}.dot.green{background:#06c755}.dot.orange{background:#ff9f1c}.dot.red{background:#d92d20}.insight{margin-top:14px;border-radius:14px;background:#f8fafc;padding:12px;color:#4b5563;line-height:1.5}.calendarFrame{width:100%;height:620px;border:0;border-radius:16px;background:#fff}.calendarShell{padding:0;overflow:hidden}.calendarNote{padding:14px 18px;border-top:1px solid #edf1f5;color:#667085;font-size:13px}.floors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.floorTitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.badge{border-radius:999px;background:#eef2f7;color:#344054;padding:5px 10px;font-size:12px;font-weight:800}.badge.green{background:#e7f8ef;color:#067a35}.badge.red{background:#fff1f3;color:#c01048}.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.mini div{border-radius:12px;background:#f8fafc;padding:12px}.mini strong{display:block;font-size:22px}.latest{margin-top:14px;padding-top:14px;border-top:1px solid #edf1f5;color:#4b5563;line-height:1.5}.modules{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.module{display:block;color:inherit;text-decoration:none}.module strong{display:block;margin-bottom:8px;font-size:16px}.table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:14px;background:#fff}.table th,.table td{border-bottom:1px solid #edf1f5;padding:12px;text-align:left}.table th{color:#5d6675;font-size:12px;background:#f8fafc}.authGate{display:none;margin-bottom:18px;border:1px solid #b6ecc8;background:#effcf4;border-radius:18px;padding:18px}.authGate.show{display:flex;align-items:center;justify-content:space-between;gap:16px}.authGate strong{display:block;font-size:20px;margin-bottom:6px}.authGate button{height:42px;border:0;border-radius:12px;background:var(--line);color:#fff;font-weight:850;padding:0 18px}body.auth-locked{background:#f5f7fb}body.auth-locked .shell{display:block;min-height:100vh}body.auth-locked .side{display:none}body.auth-locked main{min-height:100vh;padding:24px;display:grid;place-items:center}body.auth-locked main>:not(#authGate):not(#errorBox){display:none!important}body.auth-locked .authGate.show{width:min(520px,100%);margin:0;display:grid;gap:18px;justify-items:start;border-color:#b6ecc8;background:#fff;box-shadow:0 24px 60px rgba(16,24,40,.12);padding:28px}body.auth-locked .authGate strong{font-size:26px}body.auth-locked .authGate button{width:100%;height:48px}.error{margin-top:14px;border:1px solid #fecdd3;background:#fff1f3;color:#b42318;border-radius:12px;padding:12px;font-weight:700}.hide{display:none}@media(max-width:1100px){.shell{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--border)}.grid,.floors,.modules,.chartGrid{grid-template-columns:1fr}.donutWrap{grid-template-columns:1fr}.calendarFrame{height:520px}.top{display:block}.status{display:inline-block;margin-top:12px}}
-    .eventGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.eventMetric{padding:12px}.eventMetric strong{display:block;font-size:24px;margin-top:4px}.eventLists{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}.eventList{display:grid;gap:7px}.eventRow{border:1px solid #edf1f5;border-radius:10px;background:#fbfdff;padding:9px 10px}.eventRow strong{display:block;margin-bottom:3px;font-size:14px}.eventMeta{color:#667085;font-size:12px;line-height:1.4}.eventFold{border:1px solid #edf1f5;border-radius:12px;background:#fff;padding:0;overflow:hidden}.eventFold summary{cursor:pointer;padding:10px 12px;font-weight:900;list-style:none}.eventFold summary::-webkit-details-marker{display:none}.eventFold summary::after{content:"展開";float:right;color:#667085;font-size:12px}.eventFold[open] summary::after{content:"收合"}.eventFold .eventList{padding:0 12px 12px}.attendanceCard{margin-top:10px;padding:14px}.checkinFlow{margin-top:14px;border:1px solid #b6ecc8;background:#effcf4;border-radius:14px;padding:14px}.flowSteps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.flowSteps div{background:#fff;border:1px solid #d9f3e2;border-radius:12px;padding:10px;font-weight:800;color:#067a35}.checkinLink{margin-top:10px;display:flex;gap:8px;align-items:center}.checkinLink input{flex:1;height:38px;border:1px solid var(--border);border-radius:10px;padding:0 10px}.checkinLink button{height:38px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800;padding:0 12px}@media(max-width:900px){.eventGrid,.eventLists,.flowSteps{grid-template-columns:1fr}}.calendarMonth{background:#fff;border-top:1px solid #edf1f5;padding:16px 18px}.monthHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.monthHeader strong{font-size:18px}.monthHeader span{color:#667085;font-size:13px}.monthControls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.monthControls button{height:34px;border:1px solid var(--border);border-radius:9px;background:#fff;color:#344054;font-weight:850;padding:0 10px;cursor:pointer}.monthControls button:hover{border-color:#9fb5d1;color:#0f172a}.weekRow,.monthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.weekRow span{text-align:center;color:#667085;font-size:12px;font-weight:800;padding:8px 0;background:#f8fafc;border-top:1px solid #edf1f5;border-bottom:1px solid #edf1f5}.monthCell{min-height:118px;border-right:1px solid #edf1f5;border-bottom:1px solid #edf1f5;padding:8px;background:#fff}.monthCell:nth-child(7n+1){border-left:1px solid #edf1f5}.monthCell.hasEvent{background:#f7fffb}.mutedCell{background:#f8fafc}.monthDay{font-weight:850;color:#263244;margin-bottom:6px}.monthEvent{border-radius:8px;background:#e7f8ef;color:#067a35;padding:5px 6px;margin-top:5px;line-height:1.25}.monthEvent span{display:block;font-size:11px;font-weight:800}.monthEvent strong{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthEvent small{display:block;font-size:11px;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthMore{font-size:12px;color:#315b9c;font-weight:800;margin-top:6px}.calendarList{display:grid;gap:10px;padding:16px 18px 18px;background:#fff}.calendarItem{display:grid;grid-template-columns:170px minmax(0,1fr) 150px;gap:14px;align-items:center;border:1px solid #edf1f5;border-radius:14px;padding:13px 14px;background:#fbfdff}.calendarItem strong{display:block;font-size:16px}.calendarTime{color:#315b9c;font-weight:850}.calendarPlace{color:#667085;font-size:13px;text-align:right}.smartQr{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;align-items:center;border:1px solid #d9f3e2;background:#f7fffb;border-radius:14px;padding:14px;margin:12px 0 18px}.smartQr img{width:118px;height:118px;border:1px solid #dbe3ee;border-radius:10px;background:#fff;padding:6px}.smartQrActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.smartQrActions a,.smartQrActions button{min-height:34px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:6px 12px;text-decoration:none;font-size:13px;font-weight:850}.smartQrActions button{cursor:pointer}.calendarUrl{color:#667085;font-size:11px;word-break:break-all}.calendarEditor{border:1px solid #edf1f5;background:#fbfdff;border-radius:14px;padding:14px;margin:0 0 18px}.calendarEditor strong{display:block;margin-bottom:6px}.editorGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.editorGrid label{display:grid;gap:6px;color:#344054;font-size:13px;font-weight:800}.calendarEditor input,.calendarEditor textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.calendarEditor textarea{min-height:76px;resize:vertical;margin-top:10px}.calendarEditor .sectionActions{margin-top:10px}.secondaryButton{height:38px;border:1px solid var(--border);border-radius:10px;background:#fff;color:#344054;font-weight:850;padding:0 12px}.dangerButton{height:38px;border:1px solid #fecdd3;border-radius:10px;background:#fff1f3;color:#b42318;font-weight:850;padding:0 12px}.calendarEditButton{height:32px;border:1px solid #bfd0e6;border-radius:9px;background:#fff;color:#315b9c;font-weight:850;padding:0 10px}.registrationWindow{color:#067a35;font-size:12px;font-weight:800;margin-top:4px}.calendarEmpty{padding:30px;text-align:center;color:#667085;background:#fff;border-top:1px solid #edf1f5}@media(max-width:760px){.calendarItem{grid-template-columns:1fr}.calendarPlace,.calendarUrl{text-align:left}.smartQr{grid-template-columns:1fr}}  </style>
+    .eventGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.eventMetric{padding:12px}.eventMetric strong{display:block;font-size:24px;margin-top:4px}.eventLists{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}.eventList{display:grid;gap:7px}.eventRow{border:1px solid #edf1f5;border-radius:10px;background:#fbfdff;padding:9px 10px}.eventRow strong{display:block;margin-bottom:3px;font-size:14px}.eventMeta{color:#667085;font-size:12px;line-height:1.4}.eventFold{border:1px solid #edf1f5;border-radius:12px;background:#fff;padding:0;overflow:hidden}.eventFold summary{cursor:pointer;padding:10px 12px;font-weight:900;list-style:none}.eventFold summary::-webkit-details-marker{display:none}.eventFold summary::after{content:"展開";float:right;color:#667085;font-size:12px}.eventFold[open] summary::after{content:"收合"}.eventFold .eventList{padding:0 12px 12px}.attendanceCard{margin-top:10px;padding:14px}.checkinFlow{margin-top:14px;border:1px solid #b6ecc8;background:#effcf4;border-radius:14px;padding:14px}.flowSteps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.flowSteps div{background:#fff;border:1px solid #d9f3e2;border-radius:12px;padding:10px;font-weight:800;color:#067a35}.checkinLink{margin-top:10px;display:flex;gap:8px;align-items:center}.checkinLink input{flex:1;height:38px;border:1px solid var(--border);border-radius:10px;padding:0 10px}.checkinLink button{height:38px;border:0;border-radius:10px;background:var(--line);color:#fff;font-weight:800;padding:0 12px}@media(max-width:900px){.eventGrid,.eventLists,.flowSteps{grid-template-columns:1fr}}.calendarMonth{background:#fff;border-top:1px solid #edf1f5;padding:16px 18px}.monthHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.monthHeader strong{font-size:18px}.monthHeader span{color:#667085;font-size:13px}.monthControls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.monthControls button{height:34px;border:1px solid var(--border);border-radius:9px;background:#fff;color:#344054;font-weight:850;padding:0 10px;cursor:pointer}.monthControls button:hover{border-color:#9fb5d1;color:#0f172a}.weekRow,.monthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.weekRow span{text-align:center;color:#667085;font-size:12px;font-weight:800;padding:8px 0;background:#f8fafc;border-top:1px solid #edf1f5;border-bottom:1px solid #edf1f5}.monthCell{min-height:118px;border-right:1px solid #edf1f5;border-bottom:1px solid #edf1f5;padding:8px;background:#fff}.monthCell:nth-child(7n+1){border-left:1px solid #edf1f5}.monthCell.hasEvent{background:#f7fffb}.mutedCell{background:#f8fafc}.monthDay{font-weight:850;color:#263244;margin-bottom:6px}.monthEvent{border-radius:8px;background:#e7f8ef;color:#067a35;padding:5px 6px;margin-top:5px;line-height:1.25}.monthEvent span{display:block;font-size:11px;font-weight:800}.monthEvent strong{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthEvent small{display:block;font-size:11px;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.monthMore{font-size:12px;color:#315b9c;font-weight:800;margin-top:6px}.calendarList{display:grid;gap:10px;padding:16px 18px 18px;background:#fff}.calendarItem{display:grid;grid-template-columns:170px minmax(0,1fr) 150px;gap:14px;align-items:center;border:1px solid #edf1f5;border-radius:14px;padding:13px 14px;background:#fbfdff}.calendarItem strong{display:block;font-size:16px}.calendarTime{color:#315b9c;font-weight:850}.calendarPlace{color:#667085;font-size:13px;text-align:right}.smartQr{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;align-items:center;border:1px solid #d9f3e2;background:#f7fffb;border-radius:14px;padding:14px;margin:12px 0 18px}.smartQr img{width:118px;height:118px;border:1px solid #dbe3ee;border-radius:10px;background:#fff;padding:6px}.smartQrActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.smartQrActions a,.smartQrActions button{min-height:34px;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:6px 12px;text-decoration:none;font-size:13px;font-weight:850}.smartQrActions button{cursor:pointer}.calendarUrl{color:#667085;font-size:11px;word-break:break-all}.calendarEditor{border:1px solid #edf1f5;background:#fbfdff;border-radius:14px;padding:14px;margin:0 0 18px}.calendarEditor strong{display:block;margin-bottom:6px}.editorGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.editorGrid label{display:grid;gap:6px;color:#344054;font-size:13px;font-weight:800}.calendarEditor input,.calendarEditor textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.calendarEditor textarea{min-height:76px;resize:vertical;margin-top:10px}.calendarEditor .sectionActions{margin-top:10px}.secondaryButton{height:38px;border:1px solid var(--border);border-radius:10px;background:#fff;color:#344054;font-weight:850;padding:0 12px}.dangerButton{height:38px;border:1px solid #fecdd3;border-radius:10px;background:#fff1f3;color:#b42318;font-weight:850;padding:0 12px}.calendarEditButton{height:32px;border:1px solid #bfd0e6;border-radius:9px;background:#fff;color:#315b9c;font-weight:850;padding:0 10px}.registrationWindow{color:#067a35;font-size:12px;font-weight:800;margin-top:4px}.calendarEmpty{padding:30px;text-align:center;color:#667085;background:#fff;border-top:1px solid #edf1f5}.templatePanel{display:grid;gap:12px}.templateGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.templateGrid label,.templateButtonGrid label{display:grid;gap:6px;color:#344054;font-size:13px;font-weight:800}.templatePanel input,.templatePanel select,.templatePanel textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.templatePanel textarea{min-height:74px;resize:vertical}.templatePages{display:grid;gap:12px}.templatePage{border:1px solid #edf1f5;border-radius:14px;background:#fbfdff;padding:12px}.templatePageHead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.templateButtons{display:grid;gap:8px;margin-top:10px}.templateButton{border:1px dashed #bfd0e6;border-radius:12px;background:#fff;padding:10px}.templateButtonGrid{display:grid;grid-template-columns:1fr 120px 1fr 1fr 120px auto;gap:8px;align-items:end}.templatePreview{white-space:pre-wrap;background:#101828;color:#e5e7eb;border-radius:14px;padding:12px;max-height:360px;overflow:auto;font-size:12px}.calendarEmpty{padding:30px;text-align:center;color:#667085;background:#fff;border-top:1px solid #edf1f5}@media(max-width:760px){.calendarItem{grid-template-columns:1fr}.calendarPlace,.calendarUrl{text-align:left}.smartQr{grid-template-columns:1fr}}  </style>
 </head>
 <body class="auth-locked">
   <div class="shell">
@@ -30,7 +30,7 @@
         <a href="#calendarPanel">行事曆 <span>已接入</span></a>
         <a href="#crmPanel">CRM / 點數 <span>已接入</span></a>
         <a href="https://mlm.fangwl591021.workers.dev/admin/points/stats" target="_blank" rel="noopener">點數統計 <span>日報表</span></a>
-        <a href="#eventsPanel">活動報名簽到 <span>已接入</span></a>
+        <a href="#eventsPanel">活動報名簽到 <span>已接入</span></a><a href="#checkinTemplatePanel">簽到模板 <span>Flex</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
       <section class="settings" id="settingsBox">
@@ -112,6 +112,21 @@
         </div>
         <article class="card attendanceCard"><div class="sectionHead"><h3>課程出席名單</h3><span class="muted">每個行事曆活動掃碼人次</span></div><div id="eventAttendanceList" class="eventList"></div></article>
       </section>
+      <section class="section" id="checkinTemplatePanel">
+        <div class="sectionHead"><h3>簽到贈點活動模板</h3><span class="muted">關鍵字觸發 LINE Flex 多頁活動卡</span></div>
+        <article class="card templatePanel">
+          <div class="templateGrid">
+            <label>觸發關鍵字<textarea id="templateKeywords" placeholder="每行一個，例如：簽到贈點活動"></textarea></label>
+            <label>替代文字<input id="templateAltText" type="text" placeholder="簽到贈點活動" /></label>
+          </div>
+          <label><input id="templateActive" type="checkbox" checked /> 啟用關鍵字觸發</label>
+          <div class="sectionActions"><button id="templateAddPage" class="secondaryButton" type="button">新增頁面</button><button id="templateSave" class="importButton" type="button">儲存模板</button></div>
+          <div id="templatePages" class="templatePages"></div>
+          <div id="templateStatus" class="importResult hide"></div>
+          <strong>JSON 預覽</strong>
+          <pre id="templatePreview" class="templatePreview"></pre>
+        </article>
+      </section>
       <section class="section" id="calendarPanel">
         <div class="sectionHead">
           <h3>內建行事曆</h3>
@@ -184,6 +199,7 @@
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "", session: false };
     let latestCalendarEvents = [];
+    let checkinTemplateDraft = null;
     let calendarViewDate = new Date();
     calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
     const apiBase = $("apiBase");
@@ -205,6 +221,7 @@
     const copyCheckinButton = $("copyCheckinUrl");
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
     ["calendarEventDate", "calendarStartsAt"].forEach((id) => { const el = $(id); if (el) el.addEventListener("change", () => syncCalendarCheckinStartDefault()); });
+    bindCheckinTemplateEditor();
     setAuthGate(true);
     renderSmartCheckinQr();
     boot();
@@ -878,6 +895,262 @@
         showError(err.message || String(err));
       }
     }
+
+    function bindCheckinTemplateEditor() {
+      const addPage = $("templateAddPage");
+      const saveButton = $("templateSave");
+      const pages = $("templatePages");
+      if (addPage) addPage.onclick = () => {
+        const template = collectCheckinTemplate();
+        template.pages.push(defaultTemplatePage());
+        renderCheckinTemplateEditor(template);
+      };
+      if (saveButton) saveButton.onclick = saveCheckinTemplate;
+      if (pages && pages.dataset.templateBound !== "1") {
+        pages.dataset.templateBound = "1";
+        pages.addEventListener("click", handleTemplateClick);
+        pages.addEventListener("input", refreshTemplatePreview);
+        pages.addEventListener("change", refreshTemplatePreview);
+      }
+      ["templateKeywords", "templateAltText", "templateActive"].forEach((id) => {
+        const el = $(id);
+        if (!el || el.dataset.templateBound === "1") return;
+        el.dataset.templateBound = "1";
+        el.addEventListener("input", refreshTemplatePreview);
+        el.addEventListener("change", refreshTemplatePreview);
+      });
+    }
+
+    function defaultCheckinTemplate() {
+      return {
+        active: true,
+        keywords: ["\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5"],
+        altText: "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5",
+        pages: [
+          {
+            imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
+            imageLink: "",
+            buttons: [{ label: "\u7c3d\u5230\u8d08\u9ede", type: "message", text: "\u6703\u54e1\u6253\u5361", uri: "", color: "" }],
+          },
+          {
+            imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/94f5d7aa7084fc056863902be7adec78.jpg",
+            imageLink: "",
+            buttons: [{ label: "\u9ede\u6578\u67e5\u8a62", type: "uri", text: "", uri: "https://liff.line.me/2007221311-c9SEkcRL", color: "#FF0000" }],
+          },
+        ],
+      };
+    }
+
+    function defaultTemplatePage() {
+      return { imageUrl: "", imageLink: "", buttons: [defaultTemplateButton("message")] };
+    }
+
+    function defaultTemplateButton(type) {
+      return { label: type === "uri" ? "\u958b\u555f\u9023\u7d50" : "\u7c3d\u5230\u8d08\u9ede", type: type || "message", text: type === "uri" ? "" : "\u6703\u54e1\u6253\u5361", uri: "", color: "" };
+    }
+
+    async function loadCheckinTemplate() {
+      const preview = $("templatePreview");
+      if (!preview || !hasConsoleAuth()) return;
+      try {
+        const res = await fetch(cleanBase(apiBase.value) + "/api/checkin-template", { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "\u7c3d\u5230\u6a21\u677f\u8f09\u5165\u5931\u6557");
+        renderCheckinTemplateEditor(json.data || defaultCheckinTemplate());
+      } catch (err) {
+        if (handleAuthExpired(err)) return;
+        setTemplateStatus(err.message || String(err), false);
+      }
+    }
+
+    async function saveCheckinTemplate() {
+      const template = collectCheckinTemplate();
+      if (!template.keywords.length) { setTemplateStatus("\u8acb\u81f3\u5c11\u8f38\u5165\u4e00\u500b\u89f8\u767c\u95dc\u9375\u5b57\u3002", false); return; }
+      if (!template.pages.length) { setTemplateStatus("\u8acb\u81f3\u5c11\u65b0\u589e\u4e00\u9801\u4e26\u586b\u5165\u5716\u7247 URL\u3002", false); return; }
+      try {
+        setTemplateStatus("\u5132\u5b58\u4e2d...", true);
+        const res = await fetch(cleanBase(apiBase.value) + "/api/checkin-template", {
+          method: "POST",
+          headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+          body: JSON.stringify(template),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "\u7c3d\u5230\u6a21\u677f\u5132\u5b58\u5931\u6557");
+        renderCheckinTemplateEditor(json.data || template);
+        setTemplateStatus("\u5df2\u5132\u5b58\u3002\u8f38\u5165\u95dc\u9375\u5b57\u5f8c\uff0cLINE \u6703\u56de\u8986\u9019\u7d44\u591a\u9801\u7c3d\u5230\u8d08\u9ede\u5361\u3002", true);
+      } catch (err) {
+        if (handleAuthExpired(err)) return;
+        setTemplateStatus(err.message || String(err), false);
+      }
+    }
+
+    function renderCheckinTemplateEditor(template) {
+      const normalized = normalizeTemplateForEditor(template || defaultCheckinTemplate());
+      checkinTemplateDraft = normalized;
+      if ($("templateActive")) $("templateActive").checked = normalized.active !== false;
+      if ($("templateKeywords")) $("templateKeywords").value = normalized.keywords.join("\n");
+      if ($("templateAltText")) $("templateAltText").value = normalized.altText || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5";
+      const target = $("templatePages");
+      if (target) {
+        target.innerHTML = normalized.pages.map((page, pageIndex) => renderTemplatePage(page, pageIndex)).join("");
+      }
+      refreshTemplatePreview();
+    }
+
+    function normalizeTemplateForEditor(template) {
+      const base = defaultCheckinTemplate();
+      const pages = Array.isArray(template.pages) && template.pages.length ? template.pages : base.pages;
+      return {
+        active: template.active !== false,
+        keywords: Array.isArray(template.keywords) && template.keywords.length ? template.keywords.map((item) => String(item || "").trim()).filter(Boolean) : base.keywords,
+        altText: String(template.altText || base.altText || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5"),
+        pages: pages.slice(0, 12).map((page) => ({
+          imageUrl: String(page.imageUrl || page.image_url || ""),
+          imageLink: String(page.imageLink || page.image_link || ""),
+          buttons: (Array.isArray(page.buttons) && page.buttons.length ? page.buttons : [defaultTemplateButton("message")]).slice(0, 4).map((button) => ({
+            label: String(button.label || "\u6309\u9215"),
+            type: button.type === "uri" ? "uri" : "message",
+            text: String(button.text || ""),
+            uri: String(button.uri || ""),
+            color: String(button.color || ""),
+          })),
+        })),
+      };
+    }
+
+    function renderTemplatePage(page, pageIndex) {
+      const buttons = Array.isArray(page.buttons) && page.buttons.length ? page.buttons : [defaultTemplateButton("message")];
+      return `
+        <div class="templatePage" data-page-index="${pageIndex}">
+          <div class="templatePageHead">
+            <strong>\u7b2c ${pageIndex + 1} \u9801 <span class="muted">400 x 600\uff08LINE 2:3\uff09</span></strong>
+            <button type="button" class="dangerButton" data-template-action="remove-page" ${pageIndex === 0 ? "disabled" : ""}>\u522a\u9664\u9801\u9762</button>
+          </div>
+          <div class="templateGrid">
+            <label>\u5716\u7247 URL<input data-field="imageUrl" type="url" value="${esc(page.imageUrl)}" placeholder="https://...jpg" /></label>
+            <label>\u9ede\u5716\u9023\u7d50<input data-field="imageLink" type="url" value="${esc(page.imageLink)}" placeholder="\u9ede\u5716\u7247\u5f8c\u958b\u555f\u7684\u7db2\u5740\uff0c\u53ef\u7a7a\u767d" /></label>
+          </div>
+          <div class="templateButtons">
+            ${buttons.map((button, buttonIndex) => renderTemplateButton(button, buttonIndex)).join("")}
+          </div>
+          <div class="sectionActions"><button type="button" class="secondaryButton" data-template-action="add-button">\u65b0\u589e button</button></div>
+        </div>`;
+    }
+
+    function renderTemplateButton(button, buttonIndex) {
+      const type = button.type === "uri" ? "uri" : "message";
+      return `
+        <div class="templateButton" data-button-index="${buttonIndex}">
+          <div class="templateButtonGrid">
+            <label>\u6587\u5b57<input data-field="label" type="text" value="${esc(button.label)}" placeholder="\u7c3d\u5230\u8d08\u9ede" /></label>
+            <label>\u985e\u578b<select data-field="type"><option value="message" ${type === "message" ? "selected" : ""}>\u6587\u5b57</option><option value="uri" ${type === "uri" ? "selected" : ""}>\u9023\u7d50</option></select></label>
+            <label>\u9001\u51fa\u6587\u5b57<input data-field="text" type="text" value="${esc(button.text)}" placeholder="\u6703\u54e1\u6253\u5361" /></label>
+            <label>\u9023\u7d50 URL<input data-field="uri" type="url" value="${esc(button.uri)}" placeholder="https://..." /></label>
+            <label>\u984f\u8272<input data-field="color" type="text" value="${esc(button.color)}" placeholder="#06C755" /></label>
+            <button type="button" class="dangerButton" data-template-action="remove-button" ${buttonIndex === 0 ? "disabled" : ""}>\u522a\u9664</button>
+          </div>
+        </div>`;
+    }
+
+    function handleTemplateClick(event) {
+      const button = event.target.closest("[data-template-action]");
+      if (!button) return;
+      const action = button.getAttribute("data-template-action");
+      const pageEl = button.closest(".templatePage");
+      const pageIndex = pageEl ? Number(pageEl.getAttribute("data-page-index")) : -1;
+      const template = collectCheckinTemplate();
+      if (action === "add-button" && pageIndex >= 0) {
+        if (!template.pages[pageIndex].buttons) template.pages[pageIndex].buttons = [];
+        template.pages[pageIndex].buttons.push(defaultTemplateButton("message"));
+      } else if (action === "remove-page" && pageIndex > 0) {
+        template.pages.splice(pageIndex, 1);
+      } else if (action === "remove-button" && pageIndex >= 0) {
+        const buttonEl = button.closest(".templateButton");
+        const buttonIndex = buttonEl ? Number(buttonEl.getAttribute("data-button-index")) : -1;
+        if (buttonIndex > 0) template.pages[pageIndex].buttons.splice(buttonIndex, 1);
+      }
+      renderCheckinTemplateEditor(template);
+    }
+
+    function collectCheckinTemplate() {
+      const pages = Array.from(document.querySelectorAll("#templatePages .templatePage")).map((pageEl) => {
+        const valueOf = (field) => {
+          const fieldEl = pageEl.querySelector(`[data-field="${field}"]`);
+          return fieldEl ? String(fieldEl.value || "").trim() : "";
+        };
+        const buttons = Array.from(pageEl.querySelectorAll(".templateButton")).map((buttonEl) => {
+          const get = (field) => {
+            const fieldEl = buttonEl.querySelector(`[data-field="${field}"]`);
+            return fieldEl ? String(fieldEl.value || "").trim() : "";
+          };
+          return { label: get("label") || "\u6309\u9215", type: get("type") === "uri" ? "uri" : "message", text: get("text"), uri: get("uri"), color: get("color") };
+        }).filter((button) => button.label && (button.type === "uri" ? button.uri : button.text));
+        return { imageUrl: valueOf("imageUrl"), imageLink: valueOf("imageLink"), buttons };
+      }).filter((page) => page.imageUrl);
+      const keywordsRaw = $("templateKeywords") ? $("templateKeywords").value : "";
+      const keywords = keywordsRaw.split(/[\n,?]/).map((item) => item.trim()).filter(Boolean);
+      return {
+        active: $("templateActive") ? $("templateActive").checked : true,
+        keywords,
+        altText: ($("templateAltText") ? $("templateAltText").value.trim() : "") || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5",
+        pages,
+      };
+    }
+
+    function refreshTemplatePreview() {
+      const preview = $("templatePreview");
+      if (!preview) return;
+      const template = collectCheckinTemplate();
+      const flex = buildTemplateFlexPreview(template.pages.length ? template : normalizeTemplateForEditor(checkinTemplateDraft || defaultCheckinTemplate()));
+      preview.textContent = JSON.stringify(flex.contents, null, 2);
+    }
+
+    function buildTemplateFlexPreview(template) {
+      const pages = Array.isArray(template.pages) && template.pages.length ? template.pages : defaultCheckinTemplate().pages;
+      return {
+        type: "flex",
+        altText: template.altText || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5",
+        contents: {
+          type: "carousel",
+          contents: pages.slice(0, 12).map((page) => {
+            const bubble = {
+              type: "bubble",
+              body: {
+                type: "box",
+                layout: "vertical",
+                contents: [{ type: "image", url: page.imageUrl, size: "full", aspectMode: "cover", aspectRatio: "2:3", gravity: "top", ...(page.imageLink ? { action: { type: "uri", uri: page.imageLink } } : {}) }],
+                paddingAll: "0px",
+              },
+            };
+            const buttons = (page.buttons || []).slice(0, 4).filter((button) => button.label && (button.type === "uri" ? button.uri : button.text));
+            if (buttons.length) {
+              bubble.footer = {
+                type: "box",
+                layout: "vertical",
+                contents: buttons.map((button) => ({
+                  type: "button",
+                  action: button.type === "uri" ? { type: "uri", label: button.label, uri: button.uri } : { type: "message", label: button.label, text: button.text },
+                  height: "sm",
+                  style: "primary",
+                  ...(button.color ? { color: button.color } : {}),
+                })),
+              };
+            }
+            return bubble;
+          }),
+        },
+      };
+    }
+
+    function setTemplateStatus(text, ok) {
+      const target = $("templateStatus");
+      if (!target) return;
+      target.textContent = text || "";
+      target.classList.toggle("hide", !text);
+      target.style.background = ok ? "#effcf4" : "#fff1f3";
+      target.style.color = ok ? "#067a35" : "#b42318";
+    }
+
     function registrationWindowText(event) {
       const start = event.checkinStartsAt || event.startsAt || 0;
       const end = event.checkinEndsAt || event.endsAt || 0;
