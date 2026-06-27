@@ -5781,7 +5781,8 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     )`);
     bindings.push(like, like, like, like, like, like, like);
   }
-  bindings.push(limit);
+  const queryLimit = floor === FLOOR_ADMIN ? Math.min(Number(limit || 120) + 500, 800) : limit;
+  bindings.push(queryLimit);
   let { results } = await env.DB.prepare(`
     SELECT t.*, p.display_name AS profile_display_name, p.picture_url AS profile_picture_url, (SELECT tx.display_name FROM threads tx WHERE tx.user_id = t.user_id AND tx.display_name <> '' AND tx.display_name <> tx.user_id ORDER BY tx.updated_at DESC LIMIT 1) AS linked_display_name, (SELECT tx.picture_url FROM threads tx WHERE tx.user_id = t.user_id AND tx.picture_url <> '' ORDER BY tx.updated_at DESC LIMIT 1) AS linked_picture_url, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
@@ -5791,6 +5792,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     LIMIT ?
   `).bind(...bindings).all();
   results = results || [];
+  if (floor === FLOOR_ADMIN) results = await removePointGatewayOnlyThreads(env, results);
 
   const ids = results.map((row) => row.id);
   const messageResults = [];
