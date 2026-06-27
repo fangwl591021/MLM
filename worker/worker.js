@@ -1354,7 +1354,7 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
       // consumed by the ad hoc NFC testing setup flow
     } else if (isSmartDailyRewardEvent(channelKey, event)) {
-      if (userId) await handleKeywordAutomation(env, config.floor, provider, event, userId, event.message.text);
+      if (userId) await handleSmartDailyReward(env, channelKey, provider, event, userId);
     } else if (isSmartPointQueryEvent(channelKey, event)) {
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
     } else {
@@ -2042,6 +2042,13 @@ async function bindPointLineUser(env, body) {
   };
 }
 
+async function hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId) {
+  if (!env.DB || !channelKey || !lineUserId) return false;
+  const row = await env.DB.prepare(
+    "SELECT 1 AS ok FROM point_accounts WHERE channel_key = ? AND line_user_id = ? AND point_type = 'gift_money' LIMIT 1"
+  ).bind(channelKey, lineUserId).first();
+  return Boolean(row && row.ok);
+}
 async function pointMutation(env, body, action) {
   const channelKey = stringValue(body.channel_key || body.channelKey);
   let lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
@@ -2056,7 +2063,9 @@ async function pointMutation(env, body, action) {
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
     const exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => null);
-    if (!exactSnapshot || !Array.isArray(exactSnapshot.rows) || !exactSnapshot.rows.length) {
+    const hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
+    const hasLocalAccount = hasWetwRows ? true : await hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId);
+    if (!hasLocalAccount) {
       throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
     }
   }
