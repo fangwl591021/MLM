@@ -345,6 +345,18 @@ export default {
         const data = await listPointDailyStats(env, url);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
+
+      if (url.pathname === "/admin/smart-monitor" && request.method === "GET") {
+        const denied = await dashboardPageDeniedResponse(request, env, `${url.origin}/login?next=/admin/smart-monitor`, corsHeaders);
+        if (denied) return denied;
+        return smartMonitorHtml(corsHeaders);
+      }
+
+      if (url.pathname === "/admin/smart-monitor-data" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await listSmartMonitorData(env, url);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
       if (url.pathname === "/admin/points/binding-codes" && request.method === "POST") {
         await assertPointAdminAuth(request, env);
         const result = await createBindingCode(request, env);
@@ -673,7 +685,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -760,7 +772,9 @@ function rewriteFrontendLinks(html) {
     .replaceAll('location.href = "index.html?floor=admin"', 'location.href = "/dashboard?floor=admin"')
     .replaceAll("location.href = 'index.html?floor=admin'", "location.href = '/dashboard?floor=admin'")
     .replaceAll('href="knowledge-base.html"', 'href="/knowledge-base"')
-    .replaceAll("href='knowledge-base.html'", "href='/knowledge-base'");
+    .replaceAll("href='knowledge-base.html'", "href='/knowledge-base'")
+    .replaceAll('.motherSyncBtn{margin-left:auto;', '.smartMonitorBtn{height:36px;border:1px solid #b6ecc8;border-radius:999px;background:#fff;color:#067a35;padding:0 14px;font-weight:760;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.smartMonitorBtn:hover{background:#effcf4}.motherSyncBtn{margin-left:auto;')
+    .replaceAll('<button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button>', '<a class="smartMonitorBtn" href="/admin/smart-monitor">康立智能監控</a><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button>');
 }
 
 function resolveFloor(request) {
@@ -5136,6 +5150,106 @@ async function writeCrmSyncLog(env, syncType, rows, status, source) {
   `).bind(syncType, source, rows, status).run();
 }
 
+async function listSmartMonitorData(env, url) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const days = clampNumber(url.searchParams.get("days") || 7, 1, 90);
+  const statsUrl = new URL("https://local/admin/points/stats-data");
+  statsUrl.searchParams.set("days", String(days));
+  statsUrl.searchParams.set("scope", "ops");
+  statsUrl.searchParams.set("channel_key", POINT_OA1);
+  statsUrl.searchParams.set("point_type", "gift_money");
+  const stats = await listPointDailyStats(env, statsUrl);
+  const date = stringValue(url.searchParams.get("date") || taipeiDate()).slice(0, 10);
+  const nextDate = addDaysDateString(date, 1);
+  const checkinRows = await env.DB.prepare(`
+    WITH checkins AS (
+      SELECT line_user_id, '' AS master_member_ref, COUNT(*) AS hits, MIN(datetime(line_timestamp/1000,'unixepoch','+8 hours')) AS first_tw, MAX(datetime(line_timestamp/1000,'unixepoch','+8 hours')) AS last_tw
+      FROM webhook_events
+      WHERE channel_key = ?
+        AND message_type = 'text'
+        AND message_text = '會員打卡'
+        AND line_timestamp >= strftime('%s', ?, '-8 hours') * 1000
+        AND line_timestamp < strftime('%s', ?, '-8 hours') * 1000
+      GROUP BY line_user_id
+    ), rewards AS (
+      SELECT line_user_id, SUM(points) AS points, MAX(balance_after) AS balance_after, MAX(updated_at) AS updated_at
+      FROM daily_keyword_rewards
+      WHERE reward_date = ?
+        AND channel_key = ?
+        AND point_type = 'gift_money'
+        AND status = 'claimed'
+      GROUP BY line_user_id
+    )
+    SELECT c.line_user_id, ${pointStatsUserNameSql("c")} AS user_name, c.hits, c.first_tw, c.last_tw, COALESCE(r.points,0) AS points, r.balance_after, r.updated_at,
+           CASE WHEN r.line_user_id IS NULL THEN 1 ELSE 0 END AS missing
+    FROM checkins c
+    LEFT JOIN rewards r ON r.line_user_id = c.line_user_id
+    ORDER BY c.first_tw DESC
+    LIMIT 240
+  `).bind(POINT_OA1, `${date} 00:00:00`, `${nextDate} 00:00:00`, date, POINT_OA1).all();
+  const checkins = (checkinRows.results || []).map((row) => ({
+    line_user_id: stringValue(row.line_user_id),
+    user_name: pointStatsMemberName(row),
+    hits: Number(row.hits || 0),
+    first_tw: stringValue(row.first_tw),
+    last_tw: stringValue(row.last_tw),
+    points: Number(row.points || 0),
+    balance_after: Number(row.balance_after || 0),
+    updated_at: stringValue(row.updated_at),
+    missing: Boolean(row.missing),
+  }));
+  const checkinSummary = checkins.reduce((sum, row) => {
+    sum.users += 1;
+    sum.messages += Number(row.hits || 0);
+    if (row.missing) sum.missing += 1;
+    else {
+      sum.rewarded += 1;
+      sum.points += Number(row.points || 0);
+    }
+    return sum;
+  }, { date, users: 0, messages: 0, rewarded: 0, missing: 0, points: 0 });
+  return { source: POINT_SOURCE_META[POINT_OA1], days, stats, checkinSummary, checkins };
+}
+
+function addDaysDateString(date, days) {
+  const raw = stringValue(date).slice(0, 10);
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00Z`) : new Date();
+  parsed.setUTCDate(parsed.getUTCDate() + Number(days || 0));
+  return parsed.toISOString().slice(0, 10);
+}
+
+function smartMonitorHtml(headers) {
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>康立智能監控</title>
+  <style>
+    :root{--green:#06c755;--ink:#0f172a;--muted:#64748b;--border:#d8e0eb;--bg:#f6f8fb;--bad:#b42318;--blue:#1d4ed8}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,"Noto Sans TC",sans-serif;background:var(--bg);color:var(--ink)}
+    header{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:14px}h1{margin:0;font-size:28px}.sub{margin-top:6px;color:var(--muted);font-size:14px}.actions{display:flex;gap:10px;flex-wrap:wrap}.btn,button,select{font:inherit;border:1px solid var(--border);border-radius:10px;background:#fff;padding:11px 14px;color:var(--ink);font-weight:900;text-decoration:none}.primary{background:var(--green);border-color:var(--green);color:#fff}.wrap{max-width:1500px;margin:0 auto;padding:22px}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.card,.panel{background:#fff;border:1px solid var(--border);border-radius:14px}.card{padding:16px}.label{font-size:13px;color:var(--muted);font-weight:800}.metric{margin-top:8px;font-size:30px;font-weight:900}.good{color:#0f8a43}.bad{color:var(--bad)}.net{color:var(--blue)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.panel h2{font-size:20px;margin:0;padding:16px 18px;border-bottom:1px solid var(--border)}table{width:100%;border-collapse:collapse}th,td{padding:12px 14px;border-bottom:1px solid #edf1f7;text-align:left;vertical-align:top}th{text-align:left;color:#475569;background:#f8fafc;font-size:13px}.right{text-align:right}.uid{font-size:12px;color:#64748b;word-break:break-all}.pill{display:inline-flex;border-radius:999px;padding:4px 9px;background:#ecfdf5;color:#047857;font-weight:900;font-size:12px}.pill.bad{background:#fff1f2;color:#be123c}.empty{padding:24px;color:var(--muted)}.error{display:none;margin-bottom:14px;padding:14px 16px;border:1px solid #fecdd3;border-radius:12px;background:#fff1f2;color:#be123c;font-weight:800}
+    @media(max-width:1000px){header{align-items:flex-start;flex-direction:column}.cards,.grid{grid-template-columns:1fr}.wrap{padding:14px}.tableWrap{overflow:auto}.metric{font-size:24px}}
+  </style>
+</head>
+<body>
+  <header><div><h1>康立智能監控</h1><div class="sub">固定監控康立智能 1086：今日會員打卡、K 點進出與最近流水。</div></div><div class="actions"><a class="btn" href="/dashboard?floor=main">產品客服</a><a class="btn" href="/dashboard?floor=admin">行政客服</a><a class="btn" href="/console">主控台</a></div></header>
+  <main class="wrap">
+    <div class="toolbar"><label>期間 <select id="days"><option value="7" selected>近 7 天</option><option value="30">近 30 天</option><option value="90">近 90 天</option></select></label><button id="refresh" class="primary">重新整理</button></div>
+    <div id="error" class="error"></div>
+    <section class="cards"><div class="card"><div class="label">今日打卡人數</div><div id="checkinUsers" class="metric">0</div></div><div class="card"><div class="label">今日已贈點</div><div id="rewarded" class="metric good">0</div></div><div class="card"><div class="label">今日缺漏</div><div id="missing" class="metric bad">0</div></div><div class="card"><div class="label">今日贈點合計</div><div id="checkinPoints" class="metric good">0</div></div><div class="card"><div class="label">期間淨增減</div><div id="net" class="metric net">0</div></div></section>
+    <section class="grid"><div class="panel"><h2>今日打卡名單</h2><div class="tableWrap"><table><thead><tr><th>會員</th><th>打卡時間</th><th class="right">次數</th><th class="right">點數</th><th>狀態</th></tr></thead><tbody id="checkins"></tbody></table></div></div><div class="panel"><h2>每日 K 點進出</h2><div class="tableWrap"><table><thead><tr><th>日期</th><th class="right">贈點</th><th class="right">扣點</th><th class="right">淨額</th><th class="right">人數</th></tr></thead><tbody id="daily"></tbody></table></div></div></section>
+    <section class="panel" style="margin-top:16px"><h2>最近康立智能流水</h2><div class="tableWrap"><table><thead><tr><th>時間</th><th>會員</th><th>UID</th><th class="right">進出</th><th class="right">餘額</th><th>備註</th></tr></thead><tbody id="recent"></tbody></table></div></section>
+  </main>
+<script>
+const $=id=>document.getElementById(id);const fmt=n=>Number(n||0).toLocaleString('zh-TW',{maximumFractionDigits:2});const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const signed=n=>{const v=Number(n||0);return (v>0?'+':'')+fmt(v)};function empty(cols,msg){return '<tr><td class="empty" colspan="'+cols+'">'+esc(msg)+'</td></tr>'}
+async function load(){ $('error').style.display='none'; try{const p=new URLSearchParams({days:$('days').value});const res=await fetch('/admin/smart-monitor-data?'+p.toString(),{credentials:'same-origin'}); if(res.status===401){location.href='/login?next=/admin/smart-monitor';return} const json=await res.json().catch(()=>({})); if(!res.ok||json.status!=='success') throw new Error(json.message||'讀取失敗'); render(json.data||{});}catch(err){$('error').textContent=err&&err.message?err.message:String(err);$('error').style.display='block';}}
+function render(data){const s=data.checkinSummary||{}, stats=data.stats||{}, totals=stats.totals||{};$('checkinUsers').textContent=fmt(s.users);$('rewarded').textContent=fmt(s.rewarded);$('missing').textContent=fmt(s.missing);$('checkinPoints').textContent=fmt(s.points);$('net').textContent=signed(totals.net_points);const checkins=data.checkins||[];$('checkins').innerHTML=checkins.length?checkins.map(r=>'<tr><td><strong>'+esc(r.user_name||'未命名')+'</strong><div class="uid">'+esc(r.line_user_id)+'</div></td><td>'+esc(r.first_tw||'')+'</td><td class="right">'+fmt(r.hits)+'</td><td class="right good">'+fmt(r.points)+'</td><td>'+(r.missing?'<span class="pill bad">缺漏</span>':'<span class="pill">已贈點</span>')+'</td></tr>').join(''):empty(5,'今天尚無會員打卡');const daily=stats.daily||[];$('daily').innerHTML=daily.length?daily.map(r=>'<tr><td><strong>'+esc(r.day)+'</strong></td><td class="right good">'+fmt(r.grant_points)+'</td><td class="right bad">'+fmt(r.deduct_points)+'</td><td class="right net">'+signed(r.net_points)+'</td><td class="right">'+fmt(r.unique_users)+'</td></tr>').join(''):empty(5,'目前沒有 K 點進出');const recent=stats.recent||[];$('recent').innerHTML=recent.length?recent.map(r=>'<tr><td>'+esc(r.created_at_text||r.created_at)+'</td><td><strong>'+esc(r.user_name||'未命名')+'</strong></td><td class="uid">'+esc(r.line_user_id)+'</td><td class="right '+(Number(r.point_delta)>=0?'good':'bad')+'">'+signed(r.point_delta)+'</td><td class="right">'+fmt(r.balance_after)+'</td><td>'+esc(r.note||r.operator_name||r.action)+'</td></tr>').join(''):empty(6,'目前沒有流水');}
+$('days').addEventListener('change',load);$('refresh').addEventListener('click',load);load();
+</script>
+</body>
+</html>`, { status: 200, headers: { ...headers, "Content-Type": "text/html; charset=utf-8" } });
+}
 function pointStatsHtml(headers) {
   return new Response(`<!doctype html>
 <html lang="zh-Hant">
@@ -7193,6 +7307,16 @@ async function assertPointStatsAdminAuth(request, env) {
   throw httpError("只有系統管理員可查看點數統計", 403);
 }
 
+async function dashboardPageDeniedResponse(request, env, loginUrl, corsHeaders) {
+  try {
+    await assertDashboardAuth(request, env);
+    return null;
+  } catch (error) {
+    const status = error && error.status ? Number(error.status) : 500;
+    if (status === 401) return Response.redirect(loginUrl, 302);
+    throw error;
+  }
+}
 async function pointStatsPageDeniedResponse(request, env, origin, corsHeaders) {
   try {
     await assertPointStatsAdminAuth(request, env);
