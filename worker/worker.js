@@ -6822,18 +6822,35 @@ async function analyzeMessage(env, floor, text, userId, userName) {
 
 async function localKnowledgeSuggestion(env, floor, text) {
   if (!env.DB) return { matches: [], suggestions: [] };
-  const { results } = await env.DB.prepare("SELECT category, question, answer FROM knowledge_items WHERE floor_id = ? OR floor_id = 'main' ORDER BY CASE WHEN floor_id = ? THEN 0 ELSE 1 END, id ASC LIMIT 1000").bind(floor || FLOOR_MAIN, floor || FLOOR_MAIN).all();
-  const terms = tokenize(text);
+  const targetFloor = floor || FLOOR_MAIN;
+  const { results } = await env.DB.prepare("SELECT category, question, answer FROM knowledge_items WHERE floor_id = ? OR floor_id = 'main' ORDER BY CASE WHEN floor_id = ? THEN 0 ELSE 1 END, id ASC LIMIT 1200").bind(targetFloor, targetFloor).all();
+  const query = normalizeKnowledgeText(text);
+  const terms = knowledgeSearchTerms(text);
   const matches = (results || []).map((item) => {
-    const haystack = `${item.category} ${item.question} ${item.answer}`;
-    const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0) + (text.includes(item.question) ? 5 : 0);
-    return { ...item, score };
+    const category = stringValue(item.category);
+    const question = stringValue(item.question);
+    const answer = stringValue(item.answer);
+    const haystack = normalizeKnowledgeText(`${category} ${question} ${answer}`);
+    const questionNorm = normalizeKnowledgeText(question);
+    const categoryNorm = normalizeKnowledgeText(category);
+    let score = 0;
+    for (const term of terms) {
+      if (!term) continue;
+      if (questionNorm.includes(term)) score += 5;
+      else if (categoryNorm.includes(term)) score += 4;
+      else if (haystack.includes(term)) score += term.length >= 4 ? 2 : 1;
+    }
+    if (query && questionNorm && (query.includes(questionNorm) || questionNorm.includes(query))) score += 12;
+    if (query && categoryNorm && query.includes(categoryNorm)) score += 7;
+    score += knowledgeOverlapScore(query, questionNorm) * 2;
+    score += knowledgeOverlapScore(query, categoryNorm);
+    return { ...item, category, question, answer, score };
   }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 6);
   if (!matches.length) return { matches: [], suggestions: [] };
   return {
-    matches,
+    matches: matches.map((item) => ({ category: item.category, question: item.question, answer: item.answer, score: item.score })),
     category: matches[0].category,
-    suggestions: matches.slice(0, 2).map((item) => `\u60a8\u597d\uff0c\u95dc\u65bc${item.category}\uff0c${item.answer}`),
+    suggestions: matches.slice(0, 3).map(knowledgeReplySuggestion),
     summary: "local knowledge match",
   };
 }
@@ -6872,6 +6889,43 @@ async function localReplyLearningSuggestion(env, floor, text) {
   };
 }
 
+function normalizeKnowledgeText(value) {
+  return stringValue(value).toLowerCase().replace(/[\s,，。！？!?、/\\\-_:：;；()[\]{}「」『』【】《》〈〉.．]+/g, "");
+}
+
+function knowledgeSearchTerms(text) {
+  const raw = stringValue(text);
+  const normalized = normalizeKnowledgeText(raw);
+  const terms = new Set(tokenize(raw).map(normalizeKnowledgeText).filter(Boolean));
+  if (normalized.length >= 2) {
+    terms.add(normalized);
+    for (let size = Math.min(6, normalized.length); size >= 2; size -= 1) {
+      for (let i = 0; i <= normalized.length - size; i += 1) {
+        const term = normalized.slice(i, i + size);
+        if (!/^[0-9a-z]+$/.test(term) || term.length >= 3) terms.add(term);
+      }
+    }
+  }
+  return Array.from(terms).filter((term) => term.length >= 2).slice(0, 80);
+}
+
+function knowledgeOverlapScore(query, target) {
+  const q = normalizeKnowledgeText(query);
+  const t = normalizeKnowledgeText(target);
+  if (!q || !t) return 0;
+  const grams = new Set();
+  for (let i = 0; i < q.length - 1; i += 1) grams.add(q.slice(i, i + 2));
+  let score = 0;
+  for (const gram of grams) if (t.includes(gram)) score += 1;
+  return score;
+}
+
+function knowledgeReplySuggestion(item) {
+  const category = stringValue(item && item.category) || "相關資訊";
+  const answer = stringValue(item && item.answer).replace(/\s+/g, " ").trim();
+  const compact = answer.length > 260 ? `${answer.slice(0, 260)}...` : answer;
+  return `您好，關於${category}，${compact}`;
+}
 function uniqueSuggestions(items) {
   const output = [];
   const seen = new Set();
@@ -7620,7 +7674,16 @@ function isImportantText(text) {
 }
 
 function tokenize(text) {
-  return Array.from(new Set(stringValue(text).split(/[\s,，。！？!?、/\\\-_:：;；()[\]{}]+/).map((item) => item.trim()).filter((item) => item.length >= 2).slice(0, 20)));
+  const raw = stringValue(text);
+  const base = raw.split(/[\s,，。！？!?、/\\\-_:：;；()[\]{}「」『』【】《》〈〉.．]+/).map((item) => item.trim()).filter((item) => item.length >= 2);
+  const normalized = raw.replace(/[\s,，。！？!?、/\\\-_:：;；()[\]{}「」『』【】《》〈〉.．]+/g, "").trim();
+  const grams = [];
+  if (/[^\x00-\x7F]/.test(normalized)) {
+    for (let size = Math.min(4, normalized.length); size >= 2; size -= 1) {
+      for (let i = 0; i <= normalized.length - size; i += 1) grams.push(normalized.slice(i, i + size));
+    }
+  }
+  return Array.from(new Set([...base, ...grams])).filter((item) => item.length >= 2).slice(0, 60);
 }
 
 function normalizeTags(value) {
