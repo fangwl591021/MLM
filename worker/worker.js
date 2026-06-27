@@ -2131,19 +2131,23 @@ async function pointMutation(env, body, action) {
   const channelKey = stringValue(body.channel_key || body.channelKey);
   let lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
   const chatLineUserId = stringValue(body.chat_line_user_id || body.chatLineUserId);
+  const userName = stringValue(body.user_name || body.userName || body.name);
   const points = Math.abs(Number(body.points || body.point_delta || body.pointDelta));
   if (!channelKey || !lineUserId || !points) throw httpError("channel_key, line_user_id, and points are required", 400);
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
+  let resolvedIdentity = null;
   if (chatLineUserId && chatLineUserId === lineUserId) {
-    const resolved = await resolvePointIdentity(env, { chatLineUserId });
-    const sourceLineUserId = resolved && resolved.channelLineUserIds ? stringValue(resolved.channelLineUserIds[channelKey]) : "";
+    const resolvedName = userName || await pointUserNameFromChatUserId(env, chatLineUserId);
+    resolvedIdentity = await resolvePointIdentity(env, { chatLineUserId, userName: resolvedName }).catch(() => null);
+    const sourceLineUserId = resolvedIdentity && resolvedIdentity.channelLineUserIds ? stringValue(resolvedIdentity.channelLineUserIds[channelKey]) : "";
     if (sourceLineUserId) lineUserId = sourceLineUserId;
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
     const exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => null);
     const hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
     const hasLocalAccount = hasWetwRows ? true : await hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId);
-    if (!hasLocalAccount) {
+    const hasResolvedMember = Boolean(resolvedIdentity && (resolvedIdentity.memberRef || resolvedIdentity.pointLineUserId));
+    if (!hasLocalAccount && !hasResolvedMember) {
       throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
     }
   }
@@ -3835,7 +3839,20 @@ async function applyPointMutation(env, input) {
     FROM member_line_links
     WHERE channel_key = ? AND line_user_id = ?
   `).bind(input.channelKey, input.lineUserId).first();
-  const masterMemberRef = link && link.master_member_ref ? link.master_member_ref : null;
+  let masterMemberRef = link && link.master_member_ref ? link.master_member_ref : null;
+  if (!masterMemberRef) {
+    const member = await env.DB.prepare(`
+      SELECT member_ref
+      FROM crm_members
+      WHERE json_extract(source_json, '$.LINE_user_id') = ?
+         OR json_extract(source_json, '$.user_login') = ?
+         OR json_extract(source_json, '$.line_user_id') = ?
+         OR json_extract(source_json, '$.lineUserId') = ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(input.lineUserId, input.lineUserId, input.lineUserId, input.lineUserId).first();
+    masterMemberRef = member && member.member_ref ? stringValue(member.member_ref) : null;
+  }
 
   const explicitBalanceAfter = Number(input.balanceAfter ?? input.balance_after);
   const balanceAfter = Number.isFinite(explicitBalanceAfter)
