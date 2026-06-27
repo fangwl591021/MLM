@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
  * Core rule:
@@ -15,19 +15,20 @@ const ADMIN_ROLE = "admin";
 const USER_ROLE = "user";
 const FLOOR_MAIN = "main";
 const FLOOR_ADMIN = "admin";
+const FLOOR_SMART = "smart";
 const FLOOR_SUPER_ADMIN = "admin_all";
-const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN]);
-const ACCESS_LIST_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SUPER_ADMIN]);
+const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART]);
+const ACCESS_LIST_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART, FLOOR_SUPER_ADMIN]);
 const BUILTIN_ADMIN_UIDS = new Set(["U1b5150879fb688cae4b52e80a4b836c6"]);
 const PASSWORD_LOGIN_USERS = {
-  admin: { password: "@1234", name: "系統管理員", admin: true, floors: [FLOOR_MAIN, FLOOR_ADMIN], home: "/console" },
-  adservice: { password: "#1234", name: "行政客服", admin: false, floors: [FLOOR_ADMIN], home: "/dashboard?floor=admin" },
-  pdservice: { password: "$1234", name: "產品客服", admin: false, floors: [FLOOR_MAIN], home: "/dashboard?floor=main" },
+  admin: { password: "@1234", name: "系統管理員", admin: true, floors: [FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART], home: "/console" },
+  adservice: { password: "#1234", name: "行政客服", admin: false, floors: [FLOOR_ADMIN, FLOOR_SMART], home: "/dashboard?floor=admin" },
+  pdservice: { password: "$1234", name: "產品客服", admin: false, floors: [FLOOR_MAIN, FLOOR_SMART], home: "/dashboard?floor=main" },
 };
 const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
-const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_MAIN, [POINT_OA2]: FLOOR_ADMIN };
+const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_SMART, [POINT_OA2]: FLOOR_ADMIN };
 const D1_IN_QUERY_BATCH_SIZE = 50;
 const POINT_SOURCE_META = {
   [POINT_OA1]: { label: "康立智能", shopId: 1086, loginUrl: "https://k-link.cc/index.php/line_login/1086/", canGrant: true },
@@ -302,7 +303,7 @@ export default {
       if (url.pathname === "/api/data" && request.method === "GET") {
         const smartMonitorMode = url.searchParams.get("smart") === "1";
         await (smartMonitorMode ? assertDashboardAuth(request, env) : assertFloorAccess(request, env, floor));
-        const dataFloor = smartMonitorMode ? FLOOR_MAIN : floor;
+        const dataFloor = smartMonitorMode ? FLOOR_SMART : floor;
         const searchQuery = stringValue(url.searchParams.get("q") || url.searchParams.get("search") || url.searchParams.get("query"));
         const data = await fetchDashboardData(env, dataFloor, { searchQuery });
         if (env.DB && provider.accessToken) {
@@ -797,17 +798,18 @@ function rewriteSmartMonitorDashboardHtml(html) {
       return localStorage.getItem("line_ai_floor") || "main";
     }`;
   const smartInitialFloorBlock = `function initialFloor() {
-      localStorage.setItem("line_ai_floor", "main");
-      return "main";
+      localStorage.setItem("line_ai_floor", "smart");
+      return "smart";
     }`;
   return String(html || "")
     .replaceAll("<title>KLINK 客服系統</title>", "<title>康立智能監控</title>")
-    .replaceAll("apiUrlForFloor(\"/api/data\", floorAtStart)", "apiUrlForFloor(\"/api/data\", floorAtStart) + '&smart=1'")
+    .replaceAll("apiUrlForFloor(\"/api/data\", floorAtStart)", "apiUrlForFloor(\"/api/data\", 'smart') + '&smart=1'")
     .replaceAll(initialFloorBlock, smartInitialFloorBlock)
+    .replaceAll('const FLOORS = { main: "產品客服", admin: "行政客服" };', 'const FLOORS = { smart: "康立智能" };')
     .replaceAll('.smartMonitorBtn:hover{background:#effcf4}', '.smartMonitorBtn.active{background:#e7f8ef;color:#067a35;box-shadow:inset 0 0 0 1px #067a35}.smartMonitorBtn:hover{background:#effcf4}')
     .replaceAll('class="smartMonitorBtn" href="/admin/smart-monitor"', 'class="smartMonitorBtn active" href="/admin/smart-monitor"')
     .replaceAll('<a class="smartMonitorBtn active" href="/admin/smart-monitor">康立智能監控</a>', '')
-    .replaceAll('<button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button>', '<a class="floorTab" href="/dashboard?floor=main">產品客服</a><a class="floorTab" href="/dashboard?floor=admin">行政客服</a><button type="button" class="floorTab active" data-floor="main">康立智能</button>');
+    .replaceAll('<button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button>', '<a class="floorTab" href="/dashboard?floor=main">產品客服</a><a class="floorTab" href="/dashboard?floor=admin">行政客服</a><button type="button" class="floorTab active" data-floor="smart">康立智能</button>');
 }
 function rewriteFrontendLinks(html) {
   return String(html || "")
@@ -863,11 +865,11 @@ function threadIdFor(floor, userId) {
 async function fetchConsoleSummary(env) {
   const now = Date.now();
   const todayStart = taipeiStartOfDay(now);
-  const floorNames = { [FLOOR_MAIN]: "\u7522\u54c1\u5ba2\u670d", [FLOOR_ADMIN]: "\u884c\u653f\u5ba2\u670d" };
+  const floorNames = { [FLOOR_MAIN]: "\u7522\u54c1\u5ba2\u670d", [FLOOR_ADMIN]: "\u884c\u653f\u5ba2\u670d", [FLOOR_SMART]: "康立智能" };
   const floors = [];
   await ensureCalendarEventSchema(env);
 
-  for (const floor of [FLOOR_MAIN, FLOOR_ADMIN]) {
+  for (const floor of [FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART]) {
     const [threadStats, todayMessages, todayReplies, aiAlerts, latestThread] = await Promise.all([
       env.DB.prepare(`
         SELECT
@@ -1180,6 +1182,7 @@ async function assertFloorAccess(request, env, floor) {
 }
 
 function floorLabel(floor) {
+  if (floor === FLOOR_SMART) return "康立智能";
   return floor === FLOOR_ADMIN ? "\u884c\u653f\u5ba2\u670d" : "\u7522\u54c1\u5ba2\u670d";
 }
 
@@ -1334,12 +1337,13 @@ function getPointChannelConfig(env, channelKey) {
     channelConfig = {};
   }
 
-  const floor = FLOOR_IDS.has(channelConfig.floor) ? channelConfig.floor : POINT_CHANNEL_FLOORS[channelKey] || FLOOR_MAIN;
+  const configuredFloor = FLOOR_IDS.has(channelConfig.floor) ? channelConfig.floor : "";
+  const floor = channelKey === POINT_OA1 ? FLOOR_SMART : (configuredFloor || POINT_CHANNEL_FLOORS[channelKey] || FLOOR_MAIN);
   const provider = getProvider(env, floor);
   return {
     channelKey,
     floor,
-    label: stringValue(channelConfig.label || (channelKey === POINT_OA2 ? "OA2 行政客服" : "OA1 產品客服")),
+    label: stringValue(channelConfig.label || (channelKey === POINT_OA2 ? "OA2 行政客服" : "康立智能")),
     channelSecret: stringValue(pointChannelEnv(env, channelKey, "SECRET") || channelConfig.channelSecret || provider.channelSecret),
     accessToken: stringValue(pointChannelEnv(env, channelKey, "ACCESS_TOKEN") || channelConfig.channelAccessToken || provider.accessToken),
     forwardUrl: stringValue(channelConfig.forwardUrl),
@@ -7844,13 +7848,13 @@ async function verifyLineLoginIdToken(env, idToken) {
 }
 
 async function resolveLineDashboardAccess(env, profile) {
-  if (isBuiltinAdminProfile(profile)) return { allowed: true, admin: true, floors: [FLOOR_MAIN, FLOOR_ADMIN] };
+  if (isBuiltinAdminProfile(profile)) return { allowed: true, admin: true, floors: [FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART] };
   if (!profile || !profile.userId || !env.DB) return { allowed: false, admin: false, floors: [] };
   await ensureFloorAccessSchema(env);
   const operator = { ids: [profile.userId], names: [profile.displayName].filter(Boolean), label: profile.userId };
   const adminAllowed = await findFloorAccessEntry(env, FLOOR_SUPER_ADMIN, operator);
   const floors = [];
-  for (const floor of [FLOOR_MAIN, FLOOR_ADMIN]) {
+  for (const floor of [FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART]) {
     const allowed = adminAllowed || await findFloorAccessEntry(env, floor, operator);
     if (allowed) floors.push(floor);
   }
