@@ -5913,8 +5913,12 @@ async function handleKeywordAutomation(env, floor, provider, event, userId, text
       : `簽到成功，已贈送 ${formatPoint(result.points)} K點。目前累積 ${formatPoint(balance)} K點。`;
     }
   } catch (error) {
-    result = { error: error && error.message ? error.message : String(error) };
-    replyText = "簽到暫時失敗，請稍後再試。";
+    const message = error && error.message ? error.message : String(error);
+    result = { error: message };
+    const status = Number(error && error.status || 0);
+    replyText = status >= 400 && status < 500 && message
+      ? message
+      : "簽到暫時失敗，請稍後再試。";
   }
   const delivery = await replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
   await recordDailyKeywordDelivery(env, rule, userId, delivery);
