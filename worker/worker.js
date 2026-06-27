@@ -29,6 +29,7 @@ const POINT_OA1 = "oa1";
 const POINT_OA2 = "oa2";
 const POINT_CHANNELS = new Set([POINT_OA1, POINT_OA2]);
 const POINT_CHANNEL_FLOORS = { [POINT_OA1]: FLOOR_SMART, [POINT_OA2]: FLOOR_ADMIN };
+const PENDING_DISPLAY_NAME = "名稱待同步";
 const D1_IN_QUERY_BATCH_SIZE = 50;
 const POINT_SOURCE_META = {
   [POINT_OA1]: { label: "康立智能", shopId: 1086, loginUrl: "https://k-link.cc/index.php/line_login/1086/", canGrant: true },
@@ -5766,9 +5767,9 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
   }
   bindings.push(limit);
   let { results } = await env.DB.prepare(`
-    SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
+    SELECT t.*, p.display_name AS profile_display_name, p.picture_url AS profile_picture_url, (SELECT tx.display_name FROM threads tx WHERE tx.user_id = t.user_id AND tx.display_name <> '' AND tx.display_name <> tx.user_id ORDER BY tx.updated_at DESC LIMIT 1) AS linked_display_name, (SELECT tx.picture_url FROM threads tx WHERE tx.user_id = t.user_id AND tx.picture_url <> '' ORDER BY tx.updated_at DESC LIMIT 1) AS linked_picture_url, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id
     WHERE ${where.join(" AND ")}
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
@@ -5910,9 +5911,9 @@ function chunkArray(items, size) {
 async function fetchThread(env, floor, id) {
   const lookup = id.includes(":user:") || id.startsWith("user:") ? id : threadIdFor(floor, id);
   const row = await env.DB.prepare(`
-    SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
+    SELECT t.*, p.display_name AS profile_display_name, p.picture_url AS profile_picture_url, (SELECT tx.display_name FROM threads tx WHERE tx.user_id = t.user_id AND tx.display_name <> '' AND tx.display_name <> tx.user_id ORDER BY tx.updated_at DESC LIMIT 1) AS linked_display_name, (SELECT tx.picture_url FROM threads tx WHERE tx.user_id = t.user_id AND tx.picture_url <> '' ORDER BY tx.updated_at DESC LIMIT 1) AS linked_picture_url, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id
     WHERE t.floor_id = ? AND (t.id = ? OR t.user_id = ?)
   `).bind(floor, lookup, id.replace(/^(admin:)?user:/, "")).first();
   if (!row) return null;
@@ -6020,14 +6021,14 @@ async function migrateGasToD1(env, floor = FLOOR_MAIN) {
 
 function threadFromD1(row, messages) {
   const tags = parseJsonArray(row.tags);
-  const name = stringValue(row.display_name) || row.user_id;
+  const name = chooseStableName(row.user_id, row.display_name, row.profile_display_name) || chooseStableName(row.user_id, row.linked_display_name, "") || PENDING_DISPLAY_NAME;
   return {
     id: row.id,
     floor: row.floor_id || FLOOR_MAIN,
     userId: row.user_id,
     name,
     displayName: name,
-    pictureUrl: stringValue(row.picture_url),
+    pictureUrl: stringValue(row.picture_url || row.profile_picture_url || row.linked_picture_url),
     summary: stringValue(row.summary),
     status: normalizeStatusForDisplay(row.status),
     risk: row.risk || "low",
@@ -6063,7 +6064,7 @@ function messageFromD1(thread, message) {
     type: message.message_type || "text",
     senderRole: message.sender_role === ADMIN_ROLE ? ADMIN_ROLE : USER_ROLE,
     senderId: message.user_id,
-    senderName: message.sender_role === ADMIN_ROLE ? "\u7ba1\u7406\u54e1" : (thread.display_name || message.user_id),
+    senderName: message.sender_role === ADMIN_ROLE ? "\u7ba1\u7406\u54e1" : (chooseStableName(thread.user_id, thread.display_name, "") || PENDING_DISPLAY_NAME),
     text: message.text,
     createdAt: message.created_at,
     category: message.category,
@@ -6556,7 +6557,7 @@ async function backfillProfiles(env, floor, provider, limit, options = {}) {
   const { results } = await env.DB.prepare(`
     SELECT t.user_id, t.source_type, t.source_id, t.display_name, t.picture_url
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id
     WHERE t.floor_id = ? AND (t.display_name = '' OR t.display_name = t.user_id OR t.picture_url = '')
       ${staleClause}
     ORDER BY t.updated_at DESC
@@ -7432,7 +7433,7 @@ function buildThreadsFromGas(chats, chatMeta) {
   return Array.from(groups.entries()).map(([userId, messages]) => {
     const meta = metaByUser.get(userId) || {};
     const last = messages[messages.length - 1] || {};
-    const name = chooseStableName(userId, meta["\u7528\u6236\u540d\u7a31"], last["\u7528\u6236\u540d\u7a31"]) || userId;
+    const name = chooseStableName(userId, meta["\u7528\u6236\u540d\u7a31"], last["\u7528\u6236\u540d\u7a31"]) || PENDING_DISPLAY_NAME;
     return {
       id: `user:${userId}`,
       userId,
