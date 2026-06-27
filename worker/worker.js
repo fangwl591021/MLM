@@ -6567,7 +6567,7 @@ function normalizeCheckinTemplateButton(button) {
   return {
     label: stringValue(raw.label || "按鈕").slice(0, 40),
     type,
-    text: stringValue(raw.text || raw.message || "會員打卡").slice(0, 300),
+    text: stringValue(raw.text || raw.message || (type === "message" ? "\u6703\u54e1\u6253\u5361" : "")).slice(0, 300),
     uri: stringValue(raw.uri || raw.url || "").trim(),
     color: normalizeHexColor(raw.color),
   };
