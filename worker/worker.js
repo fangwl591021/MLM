@@ -1610,8 +1610,8 @@ async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
 }
 
 function smartDailyRewardPoints(env) {
-  const points = Number(env.SMART_DAILY_REWARD_POINTS || env.DAILY_REWARD_POINTS || 10);
-  return Number.isFinite(points) && points > 0 ? Math.round(points) : 10;
+  const points = Number(env.SMART_DAILY_REWARD_POINTS || env.DAILY_REWARD_POINTS || 5);
+  return Number.isFinite(points) && points > 0 ? Math.round(points) : 5;
 }
 
 async function handleSmartDailyReward(env, channelKey, provider, event, userId) {
