@@ -36,7 +36,7 @@ const POINT_SOURCE_META = {
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "calendar-month-nav-20260626-1";
+const FRONTEND_BUILD_ID = "checkin-template-designer-20260627-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -707,17 +707,15 @@ export default {
 };
 
 async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
-  const response = await fetch(`${FRONTEND_RAW_BASE}/${fileName}?v=${FRONTEND_BUILD_ID}`, {
-    cf: { cacheEverything: false, cacheTtl: 0 },
-  });
-  if (!response.ok) {
+  const htmlText = await fetchFrontendHtmlSource(fileName);
+  if (htmlText === null) {
     return new Response(`Frontend source unavailable: ${fileName}`, {
       status: 502,
       headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 
-  let html = rewriteFrontendLinks(await response.text())
+  let html = rewriteFrontendLinks(htmlText)
     .replaceAll("point_type=all&limit=200", "point_type=gift_money&limit=200")
     .replaceAll("<label>K點類型<select id=\"pointType\"><option value=\"gift_money\">購物金</option><option value=\"system_point\">原始點數</option></select></label>", "<input id=\"pointType\" type=\"hidden\" value=\"gift_money\" />")
     .replaceAll("可用K點合計", "K點餘額")
@@ -735,6 +733,25 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
   });
 }
 
+async function fetchFrontendHtmlSource(fileName) {
+  if (fileName === "console.html") {
+    const apiResponse = await fetch(`https://api.github.com/repos/fangwl591021/MLM/contents/${fileName}?ref=main`, {
+      headers: { "User-Agent": "mlm-worker", "Accept": "application/vnd.github+json" },
+      cf: { cacheEverything: false, cacheTtl: 0 },
+    });
+    if (apiResponse.ok) {
+      const payload = await apiResponse.json().catch(() => null);
+      const content = stringValue(payload && payload.content).replace(/\s+/g, "");
+      if (content) return new TextDecoder().decode(base64ToUint8Array(content));
+    }
+  }
+  const response = await fetch(`${FRONTEND_RAW_BASE}/${fileName}?v=${FRONTEND_BUILD_ID}-${Date.now()}`, {
+    headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+    cf: { cacheEverything: false, cacheTtl: 0 },
+  });
+  if (!response.ok) return null;
+  return response.text();
+}
 async function serveFrontendAsset(pathname, corsHeaders) {
   const safePath = String(pathname || "").replace(/^\/+/, "");
   if (!safePath || safePath.includes("..")) {
