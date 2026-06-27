@@ -983,6 +983,7 @@
       const template = collectCheckinTemplate();
       if (!template.keywords.length) { setTemplateStatus("\u8acb\u81f3\u5c11\u8f38\u5165\u4e00\u500b\u89f8\u767c\u95dc\u9375\u5b57\u3002", false); return; }
       if (!template.pages.length) { setTemplateStatus("\u8acb\u81f3\u5c11\u65b0\u589e\u4e00\u9801\u4e26\u586b\u5165\u5716\u7247 URL\u3002", false); return; }
+      if (template.pages.some((page) => !page.imageUrl)) { setTemplateStatus("\u8acb\u5148\u70ba\u6bcf\u4e00\u9801\u4e0a\u50b3\u5716\u7247\u6216\u8cbc\u4e0a HTTPS \u5716\u7247\u7db2\u5740\u3002", false); return; }
       try {
         setTemplateStatus("\u5132\u5b58\u4e2d...", true);
         const res = await fetch(cleanBase(apiBase.value) + "/api/checkin-template", {
@@ -1149,7 +1150,7 @@
           return { label: get("label") || "\u6309\u9215", type: get("type") === "uri" ? "uri" : "message", text: get("text"), uri: get("uri"), color: get("color") };
         }).filter((button) => button.label && (button.type === "uri" ? button.uri : button.text));
         return { imageUrl: valueOf("imageUrl"), imageLink: valueOf("imageLink"), buttons };
-      }).filter((page) => page.imageUrl);
+      });
       const keywordsRaw = $("templateKeywords") ? $("templateKeywords").value : "";
       const keywords = keywordsRaw.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean);
       return {
