@@ -1815,10 +1815,12 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
       continue;
     }
     if (isSmartDailyRewardEvent(channelKey, event)) {
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       if (userId) await handleSmartDailyReward(env, channelKey, provider, event, userId);
       continue;
     }
     if (isSmartPointQueryEvent(channelKey, event)) {
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
       continue;
     }
@@ -5752,6 +5754,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     const like = `%${searchQuery.toLowerCase()}%`;
     where.push(`(
       LOWER(t.display_name) LIKE ?
+      OR LOWER(COALESCE(p.display_name, '')) LIKE ?
       OR LOWER(t.user_id) LIKE ?
       OR LOWER(t.summary) LIKE ?
       OR LOWER(t.tags) LIKE ?
@@ -5763,7 +5766,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
           AND LOWER(m.text) LIKE ?
       )
     )`);
-    bindings.push(like, like, like, like, like, like);
+    bindings.push(like, like, like, like, like, like, like);
   }
   bindings.push(limit);
   let { results } = await env.DB.prepare(`
@@ -5774,7 +5777,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
   `).bind(...bindings).all();
-  results = await removePointGatewayOnlyThreads(env, results || []);
+  results = results || [];
 
   const ids = results.map((row) => row.id);
   const messageResults = [];
