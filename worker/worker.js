@@ -5208,7 +5208,71 @@ async function listSmartMonitorData(env, url) {
     }
     return sum;
   }, { date, users: 0, messages: 0, rewarded: 0, missing: 0, points: 0 });
-  return { source: POINT_SOURCE_META[POINT_OA1], days, stats, checkinSummary, checkins };
+  const todayStart = taipeiStartOfDay(Date.now());
+  const [chatStats, todayUserMessages, todayAdminReplies, recentThreads] = await Promise.all([
+    env.DB.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) AS pending,
+             SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done,
+             SUM(CASE WHEN risk = 'high' THEN 1 ELSE 0 END) AS high_risk
+      FROM threads
+      WHERE floor_id = ?
+    `).bind(STATUS_PENDING, STATUS_IMPORTANT, STATUS_DONE, FLOOR_MAIN).first(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM messages WHERE floor_id = ? AND sender_role = ? AND created_at >= ?").bind(FLOOR_MAIN, USER_ROLE, todayStart).first(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM messages WHERE floor_id = ? AND sender_role = ? AND created_at >= ?").bind(FLOOR_MAIN, ADMIN_ROLE, todayStart).first(),
+    env.DB.prepare(`
+      SELECT t.id, t.user_id, t.display_name, t.summary, t.status, t.risk, t.last_message_at,
+             (SELECT m.text FROM messages m WHERE m.thread_id = t.id AND m.floor_id = t.floor_id ORDER BY m.created_at DESC LIMIT 1) AS latest_text,
+             (SELECT m.sender_role FROM messages m WHERE m.thread_id = t.id AND m.floor_id = t.floor_id ORDER BY m.created_at DESC LIMIT 1) AS latest_sender,
+             (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id AND m.floor_id = t.floor_id) AS message_count
+      FROM threads t
+      WHERE t.floor_id = ?
+      ORDER BY t.last_message_at DESC
+      LIMIT 80
+    `).bind(FLOOR_MAIN).all(),
+  ]);
+  const chatThreads = (recentThreads.results || []).map((row) => ({
+    id: stringValue(row.id),
+    user_id: stringValue(row.user_id),
+    display_name: stringValue(row.display_name) || stringValue(row.user_id),
+    summary: stringValue(row.summary),
+    status: normalizeStatusForDisplay(row.status),
+    risk: stringValue(row.risk) || "low",
+    last_message_at: Number(row.last_message_at || 0),
+    last_message_at_text: row.last_message_at ? formatTaipeiTimestamp(row.last_message_at) : "-",
+    latest_text: stringValue(row.latest_text),
+    latest_sender: stringValue(row.latest_sender),
+    message_count: Number(row.message_count || 0),
+  }));
+  const chatMonitor = {
+    floor: FLOOR_MAIN,
+    label: "康立智能聊天室",
+    total: Number(chatStats && chatStats.total || 0),
+    pending: Number(chatStats && chatStats.pending || 0),
+    done: Number(chatStats && chatStats.done || 0),
+    high_risk: Number(chatStats && chatStats.high_risk || 0),
+    today_user_messages: Number(todayUserMessages && todayUserMessages.count || 0),
+    today_admin_replies: Number(todayAdminReplies && todayAdminReplies.count || 0),
+    threads: chatThreads,
+  };
+  return { source: POINT_SOURCE_META[POINT_OA1], days, stats, checkinSummary, checkins, chatMonitor };
+}
+
+function formatTaipeiTimestamp(ms) {
+  const value = Number(ms || 0);
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value)).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function addDaysDateString(date, days) {
@@ -5233,18 +5297,20 @@ function smartMonitorHtml(headers) {
   </style>
 </head>
 <body>
-  <header><div><h1>康立智能監控</h1><div class="sub">固定監控康立智能 1086：今日會員打卡、K 點進出與最近流水。</div></div><div class="actions"><a class="btn" href="/dashboard?floor=main">產品客服</a><a class="btn" href="/dashboard?floor=admin">行政客服</a><a class="btn" href="/console">主控台</a></div></header>
+  <header><div><h1>康立智能監控</h1><div class="sub">固定監控康立智能 1086：聊天室、今日會員打卡、K 點進出與最近流水。</div></div><div class="actions"><a class="btn" href="/dashboard?floor=main">產品客服</a><a class="btn" href="/dashboard?floor=admin">行政客服</a><a class="btn" href="/console">主控台</a></div></header>
   <main class="wrap">
     <div class="toolbar"><label>期間 <select id="days"><option value="7" selected>近 7 天</option><option value="30">近 30 天</option><option value="90">近 90 天</option></select></label><button id="refresh" class="primary">重新整理</button></div>
     <div id="error" class="error"></div>
-    <section class="cards"><div class="card"><div class="label">今日打卡人數</div><div id="checkinUsers" class="metric">0</div></div><div class="card"><div class="label">今日已贈點</div><div id="rewarded" class="metric good">0</div></div><div class="card"><div class="label">今日缺漏</div><div id="missing" class="metric bad">0</div></div><div class="card"><div class="label">今日贈點合計</div><div id="checkinPoints" class="metric good">0</div></div><div class="card"><div class="label">期間淨增減</div><div id="net" class="metric net">0</div></div></section>
+    <section class="cards"><div class="card"><div class="label">聊天室總數</div><div id="chatTotal" class="metric">0</div></div><div class="card"><div class="label">待處理聊天室</div><div id="chatPending" class="metric bad">0</div></div><div class="card"><div class="label">今日用戶訊息</div><div id="todayMessages" class="metric net">0</div></div><div class="card"><div class="label">今日客服回覆</div><div id="todayReplies" class="metric good">0</div></div><div class="card"><div class="label">高風險聊天室</div><div id="highRisk" class="metric bad">0</div></div></section>
+    <section class="cards" style="margin-top:12px"><div class="card"><div class="label">今日打卡人數</div><div id="checkinUsers" class="metric">0</div></div><div class="card"><div class="label">今日已贈點</div><div id="rewarded" class="metric good">0</div></div><div class="card"><div class="label">今日缺漏</div><div id="missing" class="metric bad">0</div></div><div class="card"><div class="label">今日贈點合計</div><div id="checkinPoints" class="metric good">0</div></div><div class="card"><div class="label">期間淨增減</div><div id="net" class="metric net">0</div></div></section>
+    <section class="panel" style="margin-top:16px"><h2>聊天室監控</h2><div class="tableWrap"><table><thead><tr><th>聊天室</th><th>最新時間</th><th>狀態</th><th>風險</th><th class="right">訊息數</th><th>最新訊息</th></tr></thead><tbody id="chatrooms"></tbody></table></div></section>
     <section class="grid"><div class="panel"><h2>今日打卡名單</h2><div class="tableWrap"><table><thead><tr><th>會員</th><th>打卡時間</th><th class="right">次數</th><th class="right">點數</th><th>狀態</th></tr></thead><tbody id="checkins"></tbody></table></div></div><div class="panel"><h2>每日 K 點進出</h2><div class="tableWrap"><table><thead><tr><th>日期</th><th class="right">贈點</th><th class="right">扣點</th><th class="right">淨額</th><th class="right">人數</th></tr></thead><tbody id="daily"></tbody></table></div></div></section>
     <section class="panel" style="margin-top:16px"><h2>最近康立智能流水</h2><div class="tableWrap"><table><thead><tr><th>時間</th><th>會員</th><th>UID</th><th class="right">進出</th><th class="right">餘額</th><th>備註</th></tr></thead><tbody id="recent"></tbody></table></div></section>
   </main>
 <script>
 const $=id=>document.getElementById(id);const fmt=n=>Number(n||0).toLocaleString('zh-TW',{maximumFractionDigits:2});const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const signed=n=>{const v=Number(n||0);return (v>0?'+':'')+fmt(v)};function empty(cols,msg){return '<tr><td class="empty" colspan="'+cols+'">'+esc(msg)+'</td></tr>'}
 async function load(){ $('error').style.display='none'; try{const p=new URLSearchParams({days:$('days').value});const res=await fetch('/admin/smart-monitor-data?'+p.toString(),{credentials:'same-origin'}); if(res.status===401){location.href='/login?next=/admin/smart-monitor';return} const json=await res.json().catch(()=>({})); if(!res.ok||json.status!=='success') throw new Error(json.message||'讀取失敗'); render(json.data||{});}catch(err){$('error').textContent=err&&err.message?err.message:String(err);$('error').style.display='block';}}
-function render(data){const s=data.checkinSummary||{}, stats=data.stats||{}, totals=stats.totals||{};$('checkinUsers').textContent=fmt(s.users);$('rewarded').textContent=fmt(s.rewarded);$('missing').textContent=fmt(s.missing);$('checkinPoints').textContent=fmt(s.points);$('net').textContent=signed(totals.net_points);const checkins=data.checkins||[];$('checkins').innerHTML=checkins.length?checkins.map(r=>'<tr><td><strong>'+esc(r.user_name||'未命名')+'</strong><div class="uid">'+esc(r.line_user_id)+'</div></td><td>'+esc(r.first_tw||'')+'</td><td class="right">'+fmt(r.hits)+'</td><td class="right good">'+fmt(r.points)+'</td><td>'+(r.missing?'<span class="pill bad">缺漏</span>':'<span class="pill">已贈點</span>')+'</td></tr>').join(''):empty(5,'今天尚無會員打卡');const daily=stats.daily||[];$('daily').innerHTML=daily.length?daily.map(r=>'<tr><td><strong>'+esc(r.day)+'</strong></td><td class="right good">'+fmt(r.grant_points)+'</td><td class="right bad">'+fmt(r.deduct_points)+'</td><td class="right net">'+signed(r.net_points)+'</td><td class="right">'+fmt(r.unique_users)+'</td></tr>').join(''):empty(5,'目前沒有 K 點進出');const recent=stats.recent||[];$('recent').innerHTML=recent.length?recent.map(r=>'<tr><td>'+esc(r.created_at_text||r.created_at)+'</td><td><strong>'+esc(r.user_name||'未命名')+'</strong></td><td class="uid">'+esc(r.line_user_id)+'</td><td class="right '+(Number(r.point_delta)>=0?'good':'bad')+'">'+signed(r.point_delta)+'</td><td class="right">'+fmt(r.balance_after)+'</td><td>'+esc(r.note||r.operator_name||r.action)+'</td></tr>').join(''):empty(6,'目前沒有流水');}
+function render(data){const s=data.checkinSummary||{}, stats=data.stats||{}, totals=stats.totals||{}, chat=data.chatMonitor||{};$('chatTotal').textContent=fmt(chat.total);$('chatPending').textContent=fmt(chat.pending);$('todayMessages').textContent=fmt(chat.today_user_messages);$('todayReplies').textContent=fmt(chat.today_admin_replies);$('highRisk').textContent=fmt(chat.high_risk);$('checkinUsers').textContent=fmt(s.users);$('rewarded').textContent=fmt(s.rewarded);$('missing').textContent=fmt(s.missing);$('checkinPoints').textContent=fmt(s.points);$('net').textContent=signed(totals.net_points);const rooms=chat.threads||[];$('chatrooms').innerHTML=rooms.length?rooms.map(r=>'<tr><td><strong>'+esc(r.display_name||'未命名')+'</strong><div class="uid">'+esc(r.user_id)+'</div></td><td>'+esc(r.last_message_at_text||'-')+'</td><td><span class="pill '+(r.status==='處理完畢'?'':'bad')+'">'+esc(r.status||'待處理')+'</span></td><td>'+esc(r.risk==='high'?'高風險':'低風險')+'</td><td class="right">'+fmt(r.message_count)+'</td><td>'+esc(r.latest_text||r.summary||'')+'</td></tr>').join(''):empty(6,'目前沒有聊天室資料');const checkins=data.checkins||[];$('checkins').innerHTML=checkins.length?checkins.map(r=>'<tr><td><strong>'+esc(r.user_name||'未命名')+'</strong><div class="uid">'+esc(r.line_user_id)+'</div></td><td>'+esc(r.first_tw||'')+'</td><td class="right">'+fmt(r.hits)+'</td><td class="right good">'+fmt(r.points)+'</td><td>'+(r.missing?'<span class="pill bad">缺漏</span>':'<span class="pill">已贈點</span>')+'</td></tr>').join(''):empty(5,'今天尚無會員打卡');const daily=stats.daily||[];$('daily').innerHTML=daily.length?daily.map(r=>'<tr><td><strong>'+esc(r.day)+'</strong></td><td class="right good">'+fmt(r.grant_points)+'</td><td class="right bad">'+fmt(r.deduct_points)+'</td><td class="right net">'+signed(r.net_points)+'</td><td class="right">'+fmt(r.unique_users)+'</td></tr>').join(''):empty(5,'目前沒有 K 點進出');const recent=stats.recent||[];$('recent').innerHTML=recent.length?recent.map(r=>'<tr><td>'+esc(r.created_at_text||r.created_at)+'</td><td><strong>'+esc(r.user_name||'未命名')+'</strong></td><td class="uid">'+esc(r.line_user_id)+'</td><td class="right '+(Number(r.point_delta)>=0?'good':'bad')+'">'+signed(r.point_delta)+'</td><td class="right">'+fmt(r.balance_after)+'</td><td>'+esc(r.note||r.operator_name||r.action)+'</td></tr>').join(''):empty(6,'目前沒有流水');}
 $('days').addEventListener('change',load);$('refresh').addEventListener('click',load);load();
 </script>
 </body>
