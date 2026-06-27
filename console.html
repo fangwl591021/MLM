@@ -290,7 +290,7 @@
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         render(json.data);
-        await loadCalendarMonth();
+        await Promise.all([loadCalendarMonth(), loadCheckinTemplate()]);
         setStatus("已同步", false);
       } catch (err) {
         if (handleAuthExpired(err)) return;

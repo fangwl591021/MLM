@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
  * Core rule:
@@ -7208,7 +7208,7 @@ function isCheckinTemplateTrigger(template, text) {
 }
 
 async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, text) {
-  if (floor !== FLOOR_MAIN) return false;
+  if (floor !== FLOOR_MAIN && floor !== FLOOR_SMART) return false;
   const template = await getCheckinTemplate(env);
   if (!isCheckinTemplateTrigger(template, text)) return false;
   const flex = buildCheckinTemplateFlex(template);
