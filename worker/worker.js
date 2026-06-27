@@ -220,7 +220,8 @@ export default {
       const floor = resolveFloor(request);
       const provider = getProvider(env, floor);
 
-      if (requiresFloorAccess(url.pathname)) {
+      const smartMonitorDataMode = url.pathname === "/api/data" && url.searchParams.get("smart") === "1";
+      if (requiresFloorAccess(url.pathname) && !smartMonitorDataMode) {
         await assertFloorAccess(request, env, floor);
       }
 
@@ -296,10 +297,12 @@ export default {
       }
 
       if (url.pathname === "/api/data" && request.method === "GET") {
-        await assertDashboardAuth(request, env);
-        const data = await fetchDashboardData(env, floor);
+        const smartMonitorMode = url.searchParams.get("smart") === "1";
+        await (smartMonitorMode ? assertDashboardAuth(request, env) : assertFloorAccess(request, env, floor));
+        const dataFloor = smartMonitorMode ? FLOOR_MAIN : floor;
+        const data = await fetchDashboardData(env, dataFloor);
         if (env.DB && provider.accessToken) {
-          ctx.waitUntil(backfillProfiles(env, floor, provider, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
+          ctx.waitUntil(backfillProfiles(env, dataFloor, provider, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
         }
         return jsonResponse(data, 200, corsHeaders);
       }
@@ -349,7 +352,7 @@ export default {
       if (url.pathname === "/admin/smart-monitor" && request.method === "GET") {
         const denied = await dashboardPageDeniedResponse(request, env, `${url.origin}/login?next=/admin/smart-monitor`, corsHeaders);
         if (denied) return denied;
-        return smartMonitorHtml(corsHeaders);
+        return serveFrontendHtml("index.html", corsHeaders, { smartMonitorDashboard: true });
       }
 
       if (url.pathname === "/admin/smart-monitor-data" && request.method === "GET") {
@@ -695,7 +698,7 @@ export default {
   },
 };
 
-async function serveFrontendHtml(fileName, corsHeaders) {
+async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
   const response = await fetch(`${FRONTEND_RAW_BASE}/${fileName}?v=${FRONTEND_BUILD_ID}`, {
     cf: { cacheEverything: false, cacheTtl: 0 },
   });
@@ -706,11 +709,12 @@ async function serveFrontendHtml(fileName, corsHeaders) {
     });
   }
 
-  const html = rewriteFrontendLinks(await response.text())
+  let html = rewriteFrontendLinks(await response.text())
     .replaceAll("point_type=all&limit=200", "point_type=gift_money&limit=200")
     .replaceAll("<label>K點類型<select id=\"pointType\"><option value=\"gift_money\">購物金</option><option value=\"system_point\">原始點數</option></select></label>", "<input id=\"pointType\" type=\"hidden\" value=\"gift_money\" />")
     .replaceAll("可用K點合計", "K點餘額")
     .replaceAll("扣除後可用K點", "K點餘額");
+  if (options && options.smartMonitorDashboard) html = rewriteSmartMonitorDashboardHtml(html);
   return new Response(html, {
     status: 200,
     headers: {
@@ -755,6 +759,28 @@ async function serveFrontendAsset(pathname, corsHeaders) {
   });
 }
 
+function rewriteSmartMonitorDashboardHtml(html) {
+  const initialFloorBlock = `function initialFloor() {
+      const requested = new URLSearchParams(window.location.search).get("floor");
+      if (requested && FLOORS[requested]) {
+        localStorage.setItem("line_ai_floor", requested);
+        return requested;
+      }
+      return localStorage.getItem("line_ai_floor") || "main";
+    }`;
+  const smartInitialFloorBlock = `function initialFloor() {
+      localStorage.setItem("line_ai_floor", "main");
+      return "main";
+    }`;
+  return String(html || "")
+    .replaceAll("<title>KLINK 客服系統</title>", "<title>康立智能監控</title>")
+    .replaceAll("apiUrlForFloor(\"/api/data\", floorAtStart)", "apiUrlForFloor(\"/api/data\", floorAtStart) + '&smart=1'")
+    .replaceAll(initialFloorBlock, smartInitialFloorBlock)
+    .replaceAll('.smartMonitorBtn:hover{background:#effcf4}', '.smartMonitorBtn.active{background:#e7f8ef;color:#067a35;box-shadow:inset 0 0 0 1px #067a35}.smartMonitorBtn:hover{background:#effcf4}')
+    .replaceAll('class="smartMonitorBtn" href="/admin/smart-monitor"', 'class="smartMonitorBtn active" href="/admin/smart-monitor"')
+    .replaceAll('<a class="smartMonitorBtn active" href="/admin/smart-monitor">康立智能監控</a>', '')
+    .replaceAll('<button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button>', '<a class="floorTab" href="/dashboard?floor=main">產品客服</a><a class="floorTab" href="/dashboard?floor=admin">行政客服</a><button type="button" class="floorTab active" data-floor="main">康立智能</button>');
+}
 function rewriteFrontendLinks(html) {
   return String(html || "")
     .replaceAll('href="console.html"', 'href="/console"')
