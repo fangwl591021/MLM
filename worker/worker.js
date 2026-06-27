@@ -5726,7 +5726,7 @@ async function fetchDashboardData(env, floor = FLOOR_MAIN, options = {}) {
     fetchAiLogs(env, floor, 100),
     getKnowledgeMeta(env, floor),
   ]);
-  if (floor === FLOOR_MAIN && !threads.length && env.GAS_URL) {
+  if (!searchQuery && floor === FLOOR_MAIN && !threads.length && env.GAS_URL) {
     const gasData = await backupGas(env, { type: "FETCH_DASHBOARD_DATA" });
     if (gasData && gasData.status === "success") return withThreadData(gasData);
   }
@@ -5793,11 +5793,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     .map((row) => threadFromD1(row, byThread.get(row.id) || []))
     .filter((thread) => searchQuery || thread.messages.length > 0);
 
-  if (searchQuery && floor === FLOOR_MAIN && threads.length < limit) {
-    const existingUserIds = new Set(threads.map((thread) => stringValue(thread.userId)).filter(Boolean));
-    const crmThreads = await fetchCrmMemberThreads(env, searchQuery, limit - threads.length, existingUserIds);
-    threads.push(...crmThreads);
-  }
+
   return threads;
 }
 
