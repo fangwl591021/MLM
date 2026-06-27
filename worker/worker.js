@@ -1419,8 +1419,10 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
     if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
       // consumed by the ad hoc NFC testing setup flow
     } else if (isSmartDailyRewardEvent(channelKey, event)) {
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       if (userId) await handleSmartDailyReward(env, channelKey, provider, event, userId);
     } else if (isSmartPointQueryEvent(channelKey, event)) {
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
     } else {
       monitorEvents.push(event);
@@ -1428,6 +1430,15 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
   }
 
   if (config.monitor && monitorEvents.length) await processLineWebhook(env, config.floor, provider, { ...payload, events: monitorEvents });
+}
+
+async function mirrorPointMessageToMonitor(env, config, provider, event, userId) {
+  if (!config || !config.monitor || !event || event.type !== "message" || !event.message || event.message.type !== "text" || !userId) return;
+  try {
+    await saveIncomingMessage(env, config.floor, provider, event, userId, stringValue(event.message.text));
+  } catch (error) {
+    console.error("mirrorPointMessageToMonitor failed", error && error.stack ? error.stack : error);
+  }
 }
 
 function isSmartDailyRewardEvent(channelKey, event) {
