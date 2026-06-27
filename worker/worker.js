@@ -1595,6 +1595,85 @@ async function handleSmartRewardBalanceDisplay(env, provider, event, userId) {
   }
 }
 
+function smartDailyRewardPoints(env) {
+  const points = Number(env.SMART_DAILY_REWARD_POINTS || env.DAILY_REWARD_POINTS || 10);
+  return Number.isFinite(points) && points > 0 ? Math.round(points) : 10;
+}
+
+async function handleSmartDailyReward(env, channelKey, provider, event, userId) {
+  const keyword = stringValue(event && event.message && event.message.text) || "\u6703\u54e1\u6253\u5361";
+  const rewardDate = taipeiDate();
+  const pointType = "gift_money";
+  const points = smartDailyRewardPoints(env);
+  const existing = await env.DB.prepare(
+    "SELECT id, points, balance_after, status " +
+    "FROM daily_keyword_rewards " +
+    "WHERE line_user_id = ? AND channel_key = ? AND point_type = ? AND keyword = ? AND reward_date = ? AND status != 'failed' " +
+    "ORDER BY id ASC LIMIT 1"
+  ).bind(userId, channelKey, pointType, keyword, rewardDate).first();
+  if (existing) {
+    const balance = await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    await env.DB.prepare(
+      "UPDATE daily_keyword_rewards " +
+      "SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = ?"
+    ).bind(balance, "duplicate_smart_daily_reward", existing.id).run();
+    return replySmartDailyReward(provider, event, userId, { duplicate: true, points: Number(existing.points || points), balance_after: balance });
+  }
+
+  const inserted = await env.DB.prepare(
+    "INSERT INTO daily_keyword_rewards (rule_id, keyword, line_user_id, channel_key, point_type, points, reward_date, status, created_at, updated_at) " +
+    "VALUES (0, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+  ).bind(keyword, userId, channelKey, pointType, points, rewardDate).run();
+  const rewardId = inserted && inserted.meta ? inserted.meta.last_row_id : null;
+  try {
+    const mutation = await pointMutation(env, {
+      channel_key: channelKey,
+      line_user_id: userId,
+      chat_line_user_id: userId,
+      point_type: pointType,
+      points,
+      operator_id: "smart-daily-reward",
+      operator_name: "\u6bcf\u65e5\u6253\u5361\u81ea\u52d5\u8d08\u9ede",
+      event_name: "\u6253\u5361\u8d08\u9ede",
+      event_content: "\u6bcf\u65e5\u6253\u5361\u8d08K\u9ede" + points + "\u9ede",
+      note: keyword + " \u6bcf\u65e5\u6253\u5361\u8d08K\u9ede",
+      business_key: "smart-daily:" + channelKey + ":" + userId + ":" + rewardDate,
+      shop_id: memberCheckinShopId(env),
+      shop_remark: "\u6bcf\u65e5\u6253\u5361\u81ea\u52d5\u8d08\u9ede\uff1b\u65e5\u671f:" + rewardDate + "\uff1b\u95dc\u9375\u5b57:" + keyword,
+    }, "grant");
+    const balance = Number.isFinite(Number(mutation && mutation.balance_after))
+      ? Number(mutation.balance_after)
+      : await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    if (rewardId) {
+      await env.DB.prepare(
+        "UPDATE daily_keyword_rewards " +
+        "SET balance_after = ?, status = 'claimed', message = ?, updated_at = CURRENT_TIMESTAMP " +
+        "WHERE id = ?"
+      ).bind(balance, "gift_money_granted", rewardId).run();
+    }
+    return replySmartDailyReward(provider, event, userId, { duplicate: false, points, balance_after: balance });
+  } catch (error) {
+    if (rewardId) {
+      await env.DB.prepare(
+        "UPDATE daily_keyword_rewards " +
+        "SET status = 'failed', message = ?, updated_at = CURRENT_TIMESTAMP " +
+        "WHERE id = ?"
+      ).bind(error && error.message ? error.message.slice(0, 240) : String(error).slice(0, 240), rewardId).run();
+    }
+    return replyOrPushLineMessage(provider, event.replyToken, userId, "\u7c3d\u5230\u66ab\u6642\u5931\u6557\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002");
+  }
+}
+
+function replySmartDailyReward(provider, event, userId, result) {
+  const balance = formatPoint(result && result.balance_after);
+  const points = formatPoint(result && result.points);
+  const replyText = result && result.duplicate
+    ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u76ee\u524d\u7d2f\u7a4d " + balance + " K\u9ede\u3002"
+    : "\u7c3d\u5230\u6210\u529f\uff0c\u5df2\u8d08\u9001 " + points + " K\u9ede\u3002\u76ee\u524d\u7d2f\u7a4d " + balance + " K\u9ede\u3002";
+  return replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
+}
+
 function memberCheckinShopId(env) {
   const configured = Number(env.WETW_MEMBER_CHECKIN_SHOP_ID || 0);
   if (Number.isFinite(configured) && configured > 0) return configured;
@@ -1652,7 +1731,7 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
       continue;
     }
     if (isSmartDailyRewardEvent(channelKey, event)) {
-      if (userId) await handleSmartRewardBalanceDisplay(env, provider, event, userId);
+      if (userId) await handleSmartDailyReward(env, channelKey, provider, event, userId);
       continue;
     }
     if (isSmartPointQueryEvent(channelKey, event)) {
@@ -3646,10 +3725,13 @@ async function fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType = "
   };
   if (shopId > 0) query.shop_id = shopId;
   const rows = await fetchWetwPointListFromWordPress(env, url, query);
-  const sorted = rows
-    .filter((row) => !stringValue(row.point_type) || stringValue(row.point_type) === pointType)
+  const matchedRows = rows
+    .filter((row) => wetwPointRowMatchesType(row, pointType))
     .sort((a, b) => wetwPointRowRank(b) - wetwPointRowRank(a));
-  const effectiveRows = sorted.length ? sorted : rows;
+  const fallbackRows = rows
+    .filter((row) => !wetwPointRowIsSystemPoint(row))
+    .sort((a, b) => wetwPointRowRank(b) - wetwPointRowRank(a));
+  const effectiveRows = matchedRows.length ? matchedRows : fallbackRows;
   for (const row of effectiveRows) {
     const balance = Number(row.point_balance ?? row.balance ?? row.points);
     if (Number.isFinite(balance)) return { balance, rows: effectiveRows, shop_id: shopId };
@@ -4810,7 +4892,7 @@ async function syncCrmPoints(env, body) {
   for (const item of rows) {
     const channelKey = stringValue(item.channel_key || item.channelKey || item.oa || body.channel_key || POINT_OA1);
     const lineUserId = stringValue(item.line_user_id || item.lineUserId || item.LINE_user_id || item.userId);
-    const pointType = stringValue(item.point_type || item.pointType || "wetw_point");
+    const pointType = normalizeWetwPointType(item.point_type || item.pointType || wetwPointRowTypeText(item)) || "gift_money";
     const balance = Number(item.point_balance ?? item.balance ?? item.points ?? item.get_point ?? 0);
     if (!channelKey || !lineUserId || !Number.isFinite(balance)) continue;
     const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
@@ -4852,6 +4934,40 @@ function wetwPointRowRank(item) {
   const created = Date.parse(stringValue(item && (item.created_at || item.createdAt || item.date || item.datetime)));
   if (Number.isFinite(created)) return created;
   return 0;
+}
+
+function normalizeWetwPointType(value) {
+  const raw = stringValue(value).trim().toLowerCase();
+  if (!raw) return "";
+  const compact = raw.replace(/[s_-]+/g, "");
+  if (["giftmoney", "kpoint", "kpoints", "k點", "購物金", "系統k點"].includes(compact)) return "gift_money";
+  if (["systempoint", "系統點數", "原始點數"].includes(compact)) return "system_point";
+  return raw;
+}
+
+function wetwPointRowTypeText(row) {
+  return [row && row.point_type, row && row.pointType, row && row.event_name, row && row.event_content, row && row.shop_remark]
+    .map((value) => stringValue(value))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function wetwPointRowIsSystemPoint(row) {
+  const type = normalizeWetwPointType(row && (row.point_type || row.pointType));
+  if (type === "system_point") return true;
+  const text = wetwPointRowTypeText(row);
+  return /系統點數|原始點數/.test(text) && !/購物金|K點|k點|系統K點/i.test(text);
+}
+
+function wetwPointRowMatchesType(row, pointType) {
+  const requested = normalizeWetwPointType(pointType || "gift_money");
+  const explicitType = normalizeWetwPointType(row && (row.point_type || row.pointType));
+  if (explicitType) return explicitType === requested;
+  if (requested !== "gift_money") return false;
+  const text = wetwPointRowTypeText(row);
+  if (/購物金|K點|k點|系統K點/i.test(text)) return true;
+  if (/系統點數|原始點數/.test(text)) return false;
+  return false;
 }
 
 async function resolvePointSyncRows(env, body) {
