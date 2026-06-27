@@ -514,9 +514,11 @@ export default {
         const limit = clampNumber(body.limit || 100, 1, 300);
         const channelKey = stringValue(body.channel || body.channel_key || url.searchParams.get("channel") || url.searchParams.get("channel_key"));
         const pointConfig = POINT_CHANNELS.has(channelKey) ? getPointChannelConfig(env, channelKey) : null;
+        const forceBackfill = body.force !== false && body.force !== "false" && body.force !== 0 && body.force !== "0";
+        const staleMs = Number(body.staleMs || body.stale_ms || 86400000);
         const results = pointConfig
-          ? await backfillPointChannelProfiles(env, channelKey, { floor: pointConfig.floor, id: channelKey, label: pointConfig.label, channelSecret: pointConfig.channelSecret, accessToken: pointConfig.accessToken }, limit, { force: true })
-          : await backfillProfiles(env, floor, provider, limit, { force: true });
+          ? await backfillPointChannelProfiles(env, channelKey, { floor: pointConfig.floor, id: channelKey, label: pointConfig.label, channelSecret: pointConfig.channelSecret, accessToken: pointConfig.channelAccessToken || pointConfig.accessToken }, limit, { force: forceBackfill, staleMs })
+          : await backfillProfiles(env, floor, provider, limit, { force: forceBackfill, staleMs });
         return jsonResponse({ status: "success", scanned: results.length, results }, 200, corsHeaders);
       }
 
