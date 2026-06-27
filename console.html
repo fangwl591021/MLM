@@ -24,7 +24,7 @@
     .templateDesigner label{display:grid;gap:7px;color:#344054;font-size:14px;font-weight:850;min-width:0}.templateDesigner input,.templateDesigner select,.templateDesigner textarea{width:100%;min-width:0;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.templateDesigner textarea{min-height:86px;resize:vertical}.templateControls .templateBlock:first-child{display:grid;grid-template-columns:1fr;gap:12px}.templateControls .templateBlock:first-child .templateBlockHead{margin-bottom:0}.templateSwitch{display:flex!important;align-items:center!important;grid-template-columns:none!important}.templateSwitch input{width:16px!important;height:16px!important;min-width:16px!important}.templateUploadRow label{min-width:0}.templateUploadRow .openLink{align-self:end;justify-content:center}.templateImageUpload>input[data-field=imageUrl]{height:42px}.templateButtonGrid{grid-template-columns:minmax(150px,1fr) 120px!important}.templateButtonGrid label:nth-child(3),.templateButtonGrid label:nth-child(4),.templateButtonGrid label:nth-child(5){grid-column:auto}.templateButtonGrid .dangerButton{align-self:end}.templateColorRow{grid-template-columns:42px minmax(86px,1fr)!important}.templateColorRow input[type=color]{padding:2px!important}.templatePage .sectionActions{margin-top:10px}.templatePreviewPane{position:sticky;top:18px;align-self:start}.templateVisualPreview{align-items:flex-start}.templatePhoneImage span{padding:18px;line-height:1.5}@media(min-width:1380px){.templateButtonGrid{grid-template-columns:minmax(140px,1fr) 120px minmax(140px,1fr) minmax(150px,1fr) 140px auto!important}}@media(max-width:1180px){.templatePreviewPane{position:static}.templateButtonGrid{grid-template-columns:1fr!important}}
   </style>
   <style>
-    .templateControls{min-width:0;overflow:hidden}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}
+    .templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}
   </style>
 </head>
 <body class="auth-locked">
@@ -133,7 +133,7 @@
                 <label class="templateSwitch"><input id="templateActive" type="checkbox" checked /> 啟用關鍵字觸發</label>
               </div>
               <div class="templateBlock">
-                <div class="templateBlockHead"><strong>頁面設定</strong><div class="sectionActions"><button id="templateAddPage" class="secondaryButton" type="button">新增頁面</button><button id="templateSave" class="importButton" type="button">儲存模板</button></div></div>
+                <div class="templateBlockHead"><strong>頁面設定</strong><div class="sectionActions"><span id="templateInlineStatus" class="templateInlineStatus" aria-live="polite"></span><button id="templateAddPage" class="secondaryButton" type="button">新增頁面</button><button id="templateSave" class="importButton" type="button">儲存模板</button></div></div>
                 <div id="templatePages" class="templatePages"></div>
               </div>
               <div id="templateStatus" class="importResult hide"></div>
@@ -992,8 +992,11 @@
       if (!template.keywords.length) { setTemplateStatus("\u8acb\u81f3\u5c11\u8f38\u5165\u4e00\u500b\u89f8\u767c\u95dc\u9375\u5b57\u3002", false); return; }
       if (!template.pages.length) { setTemplateStatus("\u8acb\u81f3\u5c11\u65b0\u589e\u4e00\u9801\u4e26\u586b\u5165\u5716\u7247 URL\u3002", false); return; }
       if (template.pages.some((page) => !page.imageUrl)) { setTemplateStatus("\u8acb\u5148\u70ba\u6bcf\u4e00\u9801\u4e0a\u50b3\u5716\u7247\u6216\u8cbc\u4e0a HTTPS \u5716\u7247\u7db2\u5740\u3002", false); return; }
+      const saveButton = $("templateSave");
+      const originalText = saveButton ? saveButton.textContent : "";
       try {
-        setTemplateStatus("\u5132\u5b58\u4e2d...", true);
+        if (saveButton) { saveButton.disabled = true; saveButton.textContent = "儲存中..."; }
+        setTemplateStatus("儲存中...", true);
         const res = await fetch(cleanBase(apiBase.value) + "/api/checkin-template", {
           method: "POST",
           headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
@@ -1002,13 +1005,15 @@
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.status !== "success") throw new Error(json.message || "\u7c3d\u5230\u6a21\u677f\u5132\u5b58\u5931\u6557");
         renderCheckinTemplateEditor(json.data || template);
-        setTemplateStatus("\u5df2\u5132\u5b58\u3002\u8f38\u5165\u95dc\u9375\u5b57\u5f8c\uff0cLINE \u6703\u56de\u8986\u9019\u7d44\u591a\u9801\u7c3d\u5230\u8d08\u9ede\u5361\u3002", true);
+        setTemplateStatus("已儲存，LINE 關鍵字已更新。", true);
       } catch (err) {
         if (handleAuthExpired(err)) return;
         setTemplateStatus(err.message || String(err), false);
+      } finally {
+        const currentButton = $("templateSave");
+        if (currentButton) { currentButton.disabled = false; currentButton.textContent = originalText || "儲存模板"; }
       }
     }
-
     function renderCheckinTemplateEditor(template) {
       const normalized = normalizeTemplateForEditor(template || defaultCheckinTemplate());
       checkinTemplateDraft = normalized;
@@ -1230,13 +1235,21 @@
 
     function setTemplateStatus(text, ok) {
       const target = $("templateStatus");
-      if (!target) return;
-      target.textContent = text || "";
-      target.classList.toggle("hide", !text);
-      target.style.background = ok ? "#effcf4" : "#fff1f3";
-      target.style.color = ok ? "#067a35" : "#b42318";
+      const inline = $("templateInlineStatus");
+      if (target) {
+        target.textContent = text || "";
+        target.classList.toggle("hide", !text);
+        target.classList.toggle("ok", Boolean(text && ok));
+        target.classList.toggle("bad", Boolean(text && !ok));
+        target.style.background = ok ? "#effcf4" : "#fff1f3";
+        target.style.color = ok ? "#067a35" : "#b42318";
+      }
+      if (inline) {
+        inline.textContent = text || "";
+        inline.classList.toggle("ok", Boolean(text && ok));
+        inline.classList.toggle("bad", Boolean(text && !ok));
+      }
     }
-
     function registrationWindowText(event) {
       const start = event.checkinStartsAt || event.startsAt || 0;
       const end = event.checkinEndsAt || event.endsAt || 0;
