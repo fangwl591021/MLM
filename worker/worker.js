@@ -1348,7 +1348,7 @@ function getPointChannelConfig(env, channelKey) {
     channelSecret: stringValue(pointChannelEnv(env, channelKey, "SECRET") || channelConfig.channelSecret || provider.channelSecret),
     accessToken: stringValue(pointChannelEnv(env, channelKey, "ACCESS_TOKEN") || channelConfig.channelAccessToken || provider.accessToken),
     forwardUrl: stringValue(channelConfig.forwardUrl),
-    monitor: channelConfig.monitor === true,
+    monitor: channelKey === POINT_OA1 || channelConfig.monitor === true,
   };
 }
 
@@ -1441,7 +1441,7 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
 }
 
 async function mirrorPointMessageToMonitor(env, config, provider, event, userId) {
-  if (!config || !config.monitor || !event || event.type !== "message" || !event.message || event.message.type !== "text" || !userId) return;
+  if (!config || !event || event.type !== "message" || !event.message || event.message.type !== "text" || !userId) return;
   try {
     await saveIncomingMessage(env, config.floor, provider, event, userId, stringValue(event.message.text));
   } catch (error) {

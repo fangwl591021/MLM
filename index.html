@@ -178,7 +178,9 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointBind: $("pointBind"), pointBindSource: $("pointBindSource"), pointBindQuery: $("pointBindQuery"), pointBindSearch: $("pointBindSearch"), pointBindResults: $("pointBindResults"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperatorId: $("pointOperatorId"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage"), pointLedgerList: $("pointLedgerList"), pointLedgerCount: $("pointLedgerCount")
     };
-    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, floorCache: {}, syncSeq: 0, activeUserId: "", loaded: false, noteTimer: null, searchTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
+    const AUTO_SYNC_ACTIVE_MS = 2000;
+    const AUTO_SYNC_HIDDEN_MS = 10000;
+    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, floorCache: {}, syncSeq: 0, syncTimer: null, syncInFlight: false, syncAgain: false, lastSyncAt: 0, activeUserId: "", loaded: false, noteTimer: null, searchTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -262,7 +264,7 @@
       setSettingsOpen(!hasAuth());
       if (hasAuth()) loadFloorWhitelist().then(render).catch(() => {});
       sync();
-      setInterval(sync, 5000);
+      startLiveSync();
     }
 
     async function initLineLogin() {
@@ -539,10 +541,23 @@
       window.history.replaceState(null, "", url.toString());
     }
 
+    function startLiveSync() {
+      scheduleNextSync(document.hidden ? AUTO_SYNC_HIDDEN_MS : AUTO_SYNC_ACTIVE_MS);
+      document.addEventListener("visibilitychange", () => scheduleNextSync(document.hidden ? AUTO_SYNC_HIDDEN_MS : 0));
+      window.addEventListener("focus", () => sync({ quiet: true }));
+    }
+
+    function scheduleNextSync(delayMs) {
+      clearTimeout(state.syncTimer);
+      state.syncTimer = setTimeout(async () => {
+        await sync({ quiet: true });
+        scheduleNextSync(document.hidden ? AUTO_SYNC_HIDDEN_MS : AUTO_SYNC_ACTIVE_MS);
+      }, Math.max(0, Number(delayMs) || 0));
+    }
+
     async function sync(options = {}) {
       const base = apiBase();
       const floorAtStart = state.floor;
-      const seq = ++state.syncSeq;
       if (!base) {
         state.loaded = true; state.chats = []; state.threads = []; state.aiLogs = []; state.chatMeta = [];
         cacheCurrentFloor();
@@ -553,11 +568,17 @@
         redirectToConsoleLogin();
         return;
       }
+      if (state.syncInFlight) {
+        state.syncAgain = true;
+        return;
+      }
+      state.syncInFlight = true;
+      const seq = ++state.syncSeq;
       try {
         if (!options.quiet) setStatus("同步中");
         const searchQuery = els.searchBox ? els.searchBox.value.trim() : "";
         const dataUrl = apiUrlForFloor("/api/data", floorAtStart) + (searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "");
-        const res = await fetch(dataUrl, { headers: authHeaders() });
+        const res = await fetch(dataUrl, { headers: authHeaders(), cache: "no-store" });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         const next = {
@@ -574,14 +595,20 @@
         if (state.floor !== floorAtStart || seq !== state.syncSeq) return;
         applyFloorCache(floorAtStart);
         if (json.data.knowledgeMeta && json.data.knowledgeMeta.count) els.knowledgeStatus.textContent = `目前知識庫 ${json.data.knowledgeMeta.count} 筆${json.data.knowledgeMeta.version ? " · " + json.data.knowledgeMeta.version : ""}`;
-        setStatus("已同步"); clearError(); render();
+        state.lastSyncAt = Date.now();
+        setStatus(`已同步 ${new Date(state.lastSyncAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`); clearError(); render();
       } catch (err) {
         if (state.floor !== floorAtStart || seq !== state.syncSeq) return;
         if (isLineTokenExpired(err.message || String(err)) && forceLineRelogin()) return;
         state.loaded = true; cacheCurrentFloor(); setStatus("同步失敗", true); showError(err.message || String(err)); render();
+      } finally {
+        state.syncInFlight = false;
+        if (state.syncAgain) {
+          state.syncAgain = false;
+          setTimeout(() => sync({ quiet: true }), 0);
+        }
       }
     }
-
     async function uploadKnowledge() {
       const file = els.knowledgeFile.files && els.knowledgeFile.files[0];
       if (!file) { els.knowledgeStatus.textContent = "請先選擇 JSON 檔。"; return; }
