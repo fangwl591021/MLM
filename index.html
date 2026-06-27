@@ -178,7 +178,7 @@
       tagGrid: $("tagGrid"), customTag: $("customTag"), addTag: $("addTag"), noteInput: $("noteInput"), metaStatus: $("metaStatus"), profileName: $("profileName"), profileAvatar: $("profileAvatar"), saveProfile: $("saveProfile"), profileState: $("profileState"), profileHint: $("profileHint"), helloTool: $("helloTool"), attachTool: $("attachTool"), plusTool: $("plusTool"),
       pointModal: $("pointModal"), pointTitle: $("pointTitle"), pointSubtitle: $("pointSubtitle"), pointClose: $("pointClose"), pointSources: $("pointSources"), pointBind: $("pointBind"), pointBindSource: $("pointBindSource"), pointBindQuery: $("pointBindQuery"), pointBindSearch: $("pointBindSearch"), pointBindResults: $("pointBindResults"), pointSource: $("pointSource"), pointType: $("pointType"), pointAmount: $("pointAmount"), pointOperatorId: $("pointOperatorId"), pointOperator: $("pointOperator"), pointNote: $("pointNote"), pointGrant: $("pointGrant"), pointDeduct: $("pointDeduct"), pointRefresh: $("pointRefresh"), pointMessage: $("pointMessage"), pointLedgerList: $("pointLedgerList"), pointLedgerCount: $("pointLedgerCount")
     };
-    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, floorCache: {}, syncSeq: 0, activeUserId: "", loaded: false, noteTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
+    const state = { floor: initialFloor(), auth: { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", liffId: "", access: null }, chats: [], threads: [], aiLogs: [], chatMeta: [], accessWhitelists: { adminAll: [], main: [], admin: [] }, floorCache: {}, syncSeq: 0, activeUserId: "", loaded: false, noteTimer: null, searchTimer: null, filter: "all", pointUserId: "", pointUserName: "", pointMutationUserId: "", pointChannelUserIds: {}, pointResolved: null, pointBalances: [], pointLedger: [], pointNeedsBind: false, pointBindCandidates: [], pointAlternatives: [] };
 
     els.apiBase.value = sanitizeApiBase(localStorage.getItem("line_ai_api_base") || DEFAULT_API_BASE);
     els.apiToken.value = localStorage.getItem("line_ai_api_token") || "";
@@ -188,7 +188,13 @@
     els.operatorId.addEventListener("change", saveOperatorId);
     els.settingsButton.addEventListener("click", toggleSettings);
     els.saveWhitelists.addEventListener("click", saveFloorWhitelists);
-    els.searchBox.addEventListener("input", render);
+    els.searchBox.addEventListener("input", scheduleSearchSync);
+    els.searchBox.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        clearTimeout(state.searchTimer);
+        sync({ quiet: true });
+      }
+    });
     document.querySelectorAll("[data-floor]").forEach((button) => {
       button.addEventListener("click", () => {
         const nextFloor = button.dataset.floor || "main";
@@ -222,8 +228,8 @@
     els.sendMenuButton.addEventListener("click", () => { els.sendMenu.hidden = !els.sendMenu.hidden; });
     els.pendingButton.addEventListener("click", () => markStatus("待處理"));
     els.doneButton.addEventListener("click", () => markStatus("處理完畢"));
-    els.searchButton.addEventListener("click", focusSearch);
-    els.searchBottomButton.addEventListener("click", focusSearch);
+    els.searchButton.addEventListener("click", () => { focusSearch(); sync({ quiet: true }); });
+    els.searchBottomButton.addEventListener("click", () => { focusSearch(); sync({ quiet: true }); });
     els.manualEndButton.addEventListener("click", () => markStatus("處理完畢"));
     els.saveProfile.addEventListener("click", saveProfile);
     els.addTag.addEventListener("click", addCustomTag);
@@ -549,7 +555,9 @@
       }
       try {
         if (!options.quiet) setStatus("同步中");
-        const res = await fetch(apiUrlForFloor("/api/data", floorAtStart), { headers: authHeaders() });
+        const searchQuery = els.searchBox ? els.searchBox.value.trim() : "";
+        const dataUrl = apiUrlForFloor("/api/data", floorAtStart) + (searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "");
+        const res = await fetch(dataUrl, { headers: authHeaders() });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         const next = {
@@ -1322,6 +1330,11 @@
     }
     function applyFirstSuggestion() { const group = currentGroup(), suggestions = group ? suggestionsFor(group) : []; if (suggestions[0]) { els.replyText.value = suggestions[0]; els.replyText.focus(); } }
     function focusSearch() { els.searchBox.focus(); els.searchBox.select(); }
+    function scheduleSearchSync() {
+      render();
+      clearTimeout(state.searchTimer);
+      state.searchTimer = setTimeout(() => sync({ quiet: true }), 350);
+    }
     function apiBase() {
       const value = sanitizeApiBase(els.apiBase.value);
       if (value !== els.apiBase.value) { els.apiBase.value = value; localStorage.setItem("line_ai_api_base", value); }

@@ -303,7 +303,8 @@ export default {
         const smartMonitorMode = url.searchParams.get("smart") === "1";
         await (smartMonitorMode ? assertDashboardAuth(request, env) : assertFloorAccess(request, env, floor));
         const dataFloor = smartMonitorMode ? FLOOR_MAIN : floor;
-        const data = await fetchDashboardData(env, dataFloor);
+        const searchQuery = stringValue(url.searchParams.get("q") || url.searchParams.get("search") || url.searchParams.get("query"));
+        const data = await fetchDashboardData(env, dataFloor, { searchQuery });
         if (env.DB && provider.accessToken) {
           ctx.waitUntil(backfillProfiles(env, dataFloor, provider, 12, { force: false, staleMs: 6 * 60 * 60 * 1000 }));
         }
@@ -5650,10 +5651,11 @@ if(savedToken) loadMembers().catch(function(error){setStatus(error.message);});
 </html>`, { headers: { ...headers, "Content-Type": "text/html; charset=utf-8" } });
 }
 
-async function fetchDashboardData(env, floor = FLOOR_MAIN) {
+async function fetchDashboardData(env, floor = FLOOR_MAIN, options = {}) {
   if (!env.DB) return withThreadData(await callGas(env, { type: "FETCH_DASHBOARD_DATA" }));
+  const searchQuery = stringValue(options.searchQuery || options.q || "").trim();
   const [threads, aiLogs, knowledgeMeta] = await Promise.all([
-    fetchThreads(env, floor, 120),
+    fetchThreads(env, floor, searchQuery ? 80 : 120, { searchQuery }),
     fetchAiLogs(env, floor, 100),
     getKnowledgeMeta(env, floor),
   ]);
@@ -5675,15 +5677,36 @@ async function fetchDashboardData(env, floor = FLOOR_MAIN) {
   };
 }
 
-async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120) {
+async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) {
+  const searchQuery = stringValue(options.searchQuery || options.q || "").trim();
+  const bindings = [floor];
+  const where = ["t.floor_id = ?"];
+  if (searchQuery) {
+    const like = `%${searchQuery.toLowerCase()}%`;
+    where.push(`(
+      LOWER(t.display_name) LIKE ?
+      OR LOWER(t.user_id) LIKE ?
+      OR LOWER(t.summary) LIKE ?
+      OR LOWER(t.tags) LIKE ?
+      OR LOWER(t.note) LIKE ?
+      OR EXISTS (
+        SELECT 1 FROM messages m
+        WHERE m.thread_id = t.id
+          AND m.floor_id = t.floor_id
+          AND LOWER(m.text) LIKE ?
+      )
+    )`);
+    bindings.push(like, like, like, like, like, like);
+  }
+  bindings.push(limit);
   let { results } = await env.DB.prepare(`
     SELECT t.*, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
     LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
-    WHERE t.floor_id = ?
+    WHERE ${where.join(" AND ")}
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
-  `).bind(floor, limit).all();
+  `).bind(...bindings).all();
   if (!results.length) return [];
   results = await removePointGatewayOnlyThreads(env, results);
   if (!results.length) return [];
