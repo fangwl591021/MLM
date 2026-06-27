@@ -20,6 +20,9 @@
   <style>
     .templateDesigner{padding:0;overflow:hidden}.templateDesignerGrid{display:grid;grid-template-columns:minmax(420px,.9fr) minmax(420px,1.1fr);min-height:680px}.templateControls{padding:18px;border-right:1px solid #edf1f5;background:#fbfdff;display:grid;gap:14px;align-content:start}.templatePreviewPane{padding:18px;background:#fff;min-width:0}.templateBlock{border:1px solid #edf1f5;border-radius:16px;background:#fff;padding:14px}.templateBlockHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.templateBlockHead strong{font-size:16px}.templateSwitch{display:flex!important;grid-template-columns:auto 1fr!important;align-items:center;gap:8px;margin-top:10px}.templateSwitch input{width:auto!important}.templatePages{display:grid;gap:12px}.templatePage{border:1px solid #dbe6f4;border-radius:14px;background:#fff;padding:12px}.templatePageHead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.templatePageHead strong{font-size:15px}.templateUploadRow{display:grid;grid-template-columns:minmax(0,1fr) 108px;gap:10px;align-items:end}.templateImageUpload{border:1px dashed #a9bfd9;border-radius:12px;background:#f8fafc;padding:12px;display:grid;gap:8px}.templateImageUpload input[type=file]{padding:0;border:0;background:transparent}.templateImageStatus{font-size:12px;color:#667085;line-height:1.4}.templateButtons{display:grid;gap:8px;margin-top:10px}.templateButton{border:1px dashed #bfd0e6;border-radius:12px;background:#fff;padding:10px}.templateButtonGrid{display:grid;grid-template-columns:minmax(0,1fr) 110px minmax(0,1fr) minmax(0,1fr) 86px auto;gap:8px;align-items:end}.templateColorRow{display:grid;grid-template-columns:36px minmax(0,1fr);gap:6px}.templateColorRow input[type=color]{height:38px;padding:3px}.templateVisualPreview{display:flex;gap:16px;overflow:auto;padding:14px;border:1px solid #edf1f5;border-radius:18px;background:#f6f8fb;min-height:620px}.templatePhone{width:280px;flex:0 0 280px;border:1px solid #d8dee8;border-radius:20px;background:#fff;box-shadow:0 16px 34px rgba(16,24,40,.10);overflow:hidden}.templatePhoneImage{height:420px;background:#e8eef5;display:grid;place-items:center;color:#667085;text-align:center}.templatePhoneImage img{width:100%;height:100%;object-fit:cover;display:block}.templatePhoneFooter{display:grid;gap:8px;padding:10px;background:#fff}.templatePhoneButton{height:40px;border:0;border-radius:8px;background:#06c755;color:#fff;font-weight:850;display:grid;place-items:center;text-align:center;padding:0 10px}.templateJsonFold{margin-top:14px;border:1px solid #edf1f5;border-radius:14px;background:#fff;overflow:hidden}.templateJsonFold summary{cursor:pointer;padding:12px 14px;font-weight:900}.templatePreview{margin:0;white-space:pre-wrap;background:#101828;color:#e5e7eb;padding:12px;max-height:360px;overflow:auto;font-size:12px}@media(max-width:1180px){.templateDesignerGrid{grid-template-columns:1fr}.templateControls{border-right:0;border-bottom:1px solid #edf1f5}.templateButtonGrid{grid-template-columns:1fr 110px}.templateUploadRow{grid-template-columns:1fr}.templateVisualPreview{min-height:520px}.templatePhone{width:240px;flex-basis:240px}.templatePhoneImage{height:360px}}
   </style>
+  <style>
+    .templateDesigner label{display:grid;gap:7px;color:#344054;font-size:14px;font-weight:850;min-width:0}.templateDesigner input,.templateDesigner select,.templateDesigner textarea{width:100%;min-width:0;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.templateDesigner textarea{min-height:86px;resize:vertical}.templateControls .templateBlock:first-child{display:grid;grid-template-columns:1fr;gap:12px}.templateControls .templateBlock:first-child .templateBlockHead{margin-bottom:0}.templateSwitch{display:flex!important;align-items:center!important;grid-template-columns:none!important}.templateSwitch input{width:16px!important;height:16px!important;min-width:16px!important}.templateUploadRow label{min-width:0}.templateUploadRow .openLink{align-self:end;justify-content:center}.templateImageUpload>input[data-field=imageUrl]{height:42px}.templateButtonGrid{grid-template-columns:minmax(150px,1fr) 120px!important}.templateButtonGrid label:nth-child(3),.templateButtonGrid label:nth-child(4),.templateButtonGrid label:nth-child(5){grid-column:auto}.templateButtonGrid .dangerButton{align-self:end}.templateColorRow{grid-template-columns:42px minmax(86px,1fr)!important}.templateColorRow input[type=color]{padding:2px!important}.templatePage .sectionActions{margin-top:10px}.templatePreviewPane{position:sticky;top:18px;align-self:start}.templateVisualPreview{align-items:flex-start}.templatePhoneImage span{padding:18px;line-height:1.5}@media(min-width:1380px){.templateButtonGrid{grid-template-columns:minmax(140px,1fr) 120px minmax(140px,1fr) minmax(150px,1fr) 140px auto!important}}@media(max-width:1180px){.templatePreviewPane{position:static}.templateButtonGrid{grid-template-columns:1fr!important}}
+  </style>
 </head>
 <body class="auth-locked">
   <div class="shell">
@@ -1080,6 +1083,10 @@
         if (text) text.value = target.value.toUpperCase();
       }
       if (target && target.matches('[data-field="imageFile"]') && target.files && target.files[0]) {
+        const pageEl = target.closest('.templatePage');
+        const urlInput = pageEl ? pageEl.querySelector('[data-field="imageUrl"]') : null;
+        if (urlInput) urlInput.value = URL.createObjectURL(target.files[0]);
+        refreshTemplatePreview();
         await uploadTemplateImage(target);
       }
       refreshTemplatePreview();
@@ -1093,13 +1100,14 @@
       if (!file || !urlInput) return;
       try {
         if (status) status.textContent = '圖片上傳中...';
-        const prepared = await prepareImageFileForOpenAI(file);
+        const prepared = await prepareCalendarImageFile(file);
         const form = new FormData();
         form.append('image', prepared.file, prepared.fileName || file.name || 'template-image.png');
         const res = await fetch(cleanBase(apiBase.value) + '/api/checkin-template/upload-image', { method: 'POST', headers: authHeaders(), body: form });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.status !== 'success' || !json.data || !json.data.url) throw new Error(json.message || '圖片上傳失敗');
         urlInput.value = json.data.url;
+        refreshTemplatePreview();
         if (status) status.textContent = `已上傳：${Math.round((json.data.size || prepared.file.size || file.size || 0) / 1024)} KB`;
       } catch (err) {
         if (handleAuthExpired(err)) return;
