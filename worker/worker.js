@@ -3993,9 +3993,10 @@ async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
   const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 20);
   const liveRows = Array.isArray(snapshot.rows) ? snapshot.rows.length : 0;
   if (liveRows > 0 || Number(snapshot.balance || 0) !== 0) {
+    const masterMemberRef = await upsertLivePointAccountCache(env, channelKey, lineUserId, pointType, snapshot.balance);
     return decoratePointBalances([{
       account_key: `${channelKey}:${lineUserId}:${pointType}`,
-      master_member_ref: "",
+      master_member_ref: masterMemberRef,
       channel_key: channelKey,
       line_user_id: lineUserId,
       point_type: pointType,
@@ -4030,9 +4031,20 @@ async function localPointBalanceRow(env, channelKey, lineUserId, pointType, quer
     LIMIT 1
   `).bind(channelKey, lineUserId, pointType).first();
   if (!row) return null;
+  let masterMemberRef = stringValue(row.master_member_ref);
+  if (!masterMemberRef) {
+    masterMemberRef = await resolveMasterMemberRefForPointLineUser(env, channelKey, lineUserId);
+    if (masterMemberRef) {
+      await env.DB.prepare(`
+        UPDATE point_accounts
+        SET master_member_ref = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE account_key = ?
+      `).bind(masterMemberRef, row.account_key).run();
+    }
+  }
   return decoratePointBalances([{
     account_key: stringValue(row.account_key),
-    master_member_ref: stringValue(row.master_member_ref),
+    master_member_ref: masterMemberRef,
     channel_key: stringValue(row.channel_key),
     line_user_id: stringValue(row.line_user_id),
     point_type: stringValue(row.point_type),
@@ -4042,6 +4054,56 @@ async function localPointBalanceRow(env, channelKey, lineUserId, pointType, quer
     live_rows: 0,
     local_account: true,
   }])[0];
+}
+
+async function upsertLivePointAccountCache(env, channelKey, lineUserId, pointType, balance) {
+  if (!env.DB) return "";
+  const masterMemberRef = await resolveMasterMemberRefForPointLineUser(env, channelKey, lineUserId);
+  const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
+  await env.DB.prepare(`
+    INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(account_key) DO UPDATE SET
+      master_member_ref = COALESCE(NULLIF(excluded.master_member_ref, ''), point_accounts.master_member_ref),
+      balance = excluded.balance,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(accountKey, masterMemberRef || null, channelKey, lineUserId, pointType, Number(balance || 0)).run();
+  return masterMemberRef;
+}
+
+async function resolveMasterMemberRefForPointLineUser(env, channelKey, lineUserId) {
+  if (!env.DB) return "";
+  const userId = stringValue(lineUserId);
+  const sourceKey = stringValue(channelKey);
+  if (!userId) return "";
+  const linked = await env.DB.prepare(`
+    SELECT master_member_ref
+    FROM member_line_links
+    WHERE channel_key = ? AND line_user_id = ?
+    ORDER BY linked_at DESC
+    LIMIT 1
+  `).bind(sourceKey, userId).first();
+  if (linked && linked.master_member_ref) return stringValue(linked.master_member_ref);
+  const member = await env.DB.prepare(`
+    SELECT member_ref
+    FROM crm_members
+    WHERE json_extract(source_json, '$.LINE_user_id') = ?
+       OR json_extract(source_json, '$.user_login') = ?
+       OR json_extract(source_json, '$.line_user_id') = ?
+       OR json_extract(source_json, '$.lineUserId') = ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(userId, userId, userId, userId).first();
+  if (!member || !member.member_ref) return "";
+  await env.DB.prepare(`
+    INSERT INTO member_line_links (master_member_ref, channel_key, line_user_id, binding_code, linked_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(master_member_ref, channel_key) DO UPDATE SET
+      line_user_id = excluded.line_user_id,
+      binding_code = excluded.binding_code,
+      linked_at = CURRENT_TIMESTAMP
+  `).bind(stringValue(member.member_ref), sourceKey, userId, `cache:${sourceKey}`).run();
+  return stringValue(member.member_ref);
 }
 
 async function pointIdentityAlternatives(env, chatLineUserId, userName, pointType = "gift_money") {
@@ -5707,9 +5769,8 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
   `).bind(...bindings).all();
-  if (!results.length) return [];
-  results = await removePointGatewayOnlyThreads(env, results);
-  if (!results.length) return [];
+  results = await removePointGatewayOnlyThreads(env, results || []);
+
   const ids = results.map((row) => row.id);
   const messageResults = [];
   for (const batch of chunkArray(ids, D1_IN_QUERY_BATCH_SIZE)) {
@@ -5723,11 +5784,85 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
     if (!byThread.has(row.thread_id)) byThread.set(row.thread_id, []);
     byThread.get(row.thread_id).push(row);
   }
-  return results
+  const threads = results
     .map((row) => threadFromD1(row, byThread.get(row.id) || []))
-    .filter((thread) => thread.messages.length > 0);
+    .filter((thread) => searchQuery || thread.messages.length > 0);
+
+  if (searchQuery && floor === FLOOR_MAIN && threads.length < limit) {
+    const existingUserIds = new Set(threads.map((thread) => stringValue(thread.userId)).filter(Boolean));
+    const crmThreads = await fetchCrmMemberThreads(env, searchQuery, limit - threads.length, existingUserIds);
+    threads.push(...crmThreads);
+  }
+  return threads;
 }
 
+async function fetchCrmMemberThreads(env, searchQuery, limit = 20, existingUserIds = new Set()) {
+  if (!env.DB || !searchQuery || limit <= 0) return [];
+  const crmSearchUrl = new URL("https://local.invalid/admin/crm/member-search");
+  crmSearchUrl.searchParams.set("q", searchQuery);
+  crmSearchUrl.searchParams.set("limit", String(Math.min(Math.max(limit * 2, 20), 30)));
+  const members = await searchCrmMemberCandidates(env, crmSearchUrl);
+  const threads = [];
+  const seen = new Set(existingUserIds || []);
+  for (const member of members) {
+    const userId = stringValue(member.line_user_id || member.user_login || member.LINE_user_id || member.lineUserId);
+    if (!userId || seen.has(userId)) continue;
+    seen.add(userId);
+    threads.push(crmMemberToMonitorThread(member));
+    if (threads.length >= limit) break;
+  }
+  return threads;
+}
+
+function crmMemberToMonitorThread(member) {
+  const userId = stringValue(member.line_user_id || member.user_login || member.LINE_user_id || member.lineUserId);
+  const displayName = stringValue(member.name || member.line_display_name || userId) || userId;
+  const updatedAt = Date.parse(stringValue(member.updated_at)) || Date.now();
+  const text = "CRM 會員資料，尚無聊天室訊息。";
+  const raw = {
+    "時間": updatedAt,
+    "身份": "user",
+    "用戶ID": userId,
+    "內容": text,
+    "類別": "會員資料",
+    "AI建議": "[]",
+    "重要": "否",
+    "狀態": "處理完畢",
+    "用戶名稱": displayName,
+    "頭像URL": "",
+  };
+  return {
+    id: `crm:${stringValue(member.member_ref || userId)}`,
+    floor: FLOOR_MAIN,
+    userId,
+    name: displayName,
+    displayName,
+    pictureUrl: "",
+    summary: text,
+    status: "處理完畢",
+    risk: "low",
+    profileStatus: null,
+    profileError: "",
+    lastProfileSync: 0,
+    tags: ["CRM會員"],
+    note: `母站會員 ${stringValue(member.member_ref || "")}`.trim(),
+    lastMessageAt: updatedAt,
+    hasRealName: !isPlaceholderName(displayName, userId),
+    messages: [{
+      id: `crm:${stringValue(member.member_ref || userId)}:profile`,
+      type: "text",
+      senderRole: USER_ROLE,
+      senderId: userId,
+      senderName: displayName,
+      text,
+      createdAt: updatedAt,
+      category: "會員資料",
+      suggestions: [],
+      important: false,
+      raw,
+    }],
+  };
+}
 async function removePointGatewayOnlyThreads(env, rows) {
   const suspects = (rows || []).filter((row) => {
     return !stringValue(row.display_name)
