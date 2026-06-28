@@ -26,7 +26,9 @@
   <style>
     body.template-page{overflow:auto}body.console-calendar-page .side,body.console-events-page .side{display:none}body.console-calendar-page .shell,body.console-events-page .shell{display:block}body.console-calendar-page main,body.console-events-page main{min-height:100vh;max-width:1480px;margin:0 auto;padding:24px}body.console-calendar-page main>:not(#authGate):not(.top):not(#calendarPanel):not(#error),body.console-events-page main>:not(#authGate):not(.top):not(#eventsPanel):not(#error){display:none!important}body.console-calendar-page #calendarPanel,body.console-events-page #eventsPanel{margin-top:0}.pageBackLink{height:38px;display:inline-flex;align-items:center;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:0 13px;text-decoration:none;font-weight:850}.topActions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}body.template-page .side{display:none}body.template-page .shell{display:block}body.template-page main{height:auto;min-height:100vh;max-width:100%;margin:0;padding:20px 24px;overflow:visible}body.template-page main>:not(#authGate):not(#checkinTemplatePanel):not(#errorBox){display:none!important}body.template-page #checkinTemplatePanel{height:auto;margin-top:0;display:block;min-height:0}body.template-page #checkinTemplatePanel>.sectionHead{margin-bottom:12px}body.template-page .templateDesigner{height:auto;min-height:0;overflow:visible}body.template-page .templateDesignerGrid{height:auto;min-height:0;overflow:visible;align-items:start;grid-template-columns:minmax(520px,44%) minmax(560px,56%)}body.template-page .templateControls{height:auto;max-height:none;min-height:0;display:grid;gap:14px;align-content:start;overflow:visible!important;padding-bottom:72px}body.template-page .templatePreviewPane{position:sticky;top:20px;height:calc(100vh - 40px);min-height:0;display:flex;flex-direction:column;overflow:hidden}body.template-page .templateVisualPreview{flex:1 1 auto;min-height:0;overflow:auto}body.template-page .templateJsonFold{flex:0 0 auto}body:not(.template-page) #checkinTemplatePanel{display:none!important}body:not(.template-page) .templateBackLink{display:none!important}.templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 110px 120px 110px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}@media(max-width:1180px){body.template-page{overflow:auto}body.template-page main{height:auto;overflow:visible;padding:16px}body.template-page #checkinTemplatePanel{height:auto}body.template-page .templateDesigner{height:auto;overflow:visible}body.template-page .templateDesignerGrid{height:auto;max-height:none;grid-template-columns:1fr;overflow:visible}body.template-page .templateControls{height:auto;max-height:none;overflow:visible!important;padding-bottom:18px}body.template-page .templatePreviewPane{height:auto;max-height:none;overflow:visible}}
   </style>
-</head>
+  <style>
+    .aiWearCard{display:grid;gap:16px}.aiWearLinkBox{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #d9f3e2;background:#f7fffb;border-radius:14px;padding:14px}.aiWearLinkBox a{color:#315b9c;word-break:break-all}.aiWearForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.aiWearForm label{display:grid;gap:7px;color:#344054;font-size:13px;font-weight:850}.aiWearForm input,.aiWearForm select,.aiWearForm textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.aiWearForm textarea{min-height:230px;resize:vertical;line-height:1.55}.aiWearWide{grid-column:1/-1}.aiWearNote{border:1px solid #edf1f5;border-radius:14px;background:#fbfdff;padding:12px;color:#667085;line-height:1.6}.aiWearStatus{font-size:18px;font-weight:900;color:#067a35;margin-top:12px}body.console-ai-wear-page .side{display:none}body.console-ai-wear-page .shell{display:block}body.console-ai-wear-page main{min-height:100vh;max-width:1180px;margin:0 auto;padding:24px}body.console-ai-wear-page main>:not(#authGate):not(.top):not(#aiWearPanel):not(#errorBox):not(#error){display:none!important}body.console-ai-wear-page #aiWearPanel{margin-top:0}body:not(.console-ai-wear-page) #aiWearPanel{display:none!important}@media(max-width:760px){.aiWearLinkBox,.aiWearForm{grid-template-columns:1fr}.aiWearLinkBox .secondaryButton{width:max-content}}
+  </style></head>
 <body class="auth-locked">
   <div class="shell">
     <aside class="side">
@@ -39,7 +41,7 @@
         <a href="/console/calendar">行事曆 <span>已接入</span></a>
         <a href="/admin/crm">CRM / 點數 <span>已接入</span></a>
         <a href="/admin/points/stats">點數統計 <span>日報表</span></a>
-        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a>
+        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a><a href="/console/ai-wear">AI穿戴設定 <span>image2</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
       <section class="settings" id="settingsBox">
@@ -105,6 +107,7 @@
           <a class="card module" href="/admin/points/stats"><strong>LINE 點數</strong><p class="muted">點數帳戶 / 每日統計</p><div class="metric" id="pointAccounts">0</div></a>
           <a class="card module" id="events" href="/console/events"><strong>活動報名</strong><p class="muted">今日報名</p><div class="metric" id="eventRegistrations">0</div></a>
           <a class="card module" href="/console/events"><strong>活動簽到</strong><p class="muted">今日簽到</p><div class="metric" id="eventCheckins">0</div></a>
+          <a class="card module" href="/console/ai-wear"><strong>AI穿戴設定</strong><p class="muted">眼鏡試戴 / image2</p><div class="aiWearStatus" id="aiWearModuleStatus">未同步</div></a>
         </div>
       </section>
 
@@ -146,6 +149,29 @@
               <details class="templateJsonFold"><summary>JSON 預覽</summary><pre id="templatePreview" class="templatePreview"></pre></details>
             </aside>
           </div>
+        </article>
+      </section>
+      <section class="section" id="aiWearPanel">
+        <div class="sectionHead"><h3>AI穿戴設定</h3><div class="sectionActions"><span class="muted">AI SHOW ROOM / image2 / 點數扣抵</span><a class="openLink" href="/console">返回主控台</a></div></div>
+        <article class="card aiWearCard">
+          <div class="aiWearLinkBox">
+            <strong>永久連結</strong>
+            <a id="aiWearLiffLink" href="https://liff.line.me/2006625044-bPGxrB53/index.php/linecard_33/10016/" target="_blank" rel="noopener">https://liff.line.me/2006625044-bPGxrB53/index.php/linecard_33/10016/</a>
+            <button id="aiWearCopyLink" class="secondaryButton" type="button">複製網址</button>
+          </div>
+          <div class="aiWearNote">此頁先管理 AI 穿戴頁使用的標題、LIFF 連結、image2 API Key、提示詞與未來會員使用時的點數扣抵規則。API Key 讀取時會隱藏，留空儲存會沿用原值。</div>
+          <div class="aiWearForm">
+            <label>AI SHOW ROOM 標題<input id="aiWearTitle" type="text" placeholder="康立負離子眼鏡系列" /></label>
+            <label>LIFF / SHOW ROOM 網址<input id="aiWearLiffUrl" type="url" placeholder="https://liff.line.me/..." /></label>
+            <label>image2 API Key<input id="aiWearApiKey" type="password" placeholder="已設定可留空；輸入新值會覆蓋" /></label>
+            <label>模型名稱<input id="aiWearModel" type="text" placeholder="image2" /></label>
+            <label class="aiWearWide">AI SHOW ROOM 提示詞<textarea id="aiWearPrompt"></textarea></label>
+            <label>每次生成扣點<input id="aiWearPointCost" type="number" min="0" step="1" /></label>
+            <label>扣點平台<select id="aiWearPointChannel"><option value="oa1">康立智能 · 1086</option><option value="oa2">康立全球 · 1584</option></select></label>
+            <label>扣點類型<select id="aiWearPointType"><option value="gift_money">K點 / 購物金</option><option value="system_point">系統點數</option></select></label>
+            <label class="templateSwitch aiWearWide"><input id="aiWearDeductEnabled" type="checkbox" /> 啟用會員生成前點數扣抵</label>
+          </div>
+          <div class="sectionActions"><button id="aiWearSave" class="importButton" type="button">儲存設定</button><button id="aiWearResetPrompt" class="secondaryButton" type="button">恢復預設提示詞</button><span id="aiWearStatusText" class="templateInlineStatus" aria-live="polite"></span></div>
         </article>
       </section>
       <section class="section" id="calendarPanel">
@@ -219,6 +245,15 @@
     const $ = (id) => document.getElementById(id);
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "", session: false };
+    const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
+
+請以眼鏡參考圖作為眼鏡款式來源，只參考眼鏡本身，不參考圖片中的人物、背景或其他元素。
+
+請將眼鏡參考圖中的眼鏡自然套用到人物照片的人物臉上，包含鏡框形狀、顏色、材質、粗細、鏡片大小、鏡片形狀、鼻墊、鏡腳、鏡片透明度與反光效果。
+
+若人物照片原本已配戴眼鏡，請先自然移除原本眼鏡，再換上新的參考眼鏡。新眼鏡必須符合人物臉部角度、鼻樑位置、眼睛位置、耳朵方向與頭部透視，並加入自然陰影、反光與接觸感。
+
+最終結果必須像人物本人實際戴上這副眼鏡的真實照片。除了眼鏡之外，不得修改人物長相、髮型、衣服、背景、姿勢、光線與照片風格。`;
     const consolePage = getConsolePage();
     const isTemplatePage = consolePage === "template";
     if (isTemplatePage) document.body.classList.add("template-page");
@@ -248,6 +283,7 @@
     if (copyCheckinButton) copyCheckinButton.onclick = () => copyText($("checkinEntryUrl").value);
     ["calendarEventDate", "calendarStartsAt"].forEach((id) => { const el = $(id); if (el) el.addEventListener("change", () => syncCalendarCheckinStartDefault()); });
     bindCheckinTemplateEditor();
+    bindAiWearSettings();
     setAuthGate(true);
     renderSmartCheckinQr();
     boot();
@@ -257,6 +293,7 @@
       if (path === "/checkin-template" || path === "/checkin-template.html") return "template";
       if (path === "/console/calendar" || path === "/calendar") return "calendar";
       if (path === "/console/events") return "events";
+      if (path === "/console/ai-wear") return "ai-wear";
       return "main";
     }
 
@@ -266,6 +303,7 @@
         calendar: { title: "內建行事曆", subtitle: "活動設定、固定 QR 智慧報到與月曆管理。", doc: "KLINK 內建行事曆" },
         events: { title: "活動報名簽到", subtitle: "課程報名、掃碼出席名單與人次統計。", doc: "KLINK 活動報名簽到" },
         template: { title: "簽到贈點活動模板", subtitle: "LINE Flex 多頁活動卡。", doc: "KLINK 簽到模板" },
+        "ai-wear": { title: "AI穿戴設定", subtitle: "AI SHOW ROOM、image2 API Key、提示詞與點數扣抵。", doc: "KLINK AI穿戴設定" },
       };
       const page = pages[consolePage] || pages.main;
       document.title = page.doc;
@@ -338,13 +376,18 @@
           setStatus("模板已同步", false);
           return;
         }
+        if (consolePage === "ai-wear") {
+          await loadAiWearSettings();
+          setStatus("AI穿戴設定已同步", false);
+          return;
+        }
         const res = await fetch(`${cleanBase(apiBase.value)}/api/console/summary`, {
           headers: authHeaders(),
         });
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         render(json.data);
-        await Promise.all([loadCalendarMonth(), loadCheckinTemplate()]);
+        await Promise.all([loadCalendarMonth(), loadCheckinTemplate(), loadAiWearSettings()]);
         setStatus("已同步", false);
       } catch (err) {
         if (handleAuthExpired(err)) return;
@@ -1056,6 +1099,91 @@
       return { label: type === "uri" ? "\u958b\u555f\u9023\u7d50" : "\u7c3d\u5230\u8d08\u9ede", type: type || "message", text: type === "uri" ? "" : "\u6703\u54e1\u6253\u5361", uri: "", color: "" };
     }
 
+
+    function bindAiWearSettings() {
+      const save = $("aiWearSave");
+      const copy = $("aiWearCopyLink");
+      const reset = $("aiWearResetPrompt");
+      if (save) save.onclick = saveAiWearSettings;
+      if (copy) copy.onclick = () => copyText(($("aiWearLiffUrl") && $("aiWearLiffUrl").value) || ($("aiWearLiffLink") && $("aiWearLiffLink").textContent) || "");
+      if (reset) reset.onclick = () => { const el = $("aiWearPrompt"); if (el) el.value = DEFAULT_AI_WEAR_PROMPT; setAiWearStatus("已恢復預設提示詞，記得儲存。", true); };
+    }
+
+    async function loadAiWearSettings() {
+      if (!hasConsoleAuth()) return;
+      try {
+        setAiWearStatus("讀取中...", true);
+        const res = await fetch(cleanBase(apiBase.value) + "/api/ai-wear-settings", { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "AI穿戴設定載入失敗");
+        renderAiWearSettings(json.data || {});
+        setAiWearStatus("已載入設定。", true);
+      } catch (err) {
+        if (handleAuthExpired(err)) return;
+        setAiWearStatus(err.message || String(err), false);
+      }
+    }
+
+    async function saveAiWearSettings() {
+      const payload = collectAiWearSettings();
+      const save = $("aiWearSave");
+      const original = save ? save.textContent : "";
+      try {
+        if (save) { save.disabled = true; save.textContent = "儲存中..."; }
+        setAiWearStatus("儲存中...", true);
+        const res = await fetch(cleanBase(apiBase.value) + "/api/ai-wear-settings", {
+          method: "POST",
+          headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "AI穿戴設定儲存失敗");
+        renderAiWearSettings(json.data || payload);
+        setAiWearStatus("已儲存 AI穿戴設定。", true);
+      } catch (err) {
+        if (handleAuthExpired(err)) return;
+        setAiWearStatus(err.message || String(err), false);
+      } finally {
+        if (save) { save.disabled = false; save.textContent = original || "儲存設定"; }
+      }
+    }
+
+    function collectAiWearSettings() {
+      return {
+        title: ($("aiWearTitle") ? $("aiWearTitle").value.trim() : "") || "康立負離子眼鏡系列",
+        liffUrl: ($("aiWearLiffUrl") ? $("aiWearLiffUrl").value.trim() : ""),
+        image2ApiKey: ($("aiWearApiKey") ? $("aiWearApiKey").value.trim() : ""),
+        imageModel: ($("aiWearModel") ? $("aiWearModel").value.trim() : "") || "image2",
+        prompt: ($("aiWearPrompt") ? $("aiWearPrompt").value.trim() : "") || DEFAULT_AI_WEAR_PROMPT,
+        pointDeductionEnabled: Boolean($("aiWearDeductEnabled") && $("aiWearDeductEnabled").checked),
+        pointCost: Math.max(0, Math.floor(Number($("aiWearPointCost") && $("aiWearPointCost").value || 0) || 0)),
+        pointChannelKey: ($("aiWearPointChannel") ? $("aiWearPointChannel").value : "oa1") || "oa1",
+        pointType: ($("aiWearPointType") ? $("aiWearPointType").value : "gift_money") || "gift_money",
+      };
+    }
+
+    function renderAiWearSettings(data) {
+      const settings = Object.assign({ title: "康立負離子眼鏡系列", liffUrl: "https://liff.line.me/2006625044-bPGxrB53/index.php/linecard_33/10016/", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money" }, data || {});
+      if ($("aiWearTitle")) $("aiWearTitle").value = settings.title || "";
+      if ($("aiWearLiffUrl")) $("aiWearLiffUrl").value = settings.liffUrl || "";
+      if ($("aiWearLiffLink")) { $("aiWearLiffLink").href = settings.liffUrl || "#"; $("aiWearLiffLink").textContent = settings.liffUrl || ""; }
+      if ($("aiWearApiKey")) { $("aiWearApiKey").value = ""; $("aiWearApiKey").placeholder = settings.hasImage2ApiKey ? "已設定，可留空不變" : "尚未設定，請輸入 image2 API Key"; }
+      if ($("aiWearModel")) $("aiWearModel").value = settings.imageModel || "image2";
+      if ($("aiWearPrompt")) $("aiWearPrompt").value = settings.prompt || DEFAULT_AI_WEAR_PROMPT;
+      if ($("aiWearDeductEnabled")) $("aiWearDeductEnabled").checked = settings.pointDeductionEnabled === true;
+      if ($("aiWearPointCost")) $("aiWearPointCost").value = Number(settings.pointCost || 0);
+      if ($("aiWearPointChannel")) $("aiWearPointChannel").value = settings.pointChannelKey || "oa1";
+      if ($("aiWearPointType")) $("aiWearPointType").value = settings.pointType || "gift_money";
+      if ($("aiWearModuleStatus")) $("aiWearModuleStatus").textContent = settings.hasImage2ApiKey ? "已設定" : "待設定";
+    }
+
+    function setAiWearStatus(text, ok) {
+      const target = $("aiWearStatusText");
+      if (!target) return;
+      target.textContent = text || "";
+      target.classList.toggle("ok", Boolean(text && ok));
+      target.classList.toggle("bad", Boolean(text && !ok));
+    }
     async function loadCheckinTemplate() {
       const preview = $("templatePreview");
       if (!preview || !hasConsoleAuth()) return;

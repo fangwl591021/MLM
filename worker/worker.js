@@ -54,6 +54,27 @@ const DEFAULT_PUBLIC_BASE_URL = "https://mlm.fangwl591021.workers.dev";
 const DEFAULT_REWARD_GEOFENCE_METERS = 50;
 const DEFAULT_REWARD_CALENDAR_POINTS = 10;
 const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 60;
+const AI_WEAR_SETTINGS_META_KEY = "ai_wear_settings";
+const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
+
+請以眼鏡參考圖作為眼鏡款式來源，只參考眼鏡本身，不參考圖片中的人物、背景或其他元素。
+
+請將眼鏡參考圖中的眼鏡自然套用到人物照片的人物臉上，包含鏡框形狀、顏色、材質、粗細、鏡片大小、鏡片形狀、鼻墊、鏡腳、鏡片透明度與反光效果。
+
+若人物照片原本已配戴眼鏡，請先自然移除原本眼鏡，再換上新的參考眼鏡。新眼鏡必須符合人物臉部角度、鼻樑位置、眼睛位置、耳朵方向與頭部透視，並加入自然陰影、反光與接觸感。
+
+最終結果必須像人物本人實際戴上這副眼鏡的真實照片。除了眼鏡之外，不得修改人物長相、髮型、衣服、背景、姿勢、光線與照片風格。`;
+const DEFAULT_AI_WEAR_SETTINGS = {
+  title: "康立負離子眼鏡系列",
+  liffUrl: "https://liff.line.me/2006625044-bPGxrB53/index.php/linecard_33/10016/",
+  prompt: DEFAULT_AI_WEAR_PROMPT,
+  imageModel: "image2",
+  pointDeductionEnabled: false,
+  pointCost: 0,
+  pointChannelKey: POINT_OA1,
+  pointType: "gift_money",
+};
+
 const CHECKIN_LOCATION_META = {
   taipei: { label: "台北", keywords: ["台北", "臺北", "南京東路五段108", "台北總公司"], lat: 25.0513143, lng: 121.5621864 },
   taichung: { label: "台中", keywords: ["台中", "臺中", "市政路500", "台中營業處"], lat: 24.159265, lng: 120.636989 },
@@ -118,7 +139,7 @@ export default {
         }, 200, corsHeaders);
       }
 
-      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && (request.method === "GET" || request.method === "HEAD")) {
+      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/console/ai-wear" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && (request.method === "GET" || request.method === "HEAD")) {
         const session = await verifyConsoleSession(request, env);
         if (session.ok && !session.profile.admin) {
           const floors = Array.isArray(session.profile.floors) ? session.profile.floors : [];
@@ -602,6 +623,20 @@ export default {
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
+
+      if (url.pathname === "/api/ai-wear-settings" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await getAiWearSettings(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-settings" && request.method === "POST") {
+        await assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const data = await saveAiWearSettings(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/checkin-template" && request.method === "GET") {
         await assertDashboardAuth(request, env);
         const data = await getCheckinTemplate(env);
@@ -702,7 +737,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/console/calendar", "/console/events", "/console/ai-wear", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -1157,7 +1192,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/floor-whitelist") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
-  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template") return true;
+  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
   if (path === "/admin/points/stats" || path === "/admin/points/stats-data") return false;
   if (path.startsWith("/admin/points/")) return true;
@@ -7257,6 +7292,64 @@ async function ensureAppMetaSchema(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)").run();
 }
 
+
+async function getAiWearSettings(env) {
+  await ensureAppMetaSchema(env);
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(AI_WEAR_SETTINGS_META_KEY).first();
+  let stored = {};
+  if (row && row.value) {
+    try { stored = JSON.parse(row.value) || {}; } catch (_err) { stored = {}; }
+  }
+  return sanitizeAiWearSettingsForClient(normalizeAiWearSettings(stored));
+}
+
+async function saveAiWearSettings(env, input) {
+  await ensureAppMetaSchema(env);
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(AI_WEAR_SETTINGS_META_KEY).first();
+  let existing = {};
+  if (row && row.value) {
+    try { existing = JSON.parse(row.value) || {}; } catch (_err) { existing = {}; }
+  }
+  const data = normalizeAiWearSettings(input, existing);
+  const now = Date.now();
+  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(AI_WEAR_SETTINGS_META_KEY, JSON.stringify(data), now).run();
+  return sanitizeAiWearSettingsForClient(data);
+}
+
+function normalizeAiWearSettings(input, existing = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const current = existing && typeof existing === "object" ? existing : {};
+  const apiKeyInput = stringValue(source.image2ApiKey || source.apiKey || source.api_key).trim();
+  const keptApiKey = apiKeyInput || stringValue(current.image2ApiKey || current.apiKey);
+  const pointCost = Math.max(0, Math.floor(Number(source.pointCost ?? source.point_cost ?? current.pointCost ?? DEFAULT_AI_WEAR_SETTINGS.pointCost) || 0));
+  const channelKey = POINT_CHANNELS.has(stringValue(source.pointChannelKey || source.channel_key || current.pointChannelKey))
+    ? stringValue(source.pointChannelKey || source.channel_key || current.pointChannelKey)
+    : DEFAULT_AI_WEAR_SETTINGS.pointChannelKey;
+  const pointType = normalizePointType(source.pointType || source.point_type || current.pointType || DEFAULT_AI_WEAR_SETTINGS.pointType);
+  return {
+    title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
+    liffUrl: normalizeHttpsUrl(source.liffUrl || source.liff_url || current.liffUrl || DEFAULT_AI_WEAR_SETTINGS.liffUrl),
+    prompt: stringValue(source.prompt || current.prompt || DEFAULT_AI_WEAR_SETTINGS.prompt).slice(0, 4000),
+    imageModel: stringValue(source.imageModel || source.model || current.imageModel || DEFAULT_AI_WEAR_SETTINGS.imageModel).slice(0, 60),
+    image2ApiKey: keptApiKey,
+    pointDeductionEnabled: source.pointDeductionEnabled === true || source.point_deduction_enabled === true || source.deductPoints === true,
+    pointCost,
+    pointChannelKey: channelKey,
+    pointType,
+  };
+}
+
+function sanitizeAiWearSettingsForClient(settings) {
+  const data = { ...settings };
+  data.hasImage2ApiKey = Boolean(data.image2ApiKey);
+  data.image2ApiKey = "";
+  return data;
+}
+
+function normalizeHttpsUrl(value) {
+  const text = stringValue(value).trim();
+  return /^https:\/\//i.test(text) ? text.slice(0, 500) : "";
+}
 async function getCheckinTemplate(env) {
   await ensureAppMetaSchema(env);
   const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(CHECKIN_TEMPLATE_META_KEY).first();
