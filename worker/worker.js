@@ -118,7 +118,7 @@ export default {
         }, 200, corsHeaders);
       }
 
-      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && request.method === "GET") {
+      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && (request.method === "GET" || request.method === "HEAD")) {
         const session = await verifyConsoleSession(request, env);
         if (session.ok && !session.profile.admin) {
           const floors = Array.isArray(session.profile.floors) ? session.profile.floors : [];
