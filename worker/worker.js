@@ -1839,8 +1839,8 @@ function replySmartDailyReward(provider, event, userId, result) {
   const balance = formatPoint(result && result.balance_after);
   const points = formatPoint(result && result.points);
   const replyText = result && result.duplicate
-    ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u76ee\u524d\u7d2f\u7a4d " + balance + " K\u9ede\u3002"
-    : "\u7c3d\u5230\u6210\u529f\uff0c\u5df2\u8d08\u9001 " + points + " K\u9ede\u3002\u76ee\u524d\u7d2f\u7a4d " + balance + " K\u9ede\u3002";
+    ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u9ede\u6578\u9918\u984d " + balance + " K\u9ede\u3002"
+    : "\u7c3d\u5230\u6210\u529f\uff0c\u5df2\u8d08\u9001 " + points + " K\u9ede\u3002\u9ede\u6578\u9918\u984d " + balance + " K\u9ede\u3002";
   return replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
 }
 
@@ -6350,7 +6350,16 @@ async function fetchDailyKeywordGiftBalance(env, channelKey, userId) {
   const snapshot = await fetchWetwPointSnapshot(env, channelKey, sourceLineUserId, "gift_money", 10, {
     shop_id: memberCheckinShopId(env),
   });
-  return snapshot.balance;
+  const liveBalance = Number(snapshot && snapshot.balance);
+  const sourceLocalBalance = await getPointAccountBalance(env, channelKey, sourceLineUserId, "gift_money").catch(() => 0);
+  const chatLocalBalance = sourceLineUserId === userId
+    ? sourceLocalBalance
+    : await getPointAccountBalance(env, channelKey, userId, "gift_money").catch(() => 0);
+  return Math.max(
+    Number.isFinite(liveBalance) ? liveBalance : 0,
+    Number.isFinite(Number(sourceLocalBalance)) ? Number(sourceLocalBalance) : 0,
+    Number.isFinite(Number(chatLocalBalance)) ? Number(chatLocalBalance) : 0
+  );
 }
 
 function normalizeTextKeyword(value) {
