@@ -153,6 +153,9 @@ export default {
       }
 
       if ((url.pathname === "/dashboard" || url.pathname === "/index.html") && request.method === "GET") {
+        if (String(url.searchParams.get("floor") || "").trim() === FLOOR_SMART) {
+          return Response.redirect(`${url.origin}/admin/smart-monitor`, 302);
+        }
         return serveFrontendHtml("index.html", corsHeaders);
       }
 
