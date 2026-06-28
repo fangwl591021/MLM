@@ -1788,7 +1788,7 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
       "SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP " +
       "WHERE id = ?"
     ).bind(balance, "duplicate_smart_daily_reward", existing.id).run();
-    return replySmartDailyReward(provider, event, userId, { duplicate: true, points: Number(existing.points || points), balance_after: balance });
+    return replySmartDailyReward(env, channelKey, provider, event, userId, { duplicate: true, points: Number(existing.points || points), balance_after: balance });
   }
 
   const inserted = await env.DB.prepare(
@@ -1822,7 +1822,7 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
         "WHERE id = ?"
       ).bind(balance, "gift_money_granted", rewardId).run();
     }
-    return replySmartDailyReward(provider, event, userId, { duplicate: false, points, balance_after: balance });
+    return replySmartDailyReward(env, channelKey, provider, event, userId, { duplicate: false, points, balance_after: balance });
   } catch (error) {
     if (rewardId) {
       await env.DB.prepare(
@@ -1835,13 +1835,40 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
   }
 }
 
-function replySmartDailyReward(provider, event, userId, result) {
+async function replySmartDailyReward(env, channelKey, provider, event, userId, result) {
   const balance = formatPoint(result && result.balance_after);
   const points = formatPoint(result && result.points);
   const replyText = result && result.duplicate
     ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u9ede\u6578\u9918\u984d " + balance + " K\u9ede\u3002"
     : "\u7c3d\u5230\u6210\u529f\uff0c\u5df2\u8d08\u9001 " + points + " K\u9ede\u3002\u9ede\u6578\u9918\u984d " + balance + " K\u9ede\u3002";
-  return replyOrPushLineMessage(provider, event.replyToken, userId, replyText);
+  const delivery = await pushLineMessage(provider, userId, replyText);
+  await saveSmartAutoReplyMessage(env, provider, userId, replyText, delivery, {
+    channelKey,
+    points: result && result.points,
+    balanceAfter: result && result.balance_after,
+    duplicate: Boolean(result && result.duplicate),
+  });
+  return delivery;
+}
+
+async function saveSmartAutoReplyMessage(env, provider, userId, text, delivery, meta = {}) {
+  if (!env.DB || !userId || !text) return;
+  await saveAdminMessage(env, {
+    floor: provider && provider.floor ? provider.floor : FLOOR_MAIN,
+    userId,
+    text,
+    messageType: "text",
+    rawJson: {
+      direction: "outgoing",
+      source: "smart-daily-reward",
+      lineMessages: [{ type: "text", text }],
+      delivery: delivery || null,
+      meta,
+    },
+    createdAt: Date.now(),
+    status: STATUS_DONE,
+    category: "\u7c3d\u5230\u8d08\u9ede\u81ea\u52d5\u56de\u8986",
+  });
 }
 
 function memberCheckinShopId(env) {
