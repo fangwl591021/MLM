@@ -1785,7 +1785,7 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
     "ORDER BY id ASC LIMIT 1"
   ).bind(userId, channelKey, pointType, keyword, rewardDate).first();
   if (existing) {
-    const balance = await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
     await env.DB.prepare(
       "UPDATE daily_keyword_rewards " +
       "SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP " +
@@ -1815,10 +1815,10 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
       shop_id: memberCheckinShopId(env),
       shop_remark: "\u6bcf\u65e5\u6253\u5361\u81ea\u52d5\u8d08\u9ede\uff1b\u65e5\u671f:" + rewardDate + "\uff1b\u95dc\u9375\u5b57:" + keyword,
     }, "grant");
-    const liveBalance = await fetchDailyKeywordGiftBalance(env, channelKey, userId).catch(() => null);
-    const balance = Number.isFinite(Number(liveBalance))
-      ? Number(liveBalance)
-      : Number(mutation && mutation.balance_after);
+    const localBalance = Number(mutation && mutation.balance_after);
+    const balance = Number.isFinite(localBalance)
+      ? localBalance
+      : await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
     if (rewardId) {
       await env.DB.prepare(
         "UPDATE daily_keyword_rewards " +
@@ -6328,7 +6328,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(userId, channelKey, pointType, rewardDate).first();
 
   if (existingSameDay) {
-    const balance = await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
     await env.DB.prepare(`
       UPDATE daily_keyword_rewards
       SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
@@ -6343,7 +6343,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
 
   if (inserted && inserted.meta && inserted.meta.changes === 0) {
-    const balance = await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
     return { readonly: false, duplicate: true, points, balance_after: balance };
   }
 
@@ -6357,10 +6357,10 @@ async function applyDailyKeywordReward(env, rule, userId) {
       operator_name: "關鍵字自動贈點",
       note: `${keyword} 每日打卡贈點`,
     }, "grant");
-    const liveBalance = await fetchDailyKeywordGiftBalance(env, channelKey, userId).catch(() => null);
-    const balance = Number.isFinite(Number(liveBalance))
-      ? Number(liveBalance)
-      : Number(mutation && mutation.balance_after);
+    const localBalance = Number(mutation && mutation.balance_after);
+    const balance = Number.isFinite(localBalance)
+      ? localBalance
+      : await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
     await env.DB.prepare(`
       UPDATE daily_keyword_rewards
       SET balance_after = ?, status = 'claimed', message = ?, updated_at = CURRENT_TIMESTAMP
