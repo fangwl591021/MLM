@@ -455,6 +455,14 @@ export default {
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/admin/points/repair-local-balances" && request.method === "POST") {
+        await assertPointAdminAuth(request, env);
+        const body = await safeJson(request).catch(() => ({}));
+        const queryBody = Object.fromEntries(url.searchParams.entries());
+        const result = await repairLocalGiftMoneyBalances(env, { ...queryBody, ...body });
+        return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
+      }
+
       if ((url.pathname === "/admin/points/grant" || url.pathname === "/admin/points/deduct" || url.pathname === "/admin/points/redeem") && request.method === "POST") {
         await assertPointAdminAuth(request, env);
         const action = url.pathname.endsWith("/grant") ? "grant" : url.pathname.endsWith("/deduct") ? "deduct" : "redeem";
@@ -3980,10 +3988,18 @@ async function applyPointMutation(env, input) {
     masterMemberRef = member && member.member_ref ? stringValue(member.member_ref) : null;
   }
 
+  const existingAccount = await env.DB.prepare(`
+    SELECT balance
+    FROM point_accounts
+    WHERE account_key = ?
+    LIMIT 1
+  `).bind(accountKey).first();
+  const existingBalance = existingAccount ? Number(existingAccount.balance || 0) : null;
   const explicitBalanceAfter = Number(input.balanceAfter ?? input.balance_after);
-  const balanceAfter = Number.isFinite(explicitBalanceAfter)
-    ? explicitBalanceAfter
-    : Number(input.pointDelta || 0);
+  const delta = Number(input.pointDelta || 0);
+  const balanceAfter = Number.isFinite(existingBalance)
+    ? existingBalance + delta
+    : (Number.isFinite(explicitBalanceAfter) ? explicitBalanceAfter : delta);
 
   await env.DB.prepare(`
     INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
@@ -4190,7 +4206,10 @@ async function upsertLivePointAccountCache(env, channelKey, lineUserId, pointTyp
     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(account_key) DO UPDATE SET
       master_member_ref = COALESCE(NULLIF(excluded.master_member_ref, ''), point_accounts.master_member_ref),
-      balance = excluded.balance,
+      balance = CASE
+        WHEN point_accounts.balance IS NULL OR point_accounts.balance = 0 THEN excluded.balance
+        ELSE point_accounts.balance
+      END,
       updated_at = CURRENT_TIMESTAMP
   `).bind(accountKey, masterMemberRef || null, channelKey, lineUserId, pointType, Number(balance || 0)).run();
   return masterMemberRef;
@@ -5221,7 +5240,10 @@ async function syncCrmPoints(env, body) {
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(account_key) DO UPDATE SET
         master_member_ref = excluded.master_member_ref,
-        balance = excluded.balance,
+        balance = CASE
+          WHEN point_accounts.balance IS NULL OR point_accounts.balance = 0 THEN excluded.balance
+          ELSE point_accounts.balance
+        END,
         updated_at = CURRENT_TIMESTAMP
     `).bind(row.accountKey, row.masterMemberRef, row.channelKey, row.lineUserId, row.pointType, row.balance).run();
   }
@@ -6377,6 +6399,91 @@ async function applyDailyKeywordReward(env, rule, userId) {
   }
 }
 
+
+async function repairLocalGiftMoneyBalances(env, body = {}) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  const dryValue = body.dry_run !== undefined ? body.dry_run : body.dryRun;
+  const dryRun = dryValue === undefined
+    ? true
+    : !(dryValue === false || ["false", "0", "no"].includes(String(dryValue).toLowerCase()));
+  const date = stringValue(body.date || body.reward_date || body.rewardDate || taipeiDate()).slice(0, 10);
+  const lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
+  const limit = clampNumber(body.limit || 200, 1, 500);
+  const where = [
+    "pa.channel_key = 'oa1'",
+    "pa.point_type = 'gift_money'",
+    "EXISTS (SELECT 1 FROM point_ledger pl WHERE pl.account_key = pa.account_key AND date(pl.created_at) = ?)",
+  ];
+  const bindings = [date];
+  if (lineUserId) {
+    where.push("pa.line_user_id = ?");
+    bindings.push(lineUserId);
+  }
+  bindings.push(limit);
+  const accounts = await env.DB.prepare(`
+    SELECT pa.account_key, pa.channel_key, pa.line_user_id, pa.point_type, pa.balance
+    FROM point_accounts pa
+    WHERE ${where.join(" AND ")}
+    ORDER BY pa.updated_at DESC
+    LIMIT ?
+  `).bind(...bindings).all();
+  const report = { dry_run: dryRun, date, scanned: 0, repaired: 0, already_correct: 0, failed: 0, details: [] };
+  for (const account of accounts.results || []) {
+    const detail = { account_key: account.account_key, line_user_id: account.line_user_id, current: Number(account.balance || 0), target: null, status: "", error: "" };
+    report.scanned += 1;
+    try {
+      const ledgers = await env.DB.prepare(`
+        SELECT id, point_delta, balance_after, created_at
+        FROM point_ledger
+        WHERE account_key = ? AND point_type = 'gift_money'
+        ORDER BY id ASC
+      `).bind(account.account_key).all();
+      let maxRow = null;
+      for (const row of ledgers.results || []) {
+        const balance = Number(row.balance_after);
+        if (!Number.isFinite(balance)) continue;
+        if (!maxRow || balance > maxRow.balance_after) maxRow = { id: Number(row.id), balance_after: balance };
+      }
+      if (!maxRow) {
+        detail.status = "no_ledger_balance";
+        report.already_correct += 1;
+      } else {
+        let target = maxRow.balance_after;
+        for (const row of ledgers.results || []) {
+          if (Number(row.id) > maxRow.id) target += Number(row.point_delta || 0);
+        }
+        detail.target = target;
+        if (target <= detail.current) {
+          detail.status = "already_correct";
+          report.already_correct += 1;
+        } else if (dryRun) {
+          detail.status = "needs_repair";
+        } else {
+          await env.DB.prepare(`
+            UPDATE point_accounts
+            SET balance = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE account_key = ?
+          `).bind(target, account.account_key).run();
+          await env.DB.prepare(`
+            UPDATE daily_keyword_rewards
+            SET balance_after = CASE WHEN balance_after < ? THEN ? ELSE balance_after END,
+                message = 'local_balance_repaired',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE channel_key = 'oa1' AND point_type = 'gift_money' AND line_user_id = ? AND reward_date = ?
+          `).bind(target, target, account.line_user_id, date).run();
+          detail.status = "repaired";
+          report.repaired += 1;
+        }
+      }
+    } catch (error) {
+      detail.status = "failed";
+      detail.error = error && error.message ? error.message : String(error);
+      report.failed += 1;
+    }
+    report.details.push(detail);
+  }
+  return report;
+}
 async function fetchDailyKeywordGiftBalance(env, channelKey, userId) {
   const resolved = await resolvePointIdentity(env, { chatLineUserId: userId }).catch(() => null);
   const sourceLineUserId = stringValue(resolved && resolved.channelLineUserIds && resolved.channelLineUserIds[channelKey]) || userId;
