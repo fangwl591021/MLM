@@ -24,7 +24,7 @@
     .templateDesigner label{display:grid;gap:7px;color:#344054;font-size:14px;font-weight:850;min-width:0}.templateDesigner input,.templateDesigner select,.templateDesigner textarea{width:100%;min-width:0;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.templateDesigner textarea{min-height:86px;resize:vertical}.templateControls .templateBlock:first-child{display:grid;grid-template-columns:1fr;gap:12px}.templateControls .templateBlock:first-child .templateBlockHead{margin-bottom:0}.templateSwitch{display:flex!important;align-items:center!important;grid-template-columns:none!important}.templateSwitch input{width:16px!important;height:16px!important;min-width:16px!important}.templateUploadRow label{min-width:0}.templateUploadRow .openLink{align-self:end;justify-content:center}.templateImageUpload>input[data-field=imageUrl]{height:42px}.templateButtonGrid{grid-template-columns:minmax(150px,1fr) 120px!important}.templateButtonGrid label:nth-child(3),.templateButtonGrid label:nth-child(4),.templateButtonGrid label:nth-child(5){grid-column:auto}.templateButtonGrid .dangerButton{align-self:end}.templateColorRow{grid-template-columns:42px minmax(86px,1fr)!important}.templateColorRow input[type=color]{padding:2px!important}.templatePage .sectionActions{margin-top:10px}.templatePreviewPane{position:sticky;top:18px;align-self:start}.templateVisualPreview{align-items:flex-start}.templatePhoneImage span{padding:18px;line-height:1.5}@media(min-width:1380px){.templateButtonGrid{grid-template-columns:minmax(140px,1fr) 120px minmax(140px,1fr) minmax(150px,1fr) 140px auto!important}}@media(max-width:1180px){body.template-page{overflow:auto}body.template-page main{height:auto;overflow:visible;padding:16px}body.template-page #checkinTemplatePanel{height:auto}body.template-page .templateDesigner{height:auto;overflow:visible}body.template-page .templateDesignerGrid{height:auto;grid-template-columns:1fr;overflow:visible}body.template-page .templateControls{height:auto;max-height:none;overflow:visible!important;padding-bottom:18px}body.template-page .templatePreviewPane{height:auto;max-height:none;overflow:visible}.templatePreviewPane{position:static}.templateButtonGrid{grid-template-columns:1fr!important}}
   </style>
   <style>
-    body.template-page{overflow:auto}body.template-page .side{display:none}body.template-page .shell{display:block}body.template-page main{height:auto;min-height:100vh;max-width:100%;margin:0;padding:20px 24px;overflow:visible}body.template-page main>:not(#authGate):not(#checkinTemplatePanel):not(#errorBox){display:none!important}body.template-page #checkinTemplatePanel{height:auto;margin-top:0;display:block;min-height:0}body.template-page #checkinTemplatePanel>.sectionHead{margin-bottom:12px}body.template-page .templateDesigner{height:auto;min-height:0;overflow:visible}body.template-page .templateDesignerGrid{height:auto;min-height:0;overflow:visible;align-items:start;grid-template-columns:minmax(520px,44%) minmax(560px,56%)}body.template-page .templateControls{height:auto;max-height:none;min-height:0;display:grid;gap:14px;align-content:start;overflow:visible!important;padding-bottom:72px}body.template-page .templatePreviewPane{position:sticky;top:20px;height:calc(100vh - 40px);min-height:0;display:flex;flex-direction:column;overflow:hidden}body.template-page .templateVisualPreview{flex:1 1 auto;min-height:0;overflow:auto}body.template-page .templateJsonFold{flex:0 0 auto}body:not(.template-page) #checkinTemplatePanel{display:none!important}body:not(.template-page) .templateBackLink{display:none!important}.templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 110px 120px 110px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}@media(max-width:1180px){body.template-page{overflow:auto}body.template-page main{height:auto;overflow:visible;padding:16px}body.template-page #checkinTemplatePanel{height:auto}body.template-page .templateDesigner{height:auto;overflow:visible}body.template-page .templateDesignerGrid{height:auto;max-height:none;grid-template-columns:1fr;overflow:visible}body.template-page .templateControls{height:auto;max-height:none;overflow:visible!important;padding-bottom:18px}body.template-page .templatePreviewPane{height:auto;max-height:none;overflow:visible}}
+    body.template-page{overflow:auto}body.console-calendar-page .side,body.console-events-page .side{display:none}body.console-calendar-page .shell,body.console-events-page .shell{display:block}body.console-calendar-page main,body.console-events-page main{min-height:100vh;max-width:1480px;margin:0 auto;padding:24px}body.console-calendar-page main>:not(#authGate):not(.top):not(#calendarPanel):not(#error),body.console-events-page main>:not(#authGate):not(.top):not(#eventsPanel):not(#error){display:none!important}body.console-calendar-page #calendarPanel,body.console-events-page #eventsPanel{margin-top:0}.pageBackLink{height:38px;display:inline-flex;align-items:center;border:1px solid #b6ecc8;border-radius:10px;background:#effcf4;color:#067a35;padding:0 13px;text-decoration:none;font-weight:850}.topActions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}body.template-page .side{display:none}body.template-page .shell{display:block}body.template-page main{height:auto;min-height:100vh;max-width:100%;margin:0;padding:20px 24px;overflow:visible}body.template-page main>:not(#authGate):not(#checkinTemplatePanel):not(#errorBox){display:none!important}body.template-page #checkinTemplatePanel{height:auto;margin-top:0;display:block;min-height:0}body.template-page #checkinTemplatePanel>.sectionHead{margin-bottom:12px}body.template-page .templateDesigner{height:auto;min-height:0;overflow:visible}body.template-page .templateDesignerGrid{height:auto;min-height:0;overflow:visible;align-items:start;grid-template-columns:minmax(520px,44%) minmax(560px,56%)}body.template-page .templateControls{height:auto;max-height:none;min-height:0;display:grid;gap:14px;align-content:start;overflow:visible!important;padding-bottom:72px}body.template-page .templatePreviewPane{position:sticky;top:20px;height:calc(100vh - 40px);min-height:0;display:flex;flex-direction:column;overflow:hidden}body.template-page .templateVisualPreview{flex:1 1 auto;min-height:0;overflow:auto}body.template-page .templateJsonFold{flex:0 0 auto}body:not(.template-page) #checkinTemplatePanel{display:none!important}body:not(.template-page) .templateBackLink{display:none!important}.templateControls{min-width:0;overflow:hidden}.templateInlineStatus{font-size:13px;font-weight:850;color:#667085;white-space:nowrap}.templateInlineStatus.ok{color:#067a35}.templateInlineStatus.bad{color:#b42318}.templateTriggerBlock{padding:12px}.templateTriggerCompact{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(180px,.85fr);gap:10px;align-items:end}.templateTriggerCompact textarea{min-height:48px!important;height:48px;resize:vertical}.templateTriggerCompact input[type=text]{height:42px}.templateTriggerCompact .templateSwitch{grid-column:1/-1;margin-top:0!important;padding-top:2px}@media(min-width:1280px){.templateTriggerCompact{grid-template-columns:minmax(230px,1fr) minmax(190px,.8fr) auto}.templateTriggerCompact .templateSwitch{grid-column:auto;align-self:center;white-space:nowrap}}.templateBlock,.templatePage,.templateImageUpload,.templateButton{min-width:0;overflow:hidden}.templateDesigner .templateGrid{grid-template-columns:1fr!important}.templateDesigner .templateImageOptions{grid-template-columns:minmax(0,1fr) 110px 120px 110px!important}.templateButtonGrid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}.templateButtonGrid label{min-width:0!important}.templateButtonGrid input,.templateButtonGrid select{height:42px}.templateButtonGrid .dangerButton{width:max-content}.templateColorRow{grid-template-columns:48px minmax(0,160px)!important;justify-content:start}.templateUploadRow{grid-template-columns:minmax(0,1fr) auto!important}.templateImageUpload input[data-field=imageUrl]{font-size:13px}.templatePages{gap:16px}.templatePage{padding:16px}.templatePageHead{position:sticky;top:0;background:#fff;z-index:1;padding-bottom:8px;border-bottom:1px solid #edf1f5}.templatePreviewPane{min-width:0}.templateVisualPreview{max-width:100%}@media(min-width:1280px){.templateDesignerGrid{grid-template-columns:minmax(520px,650px) minmax(420px,1fr)}}@media(max-width:1180px){body.template-page{overflow:auto}body.template-page main{height:auto;overflow:visible;padding:16px}body.template-page #checkinTemplatePanel{height:auto}body.template-page .templateDesigner{height:auto;overflow:visible}body.template-page .templateDesignerGrid{height:auto;max-height:none;grid-template-columns:1fr;overflow:visible}body.template-page .templateControls{height:auto;max-height:none;overflow:visible!important;padding-bottom:18px}body.template-page .templatePreviewPane{height:auto;max-height:none;overflow:visible}}
   </style>
 </head>
 <body class="auth-locked">
@@ -36,10 +36,10 @@
         <a href="https://mlm.fangwl591021.workers.dev/dashboard?floor=main">產品客服 <span>客服</span></a>
         <a href="https://mlm.fangwl591021.workers.dev/dashboard?floor=admin">行政客服 <span>行政</span></a>
         <a href="#ai-monitor">AI 監控報告 <span>規劃中</span></a>
-        <a href="#calendarPanel">行事曆 <span>已接入</span></a>
-        <a href="#crmPanel">CRM / 點數 <span>已接入</span></a>
-        <a href="https://mlm.fangwl591021.workers.dev/admin/points/stats" target="_blank" rel="noopener">點數統計 <span>日報表</span></a>
-        <a href="#eventsPanel">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a>
+        <a href="/console/calendar">行事曆 <span>已接入</span></a>
+        <a href="/admin/crm">CRM / 點數 <span>已接入</span></a>
+        <a href="/admin/points/stats">點數統計 <span>日報表</span></a>
+        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
       <section class="settings" id="settingsBox">
@@ -100,11 +100,11 @@
         <div class="sectionHead"><h3>延伸模組</h3><span class="muted">先預留資料位置，接上後可直接統計</span></div>
         <div class="modules">
           <a class="card module" id="ai-monitor"><strong>AI 監控報告</strong><p class="muted">今日通報</p><div class="metric danger" id="aiAlerts">0</div></a>
-          <a class="card module" id="calendar"><strong>行事曆</strong><p class="muted">今日行程</p><div class="metric" id="calendarToday">0</div></a>
-          <a class="card module" id="crmPanel" href="https://mlm.fangwl591021.workers.dev/admin/crm" target="_blank" rel="noopener"><strong>CRM 會員</strong><p class="muted">會員快取</p><div class="metric" id="crmMembers">0</div></a>
-          <a class="card module" href="https://mlm.fangwl591021.workers.dev/admin/points/stats" target="_blank" rel="noopener"><strong>LINE 點數</strong><p class="muted">點數帳戶 / 每日統計</p><div class="metric" id="pointAccounts">0</div></a>
-          <a class="card module" id="events" href="#eventsPanel"><strong>活動報名</strong><p class="muted">今日報名</p><div class="metric" id="eventRegistrations">0</div></a>
-          <a class="card module" href="#eventsPanel"><strong>活動簽到</strong><p class="muted">今日簽到</p><div class="metric" id="eventCheckins">0</div></a>
+          <a class="card module" id="calendar" href="/console/calendar"><strong>行事曆</strong><p class="muted">今日行程</p><div class="metric" id="calendarToday">0</div></a>
+          <a class="card module" id="crmPanel" href="/admin/crm"><strong>CRM 會員</strong><p class="muted">會員快取</p><div class="metric" id="crmMembers">0</div></a>
+          <a class="card module" href="/admin/points/stats"><strong>LINE 點數</strong><p class="muted">點數帳戶 / 每日統計</p><div class="metric" id="pointAccounts">0</div></a>
+          <a class="card module" id="events" href="/console/events"><strong>活動報名</strong><p class="muted">今日報名</p><div class="metric" id="eventRegistrations">0</div></a>
+          <a class="card module" href="/console/events"><strong>活動簽到</strong><p class="muted">今日簽到</p><div class="metric" id="eventCheckins">0</div></a>
         </div>
       </section>
 
@@ -153,7 +153,7 @@
           <h3>內建行事曆</h3>
           <div class="sectionActions">
             <span class="muted">Asia/Taipei</span>
-            <a class="openLink" href="#calendarPanel">進入日曆</a><span class="badge green">固定 QR 智慧報到</span>
+            <a class="openLink" href="/console/calendar">進入日曆</a><span class="badge green">固定 QR 智慧報到</span>
           </div>
         </div>
         <article class="card calendarShell">
@@ -219,8 +219,11 @@
     const $ = (id) => document.getElementById(id);
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const auth = { ready: false, idToken: "", userId: "", displayName: "", pictureUrl: "", access: null, liffId: "", session: false };
-    const isTemplatePage = location.pathname === "/checkin-template" || location.pathname === "/checkin-template.html";
+    const consolePage = getConsolePage();
+    const isTemplatePage = consolePage === "template";
     if (isTemplatePage) document.body.classList.add("template-page");
+    else if (consolePage !== "main") document.body.classList.add(`console-${consolePage}-page`);
+    applyConsolePageMode();
     let latestCalendarEvents = [];
     let checkinTemplateDraft = null;
     let calendarViewDate = new Date();
@@ -249,6 +252,48 @@
     renderSmartCheckinQr();
     boot();
 
+    function getConsolePage() {
+      const path = location.pathname.replace(/\/+$/, "") || "/console";
+      if (path === "/checkin-template" || path === "/checkin-template.html") return "template";
+      if (path === "/console/calendar" || path === "/calendar") return "calendar";
+      if (path === "/console/events") return "events";
+      return "main";
+    }
+
+    function applyConsolePageMode() {
+      const pages = {
+        main: { title: "綜合成效", subtitle: "等待同步資料。", doc: "KLINK 客服系統" },
+        calendar: { title: "內建行事曆", subtitle: "活動設定、固定 QR 智慧報到與月曆管理。", doc: "KLINK 內建行事曆" },
+        events: { title: "活動報名簽到", subtitle: "課程報名、掃碼出席名單與人次統計。", doc: "KLINK 活動報名簽到" },
+        template: { title: "簽到贈點活動模板", subtitle: "LINE Flex 多頁活動卡。", doc: "KLINK 簽到模板" },
+      };
+      const page = pages[consolePage] || pages.main;
+      document.title = page.doc;
+      const title = document.querySelector(".top h2");
+      const subtitle = $("subtitle");
+      if (title) title.textContent = page.title;
+      if (subtitle) subtitle.textContent = page.subtitle;
+      document.querySelectorAll(".nav a").forEach((link) => {
+        const linkPath = new URL(link.getAttribute("href"), location.origin).pathname.replace(/\/+$/, "") || "/console";
+        const currentPath = location.pathname.replace(/\/+$/, "") || "/console";
+        const active = consolePage === "main" ? linkPath === "/console" : linkPath === currentPath;
+        link.classList.toggle("active", active);
+      });
+      if (consolePage !== "main" && consolePage !== "template") {
+        const status = $("status");
+        if (status && !document.querySelector(".topActions")) {
+          const wrap = document.createElement("div");
+          wrap.className = "topActions";
+          const back = document.createElement("a");
+          back.className = "pageBackLink";
+          back.href = "/console";
+          back.textContent = "返回主控台";
+          status.parentNode.insertBefore(wrap, status);
+          wrap.appendChild(back);
+          wrap.appendChild(status);
+        }
+      }
+    }
     async function boot() {
       try {
         const loginReady = await initLineLogin();

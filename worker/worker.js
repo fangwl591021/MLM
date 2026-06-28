@@ -118,7 +118,7 @@ export default {
         }, 200, corsHeaders);
       }
 
-      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && request.method === "GET") {
+      if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && request.method === "GET") {
         const session = await verifyConsoleSession(request, env);
         if (session.ok && !session.profile.admin) {
           const floors = Array.isArray(session.profile.floors) ? session.profile.floors : [];
@@ -133,7 +133,7 @@ export default {
       }
 
       if (url.pathname === "/calendar" && (request.method === "GET" || request.method === "HEAD")) {
-        return Response.redirect(`${url.origin}/console#calendarPanel`, 302);
+        return Response.redirect(`${url.origin}/console/calendar`, 302);
       }
 
       if ((url.pathname === "/knowledge-base" || url.pathname === "/knowledge-base.html") && request.method === "GET") {
