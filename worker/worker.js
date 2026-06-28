@@ -1812,9 +1812,10 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
       shop_id: memberCheckinShopId(env),
       shop_remark: "\u6bcf\u65e5\u6253\u5361\u81ea\u52d5\u8d08\u9ede\uff1b\u65e5\u671f:" + rewardDate + "\uff1b\u95dc\u9375\u5b57:" + keyword,
     }, "grant");
-    const balance = Number.isFinite(Number(mutation && mutation.balance_after))
-      ? Number(mutation.balance_after)
-      : await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    const liveBalance = await fetchDailyKeywordGiftBalance(env, channelKey, userId).catch(() => null);
+    const balance = Number.isFinite(Number(liveBalance))
+      ? Number(liveBalance)
+      : Number(mutation && mutation.balance_after);
     if (rewardId) {
       await env.DB.prepare(
         "UPDATE daily_keyword_rewards " +
@@ -1839,9 +1840,9 @@ async function replySmartDailyReward(env, channelKey, provider, event, userId, r
   const balance = formatPoint(result && result.balance_after);
   const points = formatPoint(result && result.points);
   const replyText = result && result.duplicate
-    ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u9ede\u6578\u9918\u984d " + balance + " K\u9ede\u3002"
-    : "\u7c3d\u5230\u6210\u529f\uff0c\u5df2\u8d08\u9001 " + points + " K\u9ede\u3002\u9ede\u6578\u9918\u984d " + balance + " K\u9ede\u3002";
-  const delivery = await pushLineMessage(provider, userId, replyText);
+    ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u76ee\u524d\u9ede\u6578\u9918\u984d:" + balance + "\u9ede\u3002"
+    : "\ud83d\udc4d \u606d\u559c\u60a8\u9818\u53d6\ud83d\udc4d:\n\u2b50 \u6253\u5361\u8d08\u9ede" + points + "\u9ede\n\ud83d\udcb0 \u9ede\u6578\u9918\u984d:" + balance + "\u9ede\n\ud83d\udc49\ud83d\udc49 \u8acb\u81f3\u6703\u54e1\u9ede\u6578\u3001\u8cfc\u7269\u91d1\u660e\u7d30\u67e5\u8a62\u3002";
+  const delivery = { ok: true, status: 0, source: "mother-site-auto-reply" };
   await saveSmartAutoReplyMessage(env, provider, userId, replyText, delivery, {
     channelKey,
     points: result && result.points,
@@ -6352,9 +6353,10 @@ async function applyDailyKeywordReward(env, rule, userId) {
       operator_name: "關鍵字自動贈點",
       note: `${keyword} 每日打卡贈點`,
     }, "grant");
-    const balance = Number.isFinite(Number(mutation && mutation.balance_after))
-      ? Number(mutation.balance_after)
-      : await fetchDailyKeywordGiftBalance(env, channelKey, userId);
+    const liveBalance = await fetchDailyKeywordGiftBalance(env, channelKey, userId).catch(() => null);
+    const balance = Number.isFinite(Number(liveBalance))
+      ? Number(liveBalance)
+      : Number(mutation && mutation.balance_after);
     await env.DB.prepare(`
       UPDATE daily_keyword_rewards
       SET balance_after = ?, status = 'claimed', message = ?, updated_at = CURRENT_TIMESTAMP
@@ -6378,6 +6380,9 @@ async function fetchDailyKeywordGiftBalance(env, channelKey, userId) {
     shop_id: memberCheckinShopId(env),
   });
   const liveBalance = Number(snapshot && snapshot.balance);
+  if (Array.isArray(snapshot && snapshot.rows) && snapshot.rows.length && Number.isFinite(liveBalance)) {
+    return liveBalance;
+  }
   const sourceLocalBalance = await getPointAccountBalance(env, channelKey, sourceLineUserId, "gift_money").catch(() => 0);
   const chatLocalBalance = sourceLineUserId === userId
     ? sourceLocalBalance
