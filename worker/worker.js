@@ -55,6 +55,9 @@ const DEFAULT_REWARD_GEOFENCE_METERS = 50;
 const DEFAULT_REWARD_CALENDAR_POINTS = 10;
 const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 60;
 const AI_WEAR_SETTINGS_META_KEY = "ai_wear_settings";
+const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
+const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
+const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
 
 請以眼鏡參考圖作為眼鏡款式來源，只參考眼鏡本身，不參考圖片中的人物、背景或其他元素。
@@ -66,7 +69,7 @@ const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物
 最終結果必須像人物本人實際戴上這副眼鏡的真實照片。除了眼鏡之外，不得修改人物長相、髮型、衣服、背景、姿勢、光線與照片風格。`;
 const DEFAULT_AI_WEAR_SETTINGS = {
   title: "康立負離子眼鏡系列",
-  liffUrl: "https://liff.line.me/2006625044-bPGxrB53/index.php/linecard_33/10016/",
+  publicPath: "/ai-wear",
   prompt: DEFAULT_AI_WEAR_PROMPT,
   imageModel: "image2",
   pointDeductionEnabled: false,
@@ -166,6 +169,12 @@ export default {
       }
       if (url.pathname.startsWith("/assets/checkin-template/") && request.method === "GET") {
         return serveCheckinTemplateImage(env, url.pathname, corsHeaders);
+      }
+      if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
+        return serveAiWearReferenceImage(env, url.pathname, corsHeaders);
+      }
+      if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && request.method === "GET") {
+        return serveAiWearResultImage(env, url.pathname, corsHeaders);
       }
 
       if (url.pathname === "/api/auth/session" && request.method === "GET") {
@@ -634,6 +643,35 @@ export default {
         await assertDashboardAuth(request, env);
         const body = await safeJson(request);
         const data = await saveAiWearSettings(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-gallery" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await listAiWearReferences(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-gallery" && request.method === "POST") {
+        await assertDashboardAuth(request, env);
+        const data = await uploadAiWearReference(request, env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-gallery" && request.method === "DELETE") {
+        await assertDashboardAuth(request, env);
+        const data = await deleteAiWearReference(env, url.searchParams.get("id"));
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-results" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await listAiWearResults(env, url.searchParams);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-results" && request.method === "POST") {
+        const data = await saveAiWearResult(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -1192,7 +1230,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/floor-whitelist") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
-  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings") return true;
+  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
   if (path === "/admin/points/stats" || path === "/admin/points/stats-data") return false;
   if (path.startsWith("/admin/points/")) return true;
@@ -7328,7 +7366,7 @@ function normalizeAiWearSettings(input, existing = {}) {
   const pointType = normalizePointType(source.pointType || source.point_type || current.pointType || DEFAULT_AI_WEAR_SETTINGS.pointType);
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
-    liffUrl: normalizeHttpsUrl(source.liffUrl || source.liff_url || current.liffUrl || DEFAULT_AI_WEAR_SETTINGS.liffUrl),
+    publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
     prompt: stringValue(source.prompt || current.prompt || DEFAULT_AI_WEAR_SETTINGS.prompt).slice(0, 4000),
     imageModel: stringValue(source.imageModel || source.model || current.imageModel || DEFAULT_AI_WEAR_SETTINGS.imageModel).slice(0, 60),
     image2ApiKey: keptApiKey,
@@ -7346,10 +7384,153 @@ function sanitizeAiWearSettingsForClient(settings) {
   return data;
 }
 
-function normalizeHttpsUrl(value) {
-  const text = stringValue(value).trim();
-  return /^https:\/\//i.test(text) ? text.slice(0, 500) : "";
+function normalizeAiWearPublicPath(value) {
+  const text = stringValue(value).trim() || "/ai-wear";
+  if (/^https?:\/\//i.test(text)) return "/ai-wear";
+  return (text.startsWith("/") ? text : `/${text}`).replace(/\/+/g, "/").slice(0, 120) || "/ai-wear";
 }
+
+async function ensureAiWearSchema(env) {
+  await ensureAppMetaSchema(env);
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_references (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    series TEXT NOT NULL DEFAULT '',
+    file_name TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    base64 TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_results (
+    id TEXT PRIMARY KEY,
+    line_user_id TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    model_id TEXT NOT NULL DEFAULT '',
+    model_title TEXT NOT NULL DEFAULT '',
+    person_image_url TEXT NOT NULL DEFAULT '',
+    result_image_url TEXT NOT NULL DEFAULT '',
+    result_mime_type TEXT NOT NULL DEFAULT '',
+    result_base64 TEXT NOT NULL DEFAULT '',
+    prompt TEXT NOT NULL DEFAULT '',
+    point_cost INTEGER NOT NULL DEFAULT 0,
+    point_channel_key TEXT NOT NULL DEFAULT '',
+    point_type TEXT NOT NULL DEFAULT 'gift_money',
+    status TEXT NOT NULL DEFAULT 'completed',
+    created_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+}
+
+function aiWearAssetIdFromPath(pathname, prefix) {
+  const id = decodeURIComponent(String(pathname || "").slice(prefix.length));
+  if (!id || id.includes("..") || id.includes("/")) return "";
+  return id;
+}
+
+async function uploadAiWearReference(request, env) {
+  await ensureAiWearSchema(env);
+  const form = await request.formData();
+  const file = form.get("image");
+  if (!file || typeof file.arrayBuffer !== "function") throw httpError("Reference image is required.", 400);
+  const mimeType = stringValue(file.type || "").toLowerCase();
+  const supported = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!supported.has(mimeType)) throw httpError("Only JPG, PNG, and WEBP are supported.", 400);
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("Image too large. Please keep it under 2MB.", 400);
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}.${ext}`;
+  const now = Date.now();
+  const title = stringValue(form.get("title") || file.name || "Model").slice(0, 120);
+  const series = stringValue(form.get("series") || "").slice(0, 80);
+  await env.DB.prepare(`INSERT INTO ai_wear_references (id, title, series, file_name, mime_type, size, base64, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+    .bind(id, title, series, stringValue(file.name || id).slice(0, 160), mimeType, buffer.byteLength, arrayBufferToBase64(buffer), now, now).run();
+  return aiWearReferenceToClient({ id, title, series, file_name: stringValue(file.name || id), mime_type: mimeType, size: buffer.byteLength, active: 1, created_at: now, updated_at: now }, env);
+}
+
+async function listAiWearReferences(env) {
+  await ensureAiWearSchema(env);
+  const rows = await env.DB.prepare("SELECT id, title, series, file_name, mime_type, size, active, created_at, updated_at FROM ai_wear_references WHERE active = 1 ORDER BY updated_at DESC LIMIT 200").all();
+  return { items: (rows.results || []).map((row) => aiWearReferenceToClient(row, env)) };
+}
+
+async function deleteAiWearReference(env, id) {
+  await ensureAiWearSchema(env);
+  const safeId = stringValue(id);
+  if (!safeId || safeId.includes("..") || safeId.includes("/")) throw httpError("Invalid gallery ID.", 400);
+  const now = Date.now();
+  await env.DB.prepare("UPDATE ai_wear_references SET active = 0, updated_at = ? WHERE id = ?").bind(now, safeId).run();
+  return { id: safeId, active: false };
+}
+
+function aiWearReferenceToClient(row, env) {
+  return {
+    id: stringValue(row.id),
+    title: stringValue(row.title),
+    series: stringValue(row.series),
+    fileName: stringValue(row.file_name),
+    mimeType: stringValue(row.mime_type),
+    size: numberOrZero(row.size),
+    url: `${publicBaseUrl(env)}${AI_WEAR_REFERENCE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}`,
+    createdAt: numberOrZero(row.created_at),
+    updatedAt: numberOrZero(row.updated_at),
+  };
+}
+
+async function serveAiWearReferenceImage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = aiWearAssetIdFromPath(pathname, AI_WEAR_REFERENCE_ASSET_PREFIX);
+  if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT mime_type, base64, updated_at FROM ai_wear_references WHERE id = ? AND active = 1").bind(id).first();
+  if (!row || !row.base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  return new Response(base64ToUint8Array(row.base64), { status: 200, headers: { ...corsHeaders, "Content-Type": row.mime_type || "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.updated_at || 0}"` } });
+}
+
+async function saveAiWearResult(request, env) {
+  await ensureAiWearSchema(env);
+  const contentType = stringValue(request.headers.get("content-type")).toLowerCase();
+  const now = Date.now();
+  let body = {};
+  let resultBase64 = "";
+  let resultMimeType = "";
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    body = Object.fromEntries(Array.from(form.entries()).filter(([, value]) => typeof value === "string"));
+    const file = form.get("resultImage");
+    if (file && typeof file.arrayBuffer === "function") {
+      resultMimeType = stringValue(file.type || "image/jpeg").toLowerCase();
+      const buffer = await file.arrayBuffer();
+      if (buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("Image too large. Please keep it under 2MB.", 400);
+      resultBase64 = arrayBufferToBase64(buffer);
+    }
+  } else {
+    body = await safeJson(request);
+  }
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const modelId = stringValue(body.modelId || body.model_id);
+  const model = modelId ? await env.DB.prepare("SELECT title FROM ai_wear_references WHERE id = ?").bind(modelId).first() : null;
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, stringValue(body.lineUserId || body.line_user_id), stringValue(body.displayName || body.display_name).slice(0, 120), modelId, stringValue(model && model.title || body.modelTitle || body.model_title).slice(0, 120), stringValue(body.personImageUrl || body.person_image_url).slice(0, 500), stringValue(body.resultImageUrl || body.result_image_url).slice(0, 500), resultMimeType, resultBase64, stringValue(body.prompt).slice(0, 4000), Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0)), stringValue(body.pointChannelKey || body.point_channel_key), normalizePointType(body.pointType || body.point_type || "gift_money"), stringValue(body.status || "completed").slice(0, 40), now).run();
+  return { id, createdAt: now, resultUrl: resultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(body.resultImageUrl || body.result_image_url) };
+}
+
+async function listAiWearResults(env, searchParams) {
+  await ensureAiWearSchema(env);
+  const limit = clampNumber(searchParams && searchParams.get("limit") || 50, 1, 200);
+  const rows = await env.DB.prepare("SELECT id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, CASE WHEN result_base64 != '' THEN 1 ELSE 0 END AS has_result_blob, point_cost, point_channel_key, point_type, status, created_at FROM ai_wear_results ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+  return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
+}
+
+async function serveAiWearResultImage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = aiWearAssetIdFromPath(pathname, AI_WEAR_RESULT_ASSET_PREFIX);
+  if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT result_mime_type, result_base64, created_at FROM ai_wear_results WHERE id = ?").bind(id).first();
+  if (!row || !row.result_base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  return new Response(base64ToUint8Array(row.result_base64), { status: 200, headers: { ...corsHeaders, "Content-Type": row.result_mime_type || "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
+}
+
 async function getCheckinTemplate(env) {
   await ensureAppMetaSchema(env);
   const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(CHECKIN_TEMPLATE_META_KEY).first();
