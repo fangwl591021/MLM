@@ -1549,7 +1549,7 @@ async function mirrorPointMessageToMonitor(env, config, provider, event, userId)
 function isSmartDailyRewardEvent(channelKey, event) {
   if (channelKey !== POINT_OA1 || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
   const text = normalizeTextKeyword(event.message.text);
-  return ["簽到贈K點", "會員打卡", "每日簽到贈點"].map(normalizeTextKeyword).includes(text);
+  return ["簽到贈點", "簽到贈K點", "會員打卡", "每日簽到贈點"].map(normalizeTextKeyword).includes(text);
 }
 
 function isSmartPointQueryEvent(channelKey, event) {
@@ -1782,16 +1782,17 @@ function smartDailyRewardPoints(env) {
 }
 
 async function handleSmartDailyReward(env, channelKey, provider, event, userId) {
-  const keyword = stringValue(event && event.message && event.message.text) || "\u6703\u54e1\u6253\u5361";
+  const rawKeyword = stringValue(event && event.message && event.message.text) || "會員打卡";
+  const keyword = "簽到贈點";
   const rewardDate = taipeiDate();
   const pointType = "gift_money";
   const points = smartDailyRewardPoints(env);
   const existing = await env.DB.prepare(
     "SELECT id, points, balance_after, status " +
     "FROM daily_keyword_rewards " +
-    "WHERE line_user_id = ? AND channel_key = ? AND point_type = ? AND keyword = ? AND reward_date = ? AND status != 'failed' " +
+    "WHERE line_user_id = ? AND channel_key = ? AND point_type = ? AND reward_date = ? AND status != 'failed' " +
     "ORDER BY id ASC LIMIT 1"
-  ).bind(userId, channelKey, pointType, keyword, rewardDate).first();
+  ).bind(userId, channelKey, pointType, rewardDate).first();
   if (existing) {
     const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
     await env.DB.prepare(
@@ -1818,10 +1819,10 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
       operator_name: "\u6bcf\u65e5\u6253\u5361\u81ea\u52d5\u8d08\u9ede",
       event_name: "\u6253\u5361\u8d08\u9ede",
       event_content: "\u6bcf\u65e5\u6253\u5361\u8d08K\u9ede" + points + "\u9ede",
-      note: keyword + " \u6bcf\u65e5\u6253\u5361\u8d08K\u9ede",
+      note: rawKeyword + " 每日打卡贈K點",
       business_key: "smart-daily:" + channelKey + ":" + userId + ":" + rewardDate,
       shop_id: memberCheckinShopId(env),
-      shop_remark: "\u6bcf\u65e5\u6253\u5361\u81ea\u52d5\u8d08\u9ede\uff1b\u65e5\u671f:" + rewardDate + "\uff1b\u95dc\u9375\u5b57:" + keyword,
+      shop_remark: "每日打卡自動贈點；日期:" + rewardDate + "；關鍵字:" + rawKeyword,
     }, "grant");
     const localBalance = Number(mutation && mutation.balance_after);
     const balance = Number.isFinite(localBalance)
@@ -1851,8 +1852,8 @@ async function replySmartDailyReward(env, channelKey, provider, event, userId, r
   const balance = formatPoint(result && result.balance_after);
   const points = formatPoint(result && result.points);
   const replyText = result && result.duplicate
-    ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u76ee\u524d\u9ede\u6578\u9918\u984d:" + balance + "\u9ede\u3002"
-    : "\ud83d\udc4d \u606d\u559c\u60a8\u9818\u53d6\ud83d\udc4d:\n\u2b50 \u6253\u5361\u8d08\u9ede" + points + "\u9ede\n\ud83d\udcb0 \u9ede\u6578\u9918\u984d:" + balance + "\u9ede\n\ud83d\udc49\ud83d\udc49 \u8acb\u81f3\u6703\u54e1\u9ede\u6578\u3001\u8cfc\u7269\u91d1\u660e\u7d30\u67e5\u8a62\u3002";
+    ? "您今天已經簽到過，目前點數餘額 " + balance + " K點。"
+    : "簽到成功，已贈送 " + points + " K點。點數餘額 " + balance + " K點。";
   const delivery = await replyLineMessage(provider, event && event.replyToken, replyText);
   await saveSmartAutoReplyMessage(env, provider, userId, replyText, delivery, {
     channelKey,
