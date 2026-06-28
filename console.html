@@ -172,6 +172,22 @@
             <label class="templateSwitch aiWearWide"><input id="aiWearDeductEnabled" type="checkbox" /> 啟用會員生成前點數扣抵</label>
           </div>
           <div class="sectionActions"><button id="aiWearSave" class="importButton" type="button">儲存設定</button><button id="aiWearResetPrompt" class="secondaryButton" type="button">恢復預設提示詞</button><span id="aiWearStatusText" class="templateInlineStatus" aria-live="polite"></span></div>
+          <div class="aiWearLibrary">
+            <section class="templateBlock">
+              <div class="templateBlockHead"><strong>參考眼鏡圖庫</strong><span class="muted">上傳眼鏡款式來源</span></div>
+              <div class="aiWearUpload">
+                <input id="aiWearModelTitle" type="text" placeholder="款式名稱，例如：5系列炭晶紅" />
+                <input id="aiWearModelSeries" type="text" placeholder="系列，例如：5系列" />
+                <input id="aiWearModelFile" type="file" accept="image/jpeg,image/png,image/webp" />
+                <button id="aiWearUploadModel" class="secondaryButton" type="button">上傳到圖庫</button>
+              </div>
+              <div id="aiWearGallery" class="aiWearModelGrid"></div>
+            </section>
+            <section class="templateBlock">
+              <div class="templateBlockHead"><strong>用戶儲存結果資料庫</strong><span class="muted">會員生成紀錄</span></div>
+              <div id="aiWearResults" class="aiWearResultGrid"></div>
+            </section>
+          </div>
         </article>
       </section>
       <section class="section" id="calendarPanel">
