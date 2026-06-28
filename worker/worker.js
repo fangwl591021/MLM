@@ -1842,7 +1842,7 @@ async function replySmartDailyReward(env, channelKey, provider, event, userId, r
   const replyText = result && result.duplicate
     ? "\u60a8\u4eca\u5929\u5df2\u7d93\u7c3d\u5230\u904e\uff0c\u76ee\u524d\u9ede\u6578\u9918\u984d:" + balance + "\u9ede\u3002"
     : "\ud83d\udc4d \u606d\u559c\u60a8\u9818\u53d6\ud83d\udc4d:\n\u2b50 \u6253\u5361\u8d08\u9ede" + points + "\u9ede\n\ud83d\udcb0 \u9ede\u6578\u9918\u984d:" + balance + "\u9ede\n\ud83d\udc49\ud83d\udc49 \u8acb\u81f3\u6703\u54e1\u9ede\u6578\u3001\u8cfc\u7269\u91d1\u660e\u7d30\u67e5\u8a62\u3002";
-  const delivery = { ok: true, status: 0, source: "mother-site-auto-reply" };
+  const delivery = await replyLineMessage(provider, event && event.replyToken, replyText);
   await saveSmartAutoReplyMessage(env, provider, userId, replyText, delivery, {
     channelKey,
     points: result && result.points,
@@ -1854,6 +1854,7 @@ async function replySmartDailyReward(env, channelKey, provider, event, userId, r
 
 async function saveSmartAutoReplyMessage(env, provider, userId, text, delivery, meta = {}) {
   if (!env.DB || !userId || !text) return;
+  if (delivery && delivery.ok === false) return;
   await saveAdminMessage(env, {
     floor: provider && provider.floor ? provider.floor : FLOOR_MAIN,
     userId,
