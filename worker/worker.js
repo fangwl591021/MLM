@@ -7608,8 +7608,10 @@ async function generateAiWearImage(request, env) {
 }
 
 async function callAiWearImageApi(env, settings, input) {
-  const apiUrl = stringValue(env.AI_IMAGE2_API_URL || settings.imageApiUrl || settings.aiweAjaxUrl).trim();
-  if (!apiUrl) throw httpError("AI 穿戴後端尚未接上 image2 產圖服務。系統公開入口已固定為 /api/ai-wear/generate，請在 Worker 環境設定 AI_IMAGE2_API_URL。", 500);
+  const key = stringValue(settings.image2ApiKey).trim();
+  const defaultOpenAiImageEditUrl = /^sk-(proj-)?[A-Za-z0-9_-]+/.test(key) ? "https://api.openai.com/v1/images/edits" : "";
+  const apiUrl = stringValue(env.AI_IMAGE2_API_URL || settings.imageApiUrl || settings.aiweAjaxUrl || defaultOpenAiImageEditUrl).trim();
+  if (!apiUrl) throw httpError("AI 穿戴後端尚未接上 image2 產圖服務。若使用 OpenAI sk-proj key，系統會自動使用 OpenAI Images Edit；其他 provider 請在 Worker 設定 AI_IMAGE2_API_URL。", 500);
   if (/wp-admin\/admin-ajax\.php/i.test(apiUrl)) {
     throw httpError("目前後端仍指向 AIWE WordPress AJAX，這不是正式 image2 產圖服務。本系統已改為自有圖庫流程，請改接正式 image2 provider。", 500);
   }
