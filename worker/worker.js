@@ -206,6 +206,12 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/ai-wear/member-points" && request.method === "POST") {
+        const body = await safeJson(request).catch(() => ({}));
+        const data = await fetchAiWearMemberPoints(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/ai-wear/generate" && request.method === "POST") {
         const data = await generateAiWearImage(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
@@ -1269,7 +1275,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/generate") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/generate") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -7909,15 +7915,16 @@ function aiWearLineClientId(env, settings) {
   return match ? match[1] : "";
 }
 
-async function verifyAiWearLineProfileFromForm(env, settings, form) {
-  const idToken = stringValue(form.get("idToken") || form.get("id_token") || form.get("lineIdToken") || form.get("line_id_token")).trim();
-  if (!idToken) return null;
+
+async function verifyAiWearLineProfileFromToken(env, settings, idToken) {
+  const token = stringValue(idToken).trim();
+  if (!token) return null;
   const clientId = aiWearLineClientId(env, settings);
   if (!clientId) throw httpError("AI 穿戴尚未設定 LINE Login Channel ID。", 500);
   const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ id_token: idToken, client_id: clientId }).toString(),
+    body: new URLSearchParams({ id_token: token, client_id: clientId }).toString(),
   });
   const text = await response.text();
   let data = null;
@@ -7931,6 +7938,29 @@ async function verifyAiWearLineProfileFromForm(env, settings, form) {
     displayName: stringValue(data.name),
     pictureUrl: stringValue(data.picture),
     email: stringValue(data.email),
+  };
+}
+
+async function verifyAiWearLineProfileFromForm(env, settings, form) {
+  const idToken = stringValue(form.get("idToken") || form.get("id_token") || form.get("lineIdToken") || form.get("line_id_token")).trim();
+  return verifyAiWearLineProfileFromToken(env, settings, idToken);
+}
+
+async function fetchAiWearMemberPoints(env, body) {
+  await ensureAiWearSchema(env);
+  const settings = await loadAiWearSettingsRaw(env);
+  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
+  const lineUserId = stringValue(profile && profile.userId);
+  if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
+  const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+  return {
+    lineUserId,
+    displayName: stringValue((body && body.displayName) || (profile && profile.displayName)),
+    pictureUrl: stringValue((body && body.pictureUrl) || (profile && profile.pictureUrl)),
+    balance,
+    pointChannelKey: settings.pointChannelKey,
+    pointType: settings.pointType,
+    pointCost: Number(settings.pointCost || 0),
   };
 }
 function normalizeAiWearImageApiUrl(value) {
