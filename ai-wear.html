@@ -10,152 +10,53 @@
     .wrap{max-width:760px;margin:0 auto;padding:18px 14px 44px}.head{background:linear-gradient(135deg,#fff 0%,#f1e9ff 100%);border:1px solid var(--line);border-radius:22px;padding:20px}.head h1{margin:0 0 8px;font-size:26px}.head p{margin:0;color:var(--muted);line-height:1.6}.card{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 16px 42px rgba(16,24,40,.06)}.step{display:flex;align-items:center;gap:10px;margin:0 0 14px}.num{width:32px;height:32px;border-radius:999px;background:var(--purple);color:#fff;display:grid;place-items:center;font-weight:900}.step h2{margin:0;font-size:21px}.drop{border:2px dashed #c7b2ff;border-radius:18px;background:#fbf8ff;padding:16px;text-align:center}.primary{width:100%;min-height:52px;border:0;border-radius:14px;background:var(--purple);color:#fff;font-weight:900}.green{background:var(--green)}.secondary{border:1px solid #cfd8e6;border-radius:12px;background:#fff;color:#101828;font-weight:800;padding:10px 12px}.muted{color:var(--muted)}.preview{max-width:100%;max-height:320px;border-radius:16px;margin:12px auto 0;display:none;border:1px solid var(--line)}
     .intro{display:grid;grid-template-columns:1fr 1fr;gap:10px}.introItem{background:#f8fafc;border:1px solid var(--line);border-radius:16px;padding:12px;line-height:1.55}.introItem strong{display:block;margin-bottom:4px}.tabs{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px}.tab{white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:850;color:#344054}.tab.active{background:#ecfdf3;border-color:#86efac;color:#067647}.models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-height:560px;overflow:auto;padding-right:4px}.model{border:2px solid transparent;border-radius:18px;background:#fff;padding:10px;box-shadow:0 10px 24px rgba(16,24,40,.05);text-align:center}.model.active{border-color:var(--purple);background:#fbf8ff}.model img{width:100%;aspect-ratio:1.2/1;object-fit:contain;border-radius:14px;background:#f8fafc}.model strong{display:block;margin-top:8px;font-size:15px}.model span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.bar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.result img{display:block;max-width:100%;max-height:360px;width:auto;margin:0 auto;border-radius:18px;border:1px solid var(--line);object-fit:contain}.status{margin-top:12px;border-radius:14px;padding:12px;background:#f8fafc;color:var(--muted);line-height:1.55}.status.bad{background:#fff1f3;color:#b42318}.status.ok{background:#ecfdf3;color:#067647}.empty{padding:18px;background:#f8fafc;border-radius:16px;color:var(--muted);line-height:1.6}.hidden{display:none!important}
     .progressWrap{margin-top:12px;background:#eef2f7;border-radius:999px;overflow:hidden;height:16px;border:1px solid #d9e2ef}.progressBar{width:0%;height:100%;background:linear-gradient(90deg,#7c4ddb,#08bf5b);transition:width .35s ease}.progressText{display:flex;justify-content:space-between;margin-top:8px;color:#475467;font-size:13px;font-weight:800}.selectedIntro{margin-top:12px;background:#f7fffb;border:1px solid #bbf7d0;border-radius:16px;padding:12px;line-height:1.55;color:#14532d}
-    @media(max-width:560px){.models,.intro{grid-template-columns:1fr}.head h1{font-size:24px}.wrap{padding:12px 10px 32px}.models{max-height:520px}}
+    .fitControls{margin-top:12px;border:1px solid var(--line);border-radius:16px;background:#f8fafc;padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.fitControls label{display:grid;gap:6px;color:#344054;font-weight:800;font-size:13px}.fitControls input{width:100%}.toggleLine{margin-top:10px;display:flex;gap:8px;align-items:flex-start;color:#344054;font-weight:850;line-height:1.45}.toggleLine input{width:auto;margin-top:4px}.modeNote{margin-top:10px;color:#475467;font-size:13px;line-height:1.5}
+    @media(max-width:560px){.models,.intro,.fitControls{grid-template-columns:1fr}.head h1{font-size:24px}.wrap{padding:12px 10px 32px}.models{max-height:520px}}
   </style>
 </head>
 <body>
   <main class="wrap">
-    <section class="head">
-      <h1 id="title">康立負離子眼鏡系列</h1>
-      <p id="subtitle">上傳自拍照，依系列選擇眼鏡款式，AI 會產生試戴圖片。</p>
-    </section>
-
-    <section class="card">
-      <div class="step"><div class="num">i</div><h2>商品介紹</h2></div>
-      <div class="intro">
-        <div class="introItem"><strong>負離子眼鏡</strong><span>適合日常穿搭、工作與外出配戴，先用 AI 快速確認臉型與鏡框協調度。</span></div>
-        <div class="introItem"><strong>系列選擇</strong><span>依 3、5、7、8、9、10 等系列篩選，縮短挑選時間。</span></div>
-      </div>
-      <div id="selectedIntro" class="selectedIntro hidden"></div>
-    </section>
-
-    <section class="card">
-      <div class="step"><div class="num">1</div><h2>上傳自拍照或選取相片</h2></div>
-      <div class="drop">
-        <input id="personFile" class="hidden" type="file" accept="image/jpeg,image/png,image/webp" />
-        <button id="choosePerson" class="primary" type="button">選取自拍照</button>
-        <p class="muted">支援 JPG / PNG / WEBP。建議使用清楚正面或半側臉照片。</p>
-        <img id="personPreview" class="preview" alt="自拍預覽" />
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="bar"><div class="step"><div class="num">2</div><h2>選擇 MODEL</h2></div><button id="reload" class="secondary" type="button">重新整理</button></div>
-      <div id="seriesTabs" class="tabs"></div>
-      <div id="models" class="models"><div class="empty">載入眼鏡素材中...</div></div>
-    </section>
-
-    <section class="card">
-      <div class="step"><div class="num">3</div><h2>預覽與生成</h2></div>
-      <button id="generate" class="primary green" type="button">預覽與生成</button>
-      <div class="progressWrap hidden" id="progressWrap"><div class="progressBar" id="progressBar"></div></div>
-      <div class="progressText hidden" id="progressText"><span id="progressLabel">準備中</span><span id="progressPercent">0%</span></div>
-      <div id="status" class="status">請先上傳自拍照並選擇眼鏡款式。</div>
-    </section>
-
-    <section class="card result">
-      <div class="step"><div class="num">4</div><h2>我的產出紀錄</h2></div>
-      <div id="resultBox" class="empty">尚無產出紀錄。產生成功後，這裡會顯示預覽與下載按鈕。</div>
-    </section>
+    <section class="head"><h1 id="title">康立負離子眼鏡系列</h1><p id="subtitle">上傳自拍照，依系列選擇眼鏡款式，系統會以原圖貼合方式產生試戴圖片。</p></section>
+    <section class="card"><div class="step"><div class="num">i</div><h2>商品介紹</h2></div><div class="intro"><div class="introItem"><strong>負離子眼鏡</strong><span>適合日常穿搭、工作與外出配戴，先快速確認臉型與鏡框協調度。</span></div><div class="introItem"><strong>原圖貼合</strong><span>人物、衣服、背景與構圖保留原圖，只處理眼鏡區。</span></div></div><div id="selectedIntro" class="selectedIntro hidden"></div></section>
+    <section class="card"><div class="step"><div class="num">1</div><h2>上傳自拍照或選取相片</h2></div><div class="drop"><input id="personFile" class="hidden" type="file" accept="image/jpeg,image/png,image/webp" /><button id="choosePerson" class="primary" type="button">選取自拍照</button><p class="muted">支援 JPG / PNG / WEBP。建議使用清楚正面或半側臉照片。</p><img id="personPreview" class="preview" alt="自拍預覽" /></div></section>
+    <section class="card"><div class="bar"><div class="step"><div class="num">2</div><h2>選擇 MODEL</h2></div><button id="reload" class="secondary" type="button">重新整理</button></div><div id="seriesTabs" class="tabs"></div><div id="models" class="models"><div class="empty">載入眼鏡素材中...</div></div></section>
+    <section class="card"><div class="step"><div class="num">3</div><h2>預覽與生成</h2></div><button id="generate" class="primary green" type="button">預覽與生成</button><div class="progressWrap hidden" id="progressWrap"><div class="progressBar" id="progressBar"></div></div><div class="progressText hidden" id="progressText"><span id="progressLabel">準備中</span><span id="progressPercent">0%</span></div><div id="status" class="status">請先上傳自拍照並選擇眼鏡款式。</div><label class="toggleLine"><input id="removeOldGlasses" type="checkbox">人物原本有戴眼鏡時，先用小範圍修補清除舊眼鏡，再疊新眼鏡。</label><div id="fitControls" class="fitControls hidden"><label>左右位置 <input id="fitX" type="range" min="20" max="80" value="50"></label><label>上下位置 <input id="fitY" type="range" min="15" max="55" value="30"></label><label>眼鏡寬度 <input id="fitWidth" type="range" min="20" max="75" value="44"></label><label>旋轉角度 <input id="fitRotate" type="range" min="-18" max="18" value="0"></label></div><div class="modeNote">未勾選時完全不呼叫生圖，只在原圖上疊合眼鏡。勾選時也只修補眼鏡區，不處理整張臉。</div></section>
+    <section class="card result"><div class="step"><div class="num">4</div><h2>我的產出紀錄</h2></div><div id="resultBox" class="empty">尚無產出紀錄。產生成功後，這裡會顯示預覽與下載按鈕。</div></section>
   </main>
-
   <script>
-    const $ = (id) => document.getElementById(id);
-    let state = { settings: {}, models: [], selected: null, personFile: null, series: "全部", progressTimer: null };
+    const $=(id)=>document.getElementById(id);
+    let state={settings:{},models:[],selected:null,personFile:null,series:"全部",progressTimer:null,fit:{x:50,y:30,width:44,rotate:0},lastCanvas:null,repairedDataUrl:""};
     function esc(text){return String(text||"").replace(/[&<>"']/g,(m)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
-    function setStatus(text, ok){const el=$("status"); el.textContent=text||""; el.className="status"+(ok===true?" ok":ok===false?" bad":"");}
-    function modelSeries(model){return String(model.series||model.title||"未分類").replace(/負離子|眼鏡|系列|MODEL/gi,"").trim() || String(model.series||"未分類").trim() || "未分類";}
+    function setStatus(text,ok){const el=$("status");el.textContent=text||"";el.className="status"+(ok===true?" ok":ok===false?" bad":"");}
+    function modelSeries(model){return String(model.series||model.title||"未分類").replace(/負離子|眼鏡|系列|MODEL/gi,"").trim()||String(model.series||"未分類").trim()||"未分類";}
     function currentModel(){return state.models.find((m)=>m.id===state.selected)||null;}
-    function seriesIntro(series){
-      const text = String(series||"");
-      if(text.includes("3")) return "3 系列主打輕盈俐落，適合日常、上班與長時間配戴。";
-      if(text.includes("5")) return "5 系列線條醒目，適合想提升臉部輪廓與穿搭辨識度的人。";
-      if(text.includes("7")) return "7 系列造型感較強，適合想做出個人風格的配戴者。";
-      if(text.includes("8")) return "8 系列偏穩重百搭，適合商務與成熟穿搭。";
-      if(text.includes("9")) return "9 系列適合重視舒適度與視覺修飾的日常配戴。";
-      if(text.includes("10")) return "10 系列款式更完整，適合先試戴比較臉型比例。";
-      return "請選擇喜歡的鏡框，系統會依人物照片與眼鏡參考圖產生試戴效果。";
-    }
-    async function loadPublic(){
-      setStatus("讀取設定與素材庫...", true);
-      const res = await fetch("/api/ai-wear-public", { cache:"no-store" });
-      const json = await res.json().catch(()=>({}));
-      if(!res.ok || json.status!=="success") throw new Error(json.message||"AI穿戴資料載入失敗");
-      state.settings = json.data.settings || {};
-      state.models = json.data.gallery || [];
-      $("title").textContent = state.settings.title || "康立負離子眼鏡系列";
-      const cost = Number(state.settings.pointCost || 0);
-      $("subtitle").textContent = state.settings.pointDeductionEnabled && cost > 0 ? `上傳自拍照，選擇眼鏡款式，每次生成扣 ${cost} K點。` : "上傳自拍照，依系列選擇眼鏡款式，AI 會產生試戴圖片。";
-      renderTabs(); renderModels(); renderSelectedIntro();
-      setStatus(state.models.length ? "請上傳自拍照並選擇眼鏡款式。" : "素材庫尚無眼鏡款式，請先到後台上傳。", state.models.length ? null : false);
-    }
-    function renderTabs(){
-      const series = ["全部", ...Array.from(new Set(state.models.map(modelSeries).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"zh-Hant"))];
-      if(!series.includes(state.series)) state.series = "全部";
-      $("seriesTabs").innerHTML = series.map((s)=>`<button class="tab ${state.series===s?'active':''}" type="button" data-series="${esc(s)}">${esc(s)}</button>`).join("");
-      $("seriesTabs").querySelectorAll(".tab").forEach((btn)=>btn.onclick=()=>{state.series=btn.dataset.series; renderTabs(); renderModels();});
-    }
-    function filteredModels(){return state.series==="全部" ? state.models : state.models.filter((m)=>modelSeries(m)===state.series);}
-    function renderModels(){
-      const box=$("models"); const items=filteredModels();
-      if(!state.models.length){box.innerHTML='<div class="empty">素材庫尚無眼鏡款式。</div>';return;}
-      if(!items.length){box.innerHTML='<div class="empty">此系列暫無款式。</div>';return;}
-      box.innerHTML = items.map((m)=>`<button class="model ${state.selected===m.id?'active':''}" type="button" data-id="${esc(m.id)}"><img src="${esc(m.url)}" alt="${esc(m.title)}"><strong>${esc(m.title||'MODEL')}</strong><span>${esc(modelSeries(m))}</span></button>`).join("");
-      box.querySelectorAll(".model").forEach((btn)=>btn.onclick=()=>{state.selected=btn.dataset.id;renderModels();renderSelectedIntro();});
-    }
-    function renderSelectedIntro(){
-      const model=currentModel(); const box=$("selectedIntro");
-      if(!model){box.className="selectedIntro hidden"; box.textContent=""; return;}
-      const s=modelSeries(model); box.className="selectedIntro"; box.innerHTML=`<strong>${esc(model.title||s)}</strong><br>${esc(seriesIntro(s))}`;
-    }
-    function renderResult(item){
-      const url = item && (item.resultUrl || item.resultImageUrl || item.inlineDataUrl);
-      $("resultBox").className = url ? "" : "empty";
-      $("resultBox").innerHTML = url ? `<img src="${esc(url)}" alt="AI試戴結果"><p><a class="secondary" href="${esc(url)}" download="ai-wear-result.png">下載圖片</a></p>` : "尚無產出紀錄。";
-    }
+    function seriesIntro(series){const text=String(series||"");if(text.includes("3"))return "3 系列主打輕盈俐落，適合日常、上班與長時間配戴。";if(text.includes("5"))return "5 系列線條醒目，適合想提升臉部輪廓與穿搭辨識度的人。";if(text.includes("7"))return "7 系列造型感較強，適合想做出個人風格的配戴者。";if(text.includes("8"))return "8 系列偏穩重百搭，適合商務與成熟穿搭。";if(text.includes("9"))return "9 系列適合重視舒適度與視覺修飾的日常配戴。";if(text.includes("10"))return "10 系列款式更完整，適合先試戴比較臉型比例。";return "請選擇喜歡的鏡框，系統會用原圖貼合方式產生試戴效果。";}
+    async function loadPublic(){setStatus("讀取設定與素材庫...",true);const res=await fetch("/api/ai-wear-public",{cache:"no-store"});const json=await res.json().catch(()=>({}));if(!res.ok||json.status!=="success")throw new Error(json.message||"AI穿戴資料載入失敗");state.settings=json.data.settings||{};state.models=json.data.gallery||[];$("title").textContent=state.settings.title||"康立負離子眼鏡系列";const cost=Number(state.settings.pointCost||0);$("subtitle").textContent=state.settings.pointDeductionEnabled&&cost>0?`上傳自拍照，選擇眼鏡款式，每次生成扣 ${cost} K點。`:"上傳自拍照，依系列選擇眼鏡款式，系統會以原圖貼合方式產生試戴圖片。";renderTabs();renderModels();renderSelectedIntro();setStatus(state.models.length?"請上傳自拍照並選擇眼鏡款式。":"素材庫尚無眼鏡款式，請先到後台上傳。",state.models.length?null:false);}
+    function renderTabs(){const series=["全部",...Array.from(new Set(state.models.map(modelSeries).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"zh-Hant"))];if(!series.includes(state.series))state.series="全部";$("seriesTabs").innerHTML=series.map((s)=>`<button class="tab ${state.series===s?'active':''}" type="button" data-series="${esc(s)}">${esc(s)}</button>`).join("");$("seriesTabs").querySelectorAll(".tab").forEach((btn)=>btn.onclick=()=>{state.series=btn.dataset.series;renderTabs();renderModels();});}
+    function filteredModels(){return state.series==="全部"?state.models:state.models.filter((m)=>modelSeries(m)===state.series);}
+    function renderModels(){const box=$("models");const items=filteredModels();if(!state.models.length){box.innerHTML='<div class="empty">素材庫尚無眼鏡款式。</div>';return;}if(!items.length){box.innerHTML='<div class="empty">此系列暫無款式。</div>';return;}box.innerHTML=items.map((m)=>`<button class="model ${state.selected===m.id?'active':''}" type="button" data-id="${esc(m.id)}"><img src="${esc(m.url)}" alt="${esc(m.title)}"><strong>${esc(m.title||'MODEL')}</strong><span>${esc(modelSeries(m))}</span></button>`).join("");box.querySelectorAll(".model").forEach((btn)=>btn.onclick=()=>{state.selected=btn.dataset.id;renderModels();renderSelectedIntro();syncFitControls();previewLocal().catch(()=>{});});}
+    function renderSelectedIntro(){const model=currentModel();const box=$("selectedIntro");if(!model){box.className="selectedIntro hidden";box.textContent="";return;}const s=modelSeries(model);box.className="selectedIntro";box.innerHTML=`<strong>${esc(model.title||s)}</strong><br>${esc(seriesIntro(s))}`;}
+    function renderResultUrl(url){$("resultBox").className=url?"":"empty";$("resultBox").innerHTML=url?`<img src="${esc(url)}" alt="AI試戴結果"><p><a class="secondary" href="${esc(url)}" download="ai-wear-result.jpg">下載圖片</a></p>`:"尚無產出紀錄。";}
     function setProgress(percent,label){$("progressWrap").classList.remove("hidden");$("progressText").classList.remove("hidden");$("progressBar").style.width=`${Math.max(0,Math.min(100,percent))}%`;$("progressPercent").textContent=`${Math.round(percent)}%`;$("progressLabel").textContent=label||"生成中";}
-    function startProgress(){clearInterval(state.progressTimer);let p=8;setProgress(p,"上傳照片與參考圖");state.progressTimer=setInterval(()=>{p=Math.min(92,p+(p<45?7:p<75?4:1.5));setProgress(p,p<45?"建立原圖鎖定遮罩":p<75?"只編輯眼鏡區域":"整理生成結果");},900);}
     function stopProgress(done){clearInterval(state.progressTimer);state.progressTimer=null;if(done){setProgress(100,"完成");setTimeout(()=>{$("progressWrap").classList.add("hidden");$("progressText").classList.add("hidden");},900);}}
-    async function createGlassesMask(file){
-      const bitmap = await (window.createImageBitmap ? createImageBitmap(file) : new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=URL.createObjectURL(file);}));
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "rgba(0,0,0,1)";
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-      const x = Math.round(canvas.width * 0.24);
-      const y = Math.round(canvas.height * 0.24);
-      const w = Math.round(canvas.width * 0.52);
-      const h = Math.round(canvas.height * 0.14);
-      ctx.clearRect(x,y,w,h);
-      if (bitmap.close) bitmap.close();
-      return await new Promise((resolve,reject)=>canvas.toBlob((blob)=>blob?resolve(blob):reject(new Error("遮罩產生失敗")),"image/png"));
-    }
-    async function generate(){
-      if(!state.personFile){setStatus("請先上傳自拍照。", false);return;}
-      if(!state.selected){setStatus("請先選擇眼鏡款式。", false);return;}
-      const button=$("generate"); const old=button.textContent;
-      try{
-        button.disabled=true; button.textContent="生成中..."; startProgress(); setStatus("AI 試戴生成中，通常需要 30-90 秒，請勿關閉頁面。", true);
-        const form = new FormData();
-        form.append("personImage", state.personFile, state.personFile.name || "person.jpg");
-        const mask = await createGlassesMask(state.personFile);
-        form.append("editMask", mask, "glasses-mask.png");
-        form.append("modelId", state.selected);
-        form.append("displayName", "");
-        const res = await fetch("/api/ai-wear/generate", { method:"POST", body:form });
-        const json = await res.json().catch(()=>({}));
-        if(!res.ok || json.status!=="success") throw new Error(json.message||"生成失敗");
-        renderResult(json.data || {}); stopProgress(true);
-        setStatus(json.data && json.data.persistedImage===false ? "生成完成。圖片已可下載；因圖片較大，系統只保存本次結果資訊。" : "生成完成，結果已保存。", true);
-      }catch(err){stopProgress(false);setStatus(err.message||String(err), false);}finally{button.disabled=false;button.textContent=old;}
-    }
+    function readFit(){state.fit={x:Number($("fitX").value||50),y:Number($("fitY").value||30),width:Number($("fitWidth").value||44),rotate:Number($("fitRotate").value||0)};return state.fit;}
+    function syncFitControls(){$("fitControls").classList.toggle("hidden",!(state.personFile&&state.selected));$("fitX").value=state.fit.x;$("fitY").value=state.fit.y;$("fitWidth").value=state.fit.width;$("fitRotate").value=state.fit.rotate;}
+    function loadImage(src){return new Promise((resolve,reject)=>{const img=new Image();img.crossOrigin="anonymous";img.onload=()=>resolve(img);img.onerror=reject;img.src=src;});}
+    function canvasToBlob(canvas,type="image/jpeg",quality=.9){return new Promise((resolve,reject)=>canvas.toBlob((blob)=>blob?resolve(blob):reject(new Error("圖片輸出失敗")),type,quality));}
+    async function canvasToSizedBlob(canvas){for(const q of [.92,.86,.78,.68]){const blob=await canvasToBlob(canvas,"image/jpeg",q);if(blob.size<=1900000||q===.68)return blob;}}
+    function extractGlassesCanvas(img){const source=document.createElement("canvas");source.width=img.naturalWidth||img.width;source.height=img.naturalHeight||img.height;const sctx=source.getContext("2d");sctx.drawImage(img,0,0,source.width,source.height);const data=sctx.getImageData(0,0,source.width,source.height);let minX=source.width,minY=source.height,maxX=0,maxY=0;for(let i=0;i<data.data.length;i+=4){const r=data.data[i],g=data.data[i+1],b=data.data[i+2],a=data.data[i+3];const white=r>238&&g>238&&b>238&&Math.max(r,g,b)-Math.min(r,g,b)<28;const pale=r>246&&g>246&&b>246;if(a<16||white||pale){data.data[i+3]=0;continue;}const p=i/4,x=p%source.width,y=Math.floor(p/source.width);minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}sctx.putImageData(data,0,0);if(maxX<=minX||maxY<=minY)return source;const pad=6;minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(source.width-1,maxX+pad);maxY=Math.min(source.height-1,maxY+pad);const out=document.createElement("canvas");out.width=maxX-minX+1;out.height=maxY-minY+1;out.getContext("2d").drawImage(source,minX,minY,out.width,out.height,0,0,out.width,out.height);return out;}
+    async function createRepairMask(file){const bitmap=await(window.createImageBitmap?createImageBitmap(file):loadImage(URL.createObjectURL(file)));const canvas=document.createElement("canvas");canvas.width=bitmap.width;canvas.height=bitmap.height;const ctx=canvas.getContext("2d");ctx.fillStyle="rgba(0,0,0,1)";ctx.fillRect(0,0,canvas.width,canvas.height);const fit=readFit();const w=canvas.width*(Math.max(30,fit.width+10)/100);const h=w*.28;const x=canvas.width*(fit.x/100)-w/2;const y=canvas.height*(fit.y/100)-h/2;ctx.clearRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));if(bitmap.close)bitmap.close();return canvasToBlob(canvas,"image/png",1);}
+    async function repairBaseImage(){const form=new FormData();form.append("personImage",state.personFile,state.personFile.name||"person.jpg");form.append("editMask",await createRepairMask(state.personFile),"glasses-repair-mask.png");const res=await fetch("/api/ai-wear/repair",{method:"POST",body:form});const json=await res.json().catch(()=>({}));if(!res.ok||json.status!=="success")throw new Error(json.message||"舊眼鏡小範圍修補失敗");return json.data.inlineDataUrl||json.data.resultUrl;}
+    async function composeLocalTryOn(baseUrl){const model=currentModel();if(!model)throw new Error("請先選擇眼鏡款式。");const personUrl=baseUrl||URL.createObjectURL(state.personFile);try{const [personImg,glassesImg]=await Promise.all([loadImage(personUrl),loadImage(model.url)]);const canvas=document.createElement("canvas");canvas.width=personImg.naturalWidth||personImg.width;canvas.height=personImg.naturalHeight||personImg.height;const ctx=canvas.getContext("2d");ctx.drawImage(personImg,0,0,canvas.width,canvas.height);const glasses=extractGlassesCanvas(glassesImg);const fit=readFit();const targetW=canvas.width*(fit.width/100);const targetH=targetW*(glasses.height/glasses.width);const cx=canvas.width*(fit.x/100);const cy=canvas.height*(fit.y/100);ctx.save();ctx.translate(cx,cy);ctx.rotate((fit.rotate*Math.PI)/180);ctx.shadowColor="rgba(16,24,40,.20)";ctx.shadowBlur=Math.max(2,canvas.width*.004);ctx.shadowOffsetY=Math.max(1,canvas.height*.002);ctx.drawImage(glasses,-targetW/2,-targetH/2,targetW,targetH);ctx.restore();return canvas;}finally{if(!baseUrl)URL.revokeObjectURL(personUrl);}}
+    async function previewLocal(){if(!state.personFile||!state.selected)return;const canvas=await composeLocalTryOn(state.repairedDataUrl||"");state.lastCanvas=canvas;renderResultUrl(canvas.toDataURL("image/jpeg",.9));}
+    async function generate(){if(!state.personFile){setStatus("請先上傳自拍照。",false);return;}if(!state.selected){setStatus("請先選擇眼鏡款式。",false);return;}const button=$("generate");const old=button.textContent;try{button.disabled=true;button.textContent="處理中...";setProgress(15,"保留原圖構圖");let baseUrl="";if($("removeOldGlasses").checked){setStatus("正在小範圍修補舊眼鏡，只處理眼鏡區。",true);setProgress(38,"清除舊眼鏡區");baseUrl=await repairBaseImage();state.repairedDataUrl=baseUrl;}else{state.repairedDataUrl="";}setProgress(68,"疊合新眼鏡");const canvas=await composeLocalTryOn(baseUrl);state.lastCanvas=canvas;renderResultUrl(canvas.toDataURL("image/jpeg",.9));const blob=await canvasToSizedBlob(canvas);const model=currentModel();const form=new FormData();form.append("resultImage",blob,"ai-wear-result.jpg");form.append("modelId",state.selected);form.append("modelTitle",model&&model.title||"");form.append("prompt",$("removeOldGlasses").checked?"小範圍修補舊眼鏡後，原圖貼合新眼鏡。":"原圖貼合模式：保留原人物照片，只將眼鏡素材去背後疊合到眼鏡區。");form.append("status","completed");setProgress(88,"保存產出紀錄");const res=await fetch("/api/ai-wear-results",{method:"POST",body:form});const json=await res.json().catch(()=>({}));if(res.ok&&json.status==="success"&&json.data&&json.data.resultUrl)renderResultUrl(json.data.resultUrl);stopProgress(true);setStatus($("removeOldGlasses").checked?"完成：已先小範圍修補舊眼鏡，再貼合新眼鏡。":"完成：已用原圖貼合，不重畫人物。",true);}catch(err){stopProgress(false);setStatus(err.message||String(err),false);}finally{button.disabled=false;button.textContent=old;}}
     $("choosePerson").onclick=()=>$("personFile").click();
-    $("personFile").onchange=(e)=>{const file=e.target.files&&e.target.files[0]; if(!file)return; state.personFile=file; const img=$("personPreview"); img.src=URL.createObjectURL(file); img.style.display="block"; setStatus("自拍照已選取，請選擇眼鏡款式。", true);};
-    $("reload").onclick=()=>loadPublic().catch((err)=>setStatus(err.message||String(err), false));
+    $("personFile").onchange=(e)=>{const file=e.target.files&&e.target.files[0];if(!file)return;state.personFile=file;state.repairedDataUrl="";const img=$("personPreview");img.src=URL.createObjectURL(file);img.style.display="block";syncFitControls();setStatus("自拍照已選取，請選擇眼鏡款式。",true);previewLocal().catch(()=>{});};
+    $("reload").onclick=()=>loadPublic().catch((err)=>setStatus(err.message||String(err),false));
+    ["fitX","fitY","fitWidth","fitRotate"].forEach((id)=>$(id).oninput=()=>{readFit();state.repairedDataUrl="";previewLocal().catch(()=>{});});
+    $("removeOldGlasses").onchange=()=>{state.repairedDataUrl="";setStatus($("removeOldGlasses").checked?"已啟用舊眼鏡小範圍修補。產生時才會呼叫修補 API。":"已切回純原圖貼合，不呼叫生圖。",true);};
     $("generate").onclick=generate;
-    loadPublic().catch((err)=>setStatus(err.message||String(err), false));
+    loadPublic().catch((err)=>setStatus(err.message||String(err),false));
   </script>
 </body>
 </html>
