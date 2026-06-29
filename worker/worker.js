@@ -7566,6 +7566,7 @@ async function generateAiWearImage(request, env) {
   if (!modelId || modelId.includes("..") || modelId.includes("/")) throw httpError("請選擇眼鏡款式。", 400);
   const reference = await env.DB.prepare("SELECT id, title, series, mime_type, base64 FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
   if (!reference || !reference.base64) throw httpError("找不到眼鏡參考圖。", 404);
+  const personDimensions = readAiWearImageDimensions(personBuffer, personMimeType);
   const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id") || selfie.lineUserId);
   const displayName = stringValue(form.get("displayName") || form.get("display_name") || selfie.displayName).slice(0, 120);
   const pointCost = Number(settings.pointCost || 0);
@@ -7585,10 +7586,7 @@ async function generateAiWearImage(request, env) {
       note: `AI穿戴生成扣點 ${pointCost} 點`,
     });
   }
-  const lockPrompt = maskBuffer
-    ? "請務必以遮罩為硬性限制：只允許修改透明遮罩區域中的眼鏡與接觸陰影；遮罩外的人物臉部、五官、髮型、衣服、背景、光線與照片風格必須保持原始照片，不得重畫、不得美化、不得換臉。輸出必須沿用原圖構圖、人物大小、裁切範圍與背景視角，不得拉近、不得放大、不得改成半身照或大頭照。"
-    : "請以人物照片為主圖，只進行眼鏡試戴編輯。完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線；不得重畫人物、不得美化換臉、不得改構圖或放大裁切。若人物原本已有眼鏡，請只在眼鏡區小範圍自然移除舊眼鏡，再套用參考眼鏡。";
-  const prompt = `${lockPrompt}\n\n${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
+  const prompt = buildAiWearIdentityPrompt(settings, reference, personDimensions, Boolean(maskBuffer));
   const generated = await callAiWearImageApi(env, settings, {
     prompt,
     personBuffer,
@@ -7602,6 +7600,7 @@ async function generateAiWearImage(request, env) {
     referenceImageUrl: `${publicBaseUrl(env)}${AI_WEAR_REFERENCE_ASSET_PREFIX}${encodeURIComponent(stringValue(reference.id || ""))}`,
     referenceTitle: stringValue(reference.title),
     referenceSeries: stringValue(reference.series),
+    personDimensions,
     referenceModelId: modelId,
     referenceProductUrl: stringValue(form.get("model_product_url") || form.get("modelProductUrl") || ""),
   });
@@ -7675,6 +7674,67 @@ async function resolveAiWearSelfieFromForm(form, env) {
     createdAt: numberOrZero(row.created_at),
   };
 }
+function buildAiWearIdentityPrompt(settings, reference, personDimensions, hasMask) {
+  const dimensionsText = personDimensions && personDimensions.width && personDimensions.height
+    ? `原人物照片尺寸：${personDimensions.width}x${personDimensions.height}。輸出必須維持同一構圖、人物比例、鏡頭距離與裁切範圍，不得放大、不得拉近、不得改成另一張證件照或棚拍照。`
+    : "輸出必須維持原人物照片的構圖、人物比例、鏡頭距離與裁切範圍，不得放大、不得拉近、不得改成另一張證件照或棚拍照。";
+  const editScope = hasMask
+    ? "若有遮罩，遮罩只代表可修補眼鏡附近區域；即使在遮罩內，也只能為了移除舊眼鏡與套入新眼鏡做必要小範圍重建。"
+    : "即使沒有遮罩，也只能在眼鏡與其接觸陰影周邊做小範圍重建；不得重畫整張臉、不得改變臉型、不得改變眼睛、鼻子、嘴巴、眉毛、髮型、衣服、背景與光線。";
+  const customPrompt = stringValue(settings.prompt || DEFAULT_AI_WEAR_PROMPT).trim();
+  return [
+    "任務：以第一張輸入的人物照片作為唯一主圖與身份基準，重新生成同一張照片，只增加或替換眼鏡。",
+    "輸入角色：第一張圖是本人原始照片，必須保留本人身份；第二張圖只是眼鏡款式參考，只能提取眼鏡本身的鏡框形狀、顏色、材質、粗細、鏡片大小、鼻墊、鏡腳、透明度與反光，不可提取第二張圖的背景、模特兒、構圖或光線。",
+    dimensionsText,
+    editScope,
+    "身份保真硬性規則：結果中的人物必須與第一張原圖同一人；保留原臉型、五官比例、膚色、表情、眼神、髮型、衣服、姿勢、拍攝角度、背景與光線。不得美化、不得年輕化、不得換臉、不得讓臉變尖、不得改變眼距或鼻型。",
+    "眼鏡處理：如果原圖已有眼鏡，先自然移除舊眼鏡在眼鏡區的遮擋，再依第二張參考圖換上新眼鏡；新眼鏡需符合原照片頭部角度、眼睛位置、鼻樑位置與透視，加入自然接觸陰影與鏡片反光。",
+    "不接受結果：生成另一個相似人物、改變人物角度、裁切成不同照片、改背景、改衣服、改髮型、改臉部表情，全部視為失敗。",
+    customPrompt,
+    `眼鏡款式名稱：${stringValue(reference && reference.title)}`,
+    `系列：${stringValue(reference && reference.series)}`,
+  ].filter(Boolean).join("\n\n");
+}
+
+function readAiWearImageDimensions(buffer, mimeType) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || []);
+  const type = stringValue(mimeType).toLowerCase();
+  if (bytes.length < 12) return null;
+  if (type === "image/png" && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return { width: readUInt32BE(bytes, 16), height: readUInt32BE(bytes, 20) };
+  }
+  if (type === "image/jpeg" || type === "image/jpg") {
+    for (let index = 2; index + 9 < bytes.length;) {
+      if (bytes[index] !== 0xff) { index += 1; continue; }
+      const marker = bytes[index + 1];
+      const length = readUInt16BE(bytes, index + 2);
+      if (!length || index + length + 2 > bytes.length) break;
+      if (marker >= 0xc0 && marker <= 0xc3) return { width: readUInt16BE(bytes, index + 7), height: readUInt16BE(bytes, index + 5) };
+      index += 2 + length;
+    }
+  }
+  if (type === "image/webp" && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+    const chunk = String.fromCharCode(bytes[12] || 0, bytes[13] || 0, bytes[14] || 0, bytes[15] || 0);
+    if (chunk === "VP8X" && bytes.length >= 30) return { width: 1 + readUInt24LE(bytes, 24), height: 1 + readUInt24LE(bytes, 27) };
+    if (chunk === "VP8 " && bytes.length >= 30) return { width: readUInt16LE(bytes, 26) & 0x3fff, height: readUInt16LE(bytes, 28) & 0x3fff };
+  }
+  return null;
+}
+
+function readUInt16BE(bytes, offset) { return ((bytes[offset] || 0) << 8) + (bytes[offset + 1] || 0); }
+function readUInt16LE(bytes, offset) { return (bytes[offset] || 0) + ((bytes[offset + 1] || 0) << 8); }
+function readUInt24LE(bytes, offset) { return (bytes[offset] || 0) + ((bytes[offset + 1] || 0) << 8) + ((bytes[offset + 2] || 0) << 16); }
+function readUInt32BE(bytes, offset) { return ((bytes[offset] || 0) * 16777216) + ((bytes[offset + 1] || 0) << 16) + ((bytes[offset + 2] || 0) << 8) + (bytes[offset + 3] || 0); }
+
+function chooseOpenAiWearImageSize(dimensions) {
+  const width = Number(dimensions && dimensions.width) || 0;
+  const height = Number(dimensions && dimensions.height) || 0;
+  if (!width || !height) return "auto";
+  const ratio = width / height;
+  if (ratio > 1.25) return "1536x1024";
+  if (ratio < 0.8) return "1024x1536";
+  return "1024x1024";
+}
 async function callAiWearImageApi(env, settings, input) {
   const key = stringValue(settings.image2ApiKey).trim();
   const defaultOpenAiImageEditUrl = /^sk-(proj-)?[A-Za-z0-9_-]+/.test(key) ? "https://api.openai.com/v1/images/edits" : "";
@@ -7697,10 +7757,10 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
   const payload = new FormData();
   payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
-  payload.append("size", "auto");
-  payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  payload.append("size", chooseOpenAiWearImageSize(input.personDimensions));
+  payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), `PRIMARY_PERSON_KEEP_IDENTITY_${input.personFileName || "person.jpg"}`);
   if (input.maskBuffer) payload.append("mask", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-mask.png");
-  payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
+  payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), `GLASSES_STYLE_REFERENCE_ONLY_${input.referenceFileName || "glasses.jpg"}`);
   return parseAiWearImageResponse(await fetch(apiUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${settings.image2ApiKey}` },
@@ -7712,6 +7772,14 @@ async function callDirectImage2WearApi(settings, input, apiUrl) {
   const payload = new FormData();
   payload.append("model", stringValue(settings.imageModel || "image2") || "image2");
   payload.append("prompt", input.prompt);
+  payload.append("mode", "identity_preserving_image_to_image");
+  payload.append("edit_scope", "glasses_only");
+  payload.append("preserve_identity", "true");
+  payload.append("preserve_composition", "true");
+  payload.append("person_image_role", "primary_identity_anchor");
+  payload.append("reference_image_role", "glasses_style_only");
+  payload.append("person_width", String(Number(input.personDimensions && input.personDimensions.width) || ""));
+  payload.append("person_height", String(Number(input.personDimensions && input.personDimensions.height) || ""));
   payload.append("person_image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
   if (input.maskBuffer) payload.append("mask_image", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-mask.png");
   payload.append("reference_image", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
