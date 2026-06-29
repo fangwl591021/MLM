@@ -56,6 +56,7 @@ const DEFAULT_REWARD_CALENDAR_POINTS = 10;
 const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 60;
 const AI_WEAR_SETTINGS_META_KEY = "ai_wear_settings";
 const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
+const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000;
@@ -185,12 +186,20 @@ export default {
       if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearReferenceImage(env, url.pathname, corsHeaders);
       }
+      if (url.pathname.startsWith(AI_WEAR_SELFIE_ASSET_PREFIX) && request.method === "GET") {
+        return serveAiWearSelfieImage(env, url.pathname, corsHeaders);
+      }
       if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearResultImage(env, url.pathname, corsHeaders);
       }
 
       if (url.pathname === "/api/ai-wear-public" && request.method === "GET") {
         const data = await getAiWearPublicData(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear/upload-selfie" && request.method === "POST") {
+        const data = await uploadAiWearSelfie(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -1257,7 +1266,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/generate") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/generate") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -7539,11 +7548,10 @@ async function generateAiWearImage(request, env) {
   const settings = await loadAiWearSettingsRaw(env);
   if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const form = await request.formData();
-  const personFile = form.get("personImage") || form.get("person") || form.get("image");
-  if (!personFile || typeof personFile.arrayBuffer !== "function") throw httpError("請上傳人物照片。", 400);
-  const personMimeType = stringValue(personFile.type || "").toLowerCase();
-  if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(personMimeType)) throw httpError("人物照片僅支援 JPG、PNG、WEBP。", 400);
-  const personBuffer = await personFile.arrayBuffer();
+  const selfie = await resolveAiWearSelfieFromForm(form, env);
+  const personBuffer = selfie.buffer;
+  const personMimeType = selfie.mimeType;
+  if (!personBuffer || !personBuffer.byteLength) throw httpError("請上傳人物照片。", 400);
   if (personBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請壓到 2MB 以內。", 400);
   const maskFile = form.get("editMask") || form.get("mask") || form.get("maskImage");
   let maskBuffer = null;
@@ -7558,8 +7566,8 @@ async function generateAiWearImage(request, env) {
   if (!modelId || modelId.includes("..") || modelId.includes("/")) throw httpError("請選擇眼鏡款式。", 400);
   const reference = await env.DB.prepare("SELECT id, title, series, mime_type, base64 FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
   if (!reference || !reference.base64) throw httpError("找不到眼鏡參考圖。", 404);
-  const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id"));
-  const displayName = stringValue(form.get("displayName") || form.get("display_name")).slice(0, 120);
+  const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id") || selfie.lineUserId);
+  const displayName = stringValue(form.get("displayName") || form.get("display_name") || selfie.displayName).slice(0, 120);
   const pointCost = Number(settings.pointCost || 0);
   if (settings.pointDeductionEnabled && pointCost > 0 && lineUserId) {
     const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
@@ -7577,12 +7585,15 @@ async function generateAiWearImage(request, env) {
       note: `AI穿戴生成扣點 ${pointCost} 點`,
     });
   }
-  const prompt = `請務必以遮罩為硬性限制：只允許修改透明遮罩區域中的眼鏡與接觸陰影；遮罩外的人物臉部、五官、髮型、衣服、背景、光線與照片風格必須保持原始照片，不得重畫、不得美化、不得換臉。輸出必須沿用原圖構圖、人物大小、裁切範圍與背景視角，不得拉近、不得放大、不得改成半身照或大頭照。\n\n${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
+  const lockPrompt = maskBuffer
+    ? "請務必以遮罩為硬性限制：只允許修改透明遮罩區域中的眼鏡與接觸陰影；遮罩外的人物臉部、五官、髮型、衣服、背景、光線與照片風格必須保持原始照片，不得重畫、不得美化、不得換臉。輸出必須沿用原圖構圖、人物大小、裁切範圍與背景視角，不得拉近、不得放大、不得改成半身照或大頭照。"
+    : "請以人物照片為主圖，只進行眼鏡試戴編輯。完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線；不得重畫人物、不得美化換臉、不得改構圖或放大裁切。若人物原本已有眼鏡，請只在眼鏡區小範圍自然移除舊眼鏡，再套用參考眼鏡。";
+  const prompt = `${lockPrompt}\n\n${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
   const generated = await callAiWearImageApi(env, settings, {
     prompt,
     personBuffer,
     personMimeType,
-    personFileName: stringValue(personFile.name || "person.jpg"),
+    personFileName: selfie.fileName || "selfie.jpg",
     maskBuffer,
     maskMimeType,
     referenceBase64: stringValue(reference.base64),
@@ -7590,8 +7601,9 @@ async function generateAiWearImage(request, env) {
     referenceFileName: stringValue(reference.id || "glasses.jpg"),
     referenceImageUrl: `${publicBaseUrl(env)}${AI_WEAR_REFERENCE_ASSET_PREFIX}${encodeURIComponent(stringValue(reference.id || ""))}`,
     referenceTitle: stringValue(reference.title),
+    referenceSeries: stringValue(reference.series),
     referenceModelId: modelId,
-    referenceProductUrl: "",
+    referenceProductUrl: stringValue(form.get("model_product_url") || form.get("modelProductUrl") || ""),
   });
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
@@ -7604,7 +7616,7 @@ async function generateAiWearImage(request, env) {
     displayName,
     modelId,
     stringValue(reference.title).slice(0, 120),
-    "",
+    stringValue(selfie.url).slice(0, 500),
     stringValue(generated.url || resultUrl).slice(0, 500),
     stringValue(generated.mimeType || "image/png"),
     storedResultBase64,
@@ -7615,9 +7627,54 @@ async function generateAiWearImage(request, env) {
     "completed",
     now,
   ).run();
-  return { id, createdAt: now, resultUrl: resultUrl || inlineDataUrl, inlineDataUrl, persistedImage: Boolean(storedResultBase64 || generated.url), modelId, modelTitle: stringValue(reference.title) };
+  const finalUrl = resultUrl || inlineDataUrl;
+  return {
+    id,
+    createdAt: now,
+    resultUrl: finalUrl,
+    inlineDataUrl,
+    persistedImage: Boolean(storedResultBase64 || generated.url),
+    modelId,
+    modelTitle: stringValue(reference.title),
+    selfie: aiWearSelfieToClient(selfie, env),
+    result: { media_id: id, url: finalUrl, created_at: new Date(now).toISOString() },
+  };
 }
 
+async function resolveAiWearSelfieFromForm(form, env) {
+  const directFile = form.get("personImage") || form.get("person") || form.get("image") || form.get("selfie");
+  if (directFile && typeof directFile.arrayBuffer === "function") {
+    const mimeType = stringValue(directFile.type || "").toLowerCase();
+    if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)) throw httpError("人物照片僅支援 JPG、PNG、WEBP。", 400);
+    const buffer = await directFile.arrayBuffer();
+    return {
+      id: "",
+      url: stringValue(form.get("selfie_url") || form.get("selfieUrl")),
+      lineUserId: stringValue(form.get("lineUserId") || form.get("line_user_id")),
+      displayName: stringValue(form.get("displayName") || form.get("display_name")),
+      fileName: stringValue(directFile.name || "selfie.jpg"),
+      mimeType,
+      size: buffer.byteLength,
+      buffer,
+      createdAt: Date.now(),
+    };
+  }
+  const selfieId = stringValue(form.get("selfie_media_id") || form.get("selfieMediaId") || form.get("selfie_id") || form.get("selfieId"));
+  if (!selfieId || selfieId.includes("..") || selfieId.includes("/")) throw httpError("請先上傳自拍照。", 400);
+  const row = await env.DB.prepare("SELECT id, line_user_id, display_name, file_name, mime_type, size, base64, created_at FROM ai_wear_selfies WHERE id = ?").bind(selfieId).first();
+  if (!row || !row.base64) throw httpError("找不到已上傳自拍照，請重新上傳。", 404);
+  return {
+    id: stringValue(row.id),
+    url: `${publicBaseUrl(env)}${AI_WEAR_SELFIE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}`,
+    lineUserId: stringValue(row.line_user_id),
+    displayName: stringValue(row.display_name),
+    fileName: stringValue(row.file_name || "selfie.jpg"),
+    mimeType: stringValue(row.mime_type || "image/jpeg"),
+    size: numberOrZero(row.size),
+    buffer: base64ToUint8Array(row.base64),
+    createdAt: numberOrZero(row.created_at),
+  };
+}
 async function callAiWearImageApi(env, settings, input) {
   const key = stringValue(settings.image2ApiKey).trim();
   const defaultOpenAiImageEditUrl = /^sk-(proj-)?[A-Za-z0-9_-]+/.test(key) ? "https://api.openai.com/v1/images/edits" : "";
@@ -7769,6 +7826,16 @@ async function ensureAiWearSchema(env) {
     created_at INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL DEFAULT 0
   )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_selfies (
+    id TEXT PRIMARY KEY,
+    line_user_id TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    file_name TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    base64 TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_results (
     id TEXT PRIMARY KEY,
     line_user_id TEXT NOT NULL DEFAULT '',
@@ -7794,6 +7861,50 @@ function aiWearAssetIdFromPath(pathname, prefix) {
   return id;
 }
 
+async function uploadAiWearSelfie(request, env) {
+  await ensureAiWearSchema(env);
+  const form = await request.formData();
+  const file = form.get("selfie") || form.get("personImage") || form.get("person") || form.get("image");
+  if (!file || typeof file.arrayBuffer !== "function") throw httpError("Selfie image is required.", 400);
+  const mimeType = stringValue(file.type || "").toLowerCase();
+  const supported = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!supported.has(mimeType)) throw httpError("Only JPG, PNG, and WEBP are supported.", 400);
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("Image too large. Please keep it under 2MB.", 400);
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}.${ext}`;
+  const now = Date.now();
+  const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id"));
+  const displayName = stringValue(form.get("displayName") || form.get("display_name")).slice(0, 120);
+  const fileName = stringValue(file.name || id).slice(0, 160);
+  await env.DB.prepare(`INSERT INTO ai_wear_selfies (id, line_user_id, display_name, file_name, mime_type, size, base64, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, lineUserId, displayName, fileName, mimeType, buffer.byteLength, arrayBufferToBase64(buffer), now).run();
+  const selfie = { id, lineUserId, displayName, fileName, mimeType, size: buffer.byteLength, createdAt: now };
+  return { selfie: aiWearSelfieToClient(selfie, env), selfieId: id, selfieUrl: `${publicBaseUrl(env)}${AI_WEAR_SELFIE_ASSET_PREFIX}${encodeURIComponent(id)}` };
+}
+
+function aiWearSelfieToClient(selfie, env) {
+  const id = stringValue(selfie && selfie.id);
+  const createdAt = numberOrZero(selfie && (selfie.createdAt || selfie.created_at));
+  return {
+    media_id: id,
+    id,
+    url: stringValue(selfie && selfie.url) || (id ? `${publicBaseUrl(env)}${AI_WEAR_SELFIE_ASSET_PREFIX}${encodeURIComponent(id)}` : ""),
+    file_name: stringValue(selfie && (selfie.fileName || selfie.file_name)),
+    mime_type: stringValue(selfie && (selfie.mimeType || selfie.mime_type)),
+    size: numberOrZero(selfie && selfie.size),
+    created_at: createdAt ? new Date(createdAt).toISOString() : "",
+  };
+}
+
+async function serveAiWearSelfieImage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = aiWearAssetIdFromPath(pathname, AI_WEAR_SELFIE_ASSET_PREFIX);
+  if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT mime_type, base64, created_at FROM ai_wear_selfies WHERE id = ?").bind(id).first();
+  if (!row || !row.base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  return new Response(base64ToUint8Array(row.base64), { status: 200, headers: { ...corsHeaders, "Content-Type": row.mime_type || "image/jpeg", "Cache-Control": "private, max-age=86400", "ETag": `"${id}-${row.created_at || 0}"` } });
+}
 async function uploadAiWearReference(request, env) {
   await ensureAiWearSchema(env);
   const form = await request.formData();
