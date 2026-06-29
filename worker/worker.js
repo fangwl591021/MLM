@@ -7726,10 +7726,18 @@ function readUInt16LE(bytes, offset) { return (bytes[offset] || 0) + ((bytes[off
 function readUInt24LE(bytes, offset) { return (bytes[offset] || 0) + ((bytes[offset + 1] || 0) << 8) + ((bytes[offset + 2] || 0) << 16); }
 function readUInt32BE(bytes, offset) { return ((bytes[offset] || 0) * 16777216) + ((bytes[offset + 1] || 0) << 16) + ((bytes[offset + 2] || 0) << 8) + (bytes[offset + 3] || 0); }
 
-function chooseOpenAiWearImageSize(dimensions) {
+function chooseOpenAiWearImageSize(dimensions, model) {
   const width = Number(dimensions && dimensions.width) || 0;
   const height = Number(dimensions && dimensions.height) || 0;
   if (!width || !height) return "auto";
+  const normalizedModel = stringValue(model).toLowerCase();
+  if (normalizedModel === "gpt-image-2") {
+    const maxSide = Math.max(width, height);
+    const scale = maxSide > 1536 ? 1536 / maxSide : 1;
+    const scaledWidth = Math.max(256, Math.round((width * scale) / 16) * 16);
+    const scaledHeight = Math.max(256, Math.round((height * scale) / 16) * 16);
+    return `${scaledWidth}x${scaledHeight}`;
+  }
   const ratio = width / height;
   if (ratio > 1.25) return "1536x1024";
   if (ratio < 0.8) return "1024x1536";
@@ -7752,12 +7760,12 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
   if (!/^sk-(proj-)?[A-Za-z0-9_-]+/.test(stringValue(settings.image2ApiKey))) {
     throw httpError("目前 API URL 是 OpenAI 圖片端點，但 image2 API Key 不是 OpenAI key 格式。請填入 image2 服務商 API URL，或改用 OpenAI key。", 400);
   }
-  const requestedModel = stringValue(settings.imageModel || "gpt-image-1").trim() || "gpt-image-1";
-  const effectiveImageModel = requestedModel.toLowerCase() === "image2" ? "gpt-image-1" : requestedModel;
+  const requestedModel = stringValue(settings.imageModel || "gpt-image-2").trim() || "gpt-image-2";
+  const effectiveImageModel = requestedModel.toLowerCase() === "image2" ? "gpt-image-2" : requestedModel;
   const payload = new FormData();
   payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
-  payload.append("size", chooseOpenAiWearImageSize(input.personDimensions));
+  payload.append("size", chooseOpenAiWearImageSize(input.personDimensions, effectiveImageModel));
   payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), `PRIMARY_PERSON_KEEP_IDENTITY_${input.personFileName || "person.jpg"}`);
   if (input.maskBuffer) payload.append("mask", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-mask.png");
   payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), `GLASSES_STYLE_REFERENCE_ONLY_${input.referenceFileName || "glasses.jpg"}`);
