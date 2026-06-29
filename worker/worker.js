@@ -7731,14 +7731,17 @@ function chooseOpenAiWearImageSize(dimensions, model) {
   const height = Number(dimensions && dimensions.height) || 0;
   if (!width || !height) return "auto";
   const normalizedModel = stringValue(model).toLowerCase();
+  const ratio = width / height;
   if (normalizedModel === "gpt-image-2") {
+    const minPixels = 1024 * 1024;
     const maxSide = Math.max(width, height);
-    const scale = maxSide > 1536 ? 1536 / maxSide : 1;
+    const downscale = maxSide > 1536 ? 1536 / maxSide : 1;
+    const upscale = width * height < minPixels ? Math.sqrt(minPixels / (width * height)) : 1;
+    const scale = Math.max(upscale, downscale);
     const scaledWidth = Math.max(256, Math.round((width * scale) / 16) * 16);
     const scaledHeight = Math.max(256, Math.round((height * scale) / 16) * 16);
-    return `${scaledWidth}x${scaledHeight}`;
+    if (scaledWidth * scaledHeight >= minPixels) return `${scaledWidth}x${scaledHeight}`;
   }
-  const ratio = width / height;
   if (ratio > 1.25) return "1536x1024";
   if (ratio < 0.8) return "1024x1536";
   return "1024x1024";
@@ -7804,13 +7807,24 @@ function aiWearOptionalAuthHeaders(settings) {
   return key ? { Authorization: `Bearer ${key}`, "X-API-Key": key } : {};
 }
 
+function translateAiWearApiError(message) {
+  const text = stringValue(message).trim();
+  if (!text) return "產圖服務沒有回傳錯誤內容，請稍後再試。";
+  if (/Invalid size/i.test(text) && /minimum pixel budget/i.test(text)) return "圖片解析度低於 image2 最小像素要求；系統已調整輸出尺寸，請重新產生一次。";
+  if (/Invalid size/i.test(text)) return "圖片輸出尺寸不符合 image2 規格，請重新產生一次。";
+  if (/Incorrect API key/i.test(text)) return "API Key 不正確，請到 AI 穿戴設定重新確認。";
+  if (/model .* does not exist/i.test(text) || /model.*not exist/i.test(text)) return "目前設定的模型不存在，請確認模型名稱是否正確。";
+  if (/Duplicate parameter/i.test(text)) return "產圖請求欄位重複，系統需要調整送出格式。";
+  if (/rate limit/i.test(text)) return "產圖服務流量過高，請稍後再試。";
+  return text;
+}
 async function parseAiWearImageResponse(response) {
   const text = await response.text();
   let body = null;
   try { body = JSON.parse(text); } catch (_err) { body = null; }
   if (!response.ok) {
-    const message = body && body.error && body.error.message ? body.error.message : body && body.message ? body.message : text;
-    throw httpError(`AI image2 生成失敗 ${response.status}: ${message}`, 502);
+    const rawMessage = body && body.error && body.error.message ? body.error.message : body && body.message ? body.message : text;
+    throw httpError(`AI image2 生成失敗 ${response.status}: ${translateAiWearApiError(rawMessage)}`, 502);
   }
   const item = body && Array.isArray(body.data) ? body.data[0] : body && body.data && body.data.result ? body.data.result : body && body.result ? body.result : body;
   const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64 || item.result_base64));
