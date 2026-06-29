@@ -8286,8 +8286,8 @@ async function saveAiWearResult(request, env) {
   const contentType = stringValue(request.headers.get("content-type")).toLowerCase();
   const now = Date.now();
   let body = {};
-  let resultBase64 = "";
   let resultMimeType = "";
+  let resultUrl = "";
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
     body = Object.fromEntries(Array.from(form.entries()).filter(([, value]) => typeof value === "string"));
@@ -8295,18 +8295,37 @@ async function saveAiWearResult(request, env) {
     if (file && typeof file.arrayBuffer === "function") {
       resultMimeType = stringValue(file.type || "image/jpeg").toLowerCase();
       const buffer = await file.arrayBuffer();
-      if (buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("Image too large. Please keep it under 2MB.", 400);
-      resultBase64 = arrayBufferToBase64(buffer);
+      if (buffer.byteLength > AI_WEAR_RESULT_UPLOAD_MAX_BYTES) throw httpError("合成結果圖片過大，請重新上傳較低解析度自拍。", 400);
+      const tempId = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+      const stored = await storeAiWearGeneratedResult(env, tempId, { base64: arrayBufferToBase64(buffer), mimeType: resultMimeType });
+      body.__storedId = tempId;
+      resultUrl = stored.url;
     }
   } else {
     body = await safeJson(request);
   }
-  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const id = stringValue(body.__storedId) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const modelId = stringValue(body.modelId || body.model_id);
   const model = modelId ? await env.DB.prepare("SELECT title FROM ai_wear_references WHERE id = ?").bind(modelId).first() : null;
-  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, stringValue(body.lineUserId || body.line_user_id), stringValue(body.displayName || body.display_name).slice(0, 120), modelId, stringValue(model && model.title || body.modelTitle || body.model_title).slice(0, 120), stringValue(body.personImageUrl || body.person_image_url).slice(0, 500), stringValue(body.resultImageUrl || body.result_image_url).slice(0, 500), resultMimeType, resultBase64, stringValue(body.prompt).slice(0, 4000), Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0)), stringValue(body.pointChannelKey || body.point_channel_key), normalizePointType(body.pointType || body.point_type || "gift_money"), stringValue(body.status || "completed").slice(0, 40), now).run();
-  return { id, createdAt: now, resultUrl: resultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(body.resultImageUrl || body.result_image_url) };
+  if (!resultUrl) resultUrl = stringValue(body.resultImageUrl || body.result_image_url).slice(0, 500);
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    id,
+    stringValue(body.lineUserId || body.line_user_id),
+    stringValue(body.displayName || body.display_name).slice(0, 120),
+    modelId,
+    stringValue(model && model.title || body.modelTitle || body.model_title).slice(0, 120),
+    stringValue(body.personImageUrl || body.person_image_url).slice(0, 500),
+    resultUrl,
+    resultMimeType,
+    "",
+    stringValue(body.prompt).slice(0, 4000),
+    Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0)),
+    stringValue(body.pointChannelKey || body.point_channel_key),
+    normalizePointType(body.pointType || body.point_type || "gift_money"),
+    stringValue(body.status || "completed").slice(0, 40),
+    now,
+  ).run();
+  return { id, createdAt: now, resultUrl };
 }
 
 async function listAiWearResults(env, searchParams) {
