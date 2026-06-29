@@ -7869,7 +7869,7 @@ function translateAiWearApiError(message) {
   if (/Incorrect API key/i.test(text)) return "API Key 不正確，請到 AI 穿戴設定重新確認。";
   if (/model .* does not exist/i.test(text) || /model.*not exist/i.test(text)) return "目前設定的模型不存在，請確認模型名稱是否正確。";
   if (/Duplicate parameter/i.test(text)) return "產圖請求欄位重複，系統需要調整送出格式。";
-  if (/insufficient_quota|quota exceeded|exceeded your current quota|billing hard limit|credits/i.test(text)) return "OpenAI 圖片額度或 Project 限制不足；請到 OpenAI Platform 檢查 Billing 餘額、Project Limits、Images / gpt-image-2 權限。此錯誤不會扣會員 K 點。";
+  if (/insufficient_quota|quota.*exceed|exceed.*quota|exceeded your current quota|billing hard limit|credit|額度/i.test(text)) return "OpenAI 圖片額度或 Project 限制不足；請到 OpenAI Platform 檢查 Billing 餘額、Project Limits、Images / gpt-image-2 權限。此錯誤不會扣會員 K 點。";
   if (/rate limit/i.test(text)) return "產圖服務流量過高，請稍後再試。";
   return text;
 }
