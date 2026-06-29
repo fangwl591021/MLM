@@ -212,6 +212,11 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/ai-wear/preflight" && request.method === "POST") {
+        const data = await preflightAiWearGenerate(request, env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/ai-wear/generate" && request.method === "POST") {
         const data = await generateAiWearImage(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
@@ -1275,7 +1280,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/generate") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -7552,6 +7557,38 @@ async function getAiWearPublicData(env) {
   };
 }
 
+async function preflightAiWearGenerate(request, env) {
+  await ensureAiWearSchema(env);
+  const settings = await loadAiWearSettingsRaw(env);
+  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
+  const form = await request.formData();
+  const selfie = await resolveAiWearSelfieFromForm(form, env);
+  if (!selfie || !selfie.buffer || !selfie.buffer.byteLength) throw httpError("請先上傳人物照片。", 400);
+  if (selfie.buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請重新上傳較小的照片。", 400);
+  const modelId = stringValue(form.get("modelId") || form.get("model_id"));
+  if (!modelId || modelId.includes("..") || modelId.includes("/")) throw httpError("請先選擇眼鏡款式。", 400);
+  const reference = await env.DB.prepare("SELECT id, title, series FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
+  if (!reference) throw httpError("找不到眼鏡參考圖，請重新選擇款式。", 404);
+  const verifiedProfile = await verifyAiWearLineProfileFromForm(env, settings, form);
+  const lineUserId = stringValue(verifiedProfile && verifiedProfile.userId);
+  const pointCost = Number(settings.pointCost || 0);
+  if (settings.pointDeductionEnabled && pointCost > 0 && !lineUserId) throw httpError("請先用 LINE 登入後再生成，系統需要確認會員 UID 才能扣點。", 401);
+  let balance = 0;
+  if (settings.pointDeductionEnabled && pointCost > 0) {
+    balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+    if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
+  }
+  return {
+    ok: true,
+    modelId,
+    modelTitle: stringValue(reference.title),
+    series: stringValue(reference.series),
+    pointCost,
+    balance,
+    lineUserId,
+    selfieSize: Number(selfie.size || selfie.buffer.byteLength || 0),
+  };
+}
 async function generateAiWearImage(request, env) {
   await ensureAiWearSchema(env);
   const settings = await loadAiWearSettingsRaw(env);
