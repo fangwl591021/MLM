@@ -7577,7 +7577,7 @@ async function generateAiWearImage(request, env) {
       note: `AI穿戴生成扣點 ${pointCost} 點`,
     });
   }
-  const prompt = `請務必以遮罩為硬性限制：只允許修改透明遮罩區域中的眼鏡與接觸陰影；遮罩外的人物臉部、五官、髮型、衣服、背景、光線與照片風格必須保持原始照片，不得重畫、不得美化、不得換臉。\n\n${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
+  const prompt = `請務必以遮罩為硬性限制：只允許修改透明遮罩區域中的眼鏡與接觸陰影；遮罩外的人物臉部、五官、髮型、衣服、背景、光線與照片風格必須保持原始照片，不得重畫、不得美化、不得換臉。輸出必須沿用原圖構圖、人物大小、裁切範圍與背景視角，不得拉近、不得放大、不得改成半身照或大頭照。\n\n${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
   const generated = await callAiWearImageApi(env, settings, {
     prompt,
     personBuffer,
