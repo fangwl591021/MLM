@@ -58,6 +58,7 @@ const AI_WEAR_SETTINGS_META_KEY = "ai_wear_settings";
 const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000;
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
 
 請以眼鏡參考圖作為眼鏡款式來源，只參考眼鏡本身，不參考圖片中的人物、背景或其他元素。
@@ -7576,6 +7577,9 @@ async function generateAiWearImage(request, env) {
   });
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
+  const storedResultBase64 = generated.base64 && generated.base64.length <= AI_WEAR_D1_RESULT_BASE64_MAX_CHARS ? generated.base64 : "";
+  const resultUrl = storedResultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(generated.url);
+  const inlineDataUrl = generated.base64 ? `data:${stringValue(generated.mimeType || "image/png")};base64,${generated.base64}` : "";
   await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id,
     lineUserId,
@@ -7583,9 +7587,9 @@ async function generateAiWearImage(request, env) {
     modelId,
     stringValue(reference.title).slice(0, 120),
     "",
-    stringValue(generated.url).slice(0, 500),
+    stringValue(generated.url || resultUrl).slice(0, 500),
     stringValue(generated.mimeType || "image/png"),
-    stringValue(generated.base64),
+    storedResultBase64,
     prompt.slice(0, 4000),
     settings.pointDeductionEnabled && lineUserId ? pointCost : 0,
     settings.pointChannelKey,
@@ -7593,7 +7597,7 @@ async function generateAiWearImage(request, env) {
     "completed",
     now,
   ).run();
-  return { id, createdAt: now, resultUrl: generated.base64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : generated.url, modelId, modelTitle: stringValue(reference.title) };
+  return { id, createdAt: now, resultUrl: resultUrl || inlineDataUrl, inlineDataUrl, persistedImage: Boolean(storedResultBase64 || generated.url), modelId, modelTitle: stringValue(reference.title) };
 }
 
 async function callAiWearImageApi(settings, input) {
