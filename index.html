@@ -66,7 +66,7 @@
   <div class="app">
     <aside class="left">
       <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="https://mlm.fangwl591021.workers.dev/console">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
-      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
+      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><button type="button" class="floorTab" data-floor="smart">康立智能</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
       <section class="config">
         <section class="settingsPanel">
           <div class="settingTitle"><h3>登入身份</h3><span class="roleBadge">Token 僅存在本機</span></div>
@@ -163,7 +163,8 @@
     const DEFAULT_API_BASE = "https://mlm.fangwl591021.workers.dev";
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const TAG_OPTIONS = ["產品問題", "行政問題", "訂單物流", "退換貨", "客訴", "負評", "建議", "待追蹤", "VIP"];
-    const FLOORS = { main: "產品客服", admin: "行政客服" };
+    const FLOORS = { main: "產品客服", admin: "行政客服", smart: "康立智能" };
+    const DASHBOARD_SYNC_TIMEOUT_MS = 20000;
     const POINT_SOURCES = [
       { key: "oa2", name: "康立全球", loginId: "1584", canGrant: false, deductPriority: true },
       { key: "oa1", name: "康立智能", loginId: "1086", canGrant: true }
@@ -555,6 +556,18 @@
       }, Math.max(0, Number(delayMs) || 0));
     }
 
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      try {
+        return await fetch(url, { ...options, signal: controller ? controller.signal : options.signal });
+      } catch (err) {
+        if (err && err.name === "AbortError") throw new Error(`同步逾時：資料 API 超過 ${Math.round(timeoutMs / 1000)} 秒沒有回應，請重新整理或稍後再試。`);
+        throw err;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
     async function sync(options = {}) {
       const base = apiBase();
       const floorAtStart = state.floor;
@@ -578,7 +591,7 @@
         if (!options.quiet) setStatus("同步中");
         const searchQuery = els.searchBox ? els.searchBox.value.trim() : "";
         const dataUrl = apiUrlForFloor("/api/data", floorAtStart) + (searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "");
-        const res = await fetch(dataUrl, { headers: authHeaders(), cache: "no-store" });
+        const res = await fetchWithTimeout(dataUrl, { headers: authHeaders(), cache: "no-store" }, DASHBOARD_SYNC_TIMEOUT_MS);
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         const next = {
@@ -943,7 +956,7 @@
         els.activeAvatar.textContent = "KL";
         els.activeAvatar.className = "activeAvatar";
         els.manageBar.innerHTML = ""; els.manualBar.classList.remove("show");
-        els.messages.innerHTML = `<div class="empty"><div><strong>${state.loaded ? "尚無訊息" : "同步中"}</strong><div>${state.loaded ? "請等待 LINE webhook 收到用戶訊息。" : "正在讀取 Google Sheet 與 AI 建議資料。"}</div></div></div>`;
+        els.messages.innerHTML = `<div class="empty"><div><strong>${state.loaded ? "尚無訊息" : "同步中"}</strong><div>${state.loaded ? "請等待 LINE webhook 收到用戶訊息。" : "正在讀取聊天室與 AI 建議資料。"}</div></div></div>`;
         els.suggestions.innerHTML = '<span class="muted">目前沒有 AI 建議</span>';
         return;
       }

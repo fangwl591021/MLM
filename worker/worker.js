@@ -162,9 +162,6 @@ export default {
       }
 
       if ((url.pathname === "/dashboard" || url.pathname === "/index.html") && request.method === "GET") {
-        if (String(url.searchParams.get("floor") || "").trim() === FLOOR_SMART) {
-          return Response.redirect(`${url.origin}/admin/smart-monitor`, 302);
-        }
         return serveFrontendHtml("index.html", corsHeaders);
       }
 
@@ -431,9 +428,7 @@ export default {
       }
 
       if (url.pathname === "/admin/smart-monitor" && request.method === "GET") {
-        const denied = await dashboardPageDeniedResponse(request, env, `${url.origin}/login?next=/admin/smart-monitor`, corsHeaders);
-        if (denied) return denied;
-        return serveFrontendHtml("index.html", corsHeaders, { smartMonitorDashboard: true });
+        return Response.redirect(`${url.origin}/dashboard?floor=${FLOOR_SMART}`, 302);
       }
 
       if (url.pathname === "/admin/smart-monitor-data" && request.method === "GET") {
@@ -977,15 +972,24 @@ function getProvider(env, floor) {
     return {
       floor,
       id: FLOOR_ADMIN,
-      label: "\u884c\u653f\u5ba2\u670d",
+      label: "行政客服",
       channelSecret: env.LINE_OA2_CHANNEL_SECRET || env.LINE_GLOBAL_CHANNEL_SECRET || env.LINE_ADMIN_CHANNEL_SECRET || "",
       accessToken: env.LINE_OA2_CHANNEL_ACCESS_TOKEN || env.LINE_GLOBAL_CHANNEL_ACCESS_TOKEN || env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN || "",
+    };
+  }
+  if (floor === FLOOR_SMART) {
+    return {
+      floor,
+      id: FLOOR_SMART,
+      label: "康立智能",
+      channelSecret: env.LINE_OA1_CHANNEL_SECRET || env.LINE_SMART_CHANNEL_SECRET || env.LINE_MAIN_CHANNEL_SECRET || env.LINE_CHANNEL_SECRET || "",
+      accessToken: env.LINE_OA1_CHANNEL_ACCESS_TOKEN || env.LINE_SMART_CHANNEL_ACCESS_TOKEN || env.LINE_MAIN_CHANNEL_ACCESS_TOKEN || env.LINE_CHANNEL_ACCESS_TOKEN || "",
     };
   }
   return {
     floor: FLOOR_MAIN,
     id: FLOOR_MAIN,
-    label: "\u7522\u54c1\u5ba2\u670d",
+    label: "產品客服",
     channelSecret: env.LINE_MAIN_CHANNEL_SECRET || env.LINE_CHANNEL_SECRET || "",
     accessToken: env.LINE_MAIN_CHANNEL_ACCESS_TOKEN || env.LINE_CHANNEL_ACCESS_TOKEN || "",
   };
