@@ -42,7 +42,31 @@
     function setProgress(percent,label){$("progressWrap").classList.remove("hidden");$("progressText").classList.remove("hidden");$("progressBar").style.width=`${Math.max(0,Math.min(100,percent))}%`;$("progressPercent").textContent=`${Math.round(percent)}%`;$("progressLabel").textContent=label||"生成中";}
     function startProgress(){clearInterval(state.progressTimer);let p=8;setProgress(p,"送出自拍與眼鏡素材");state.progressTimer=setInterval(()=>{p=Math.min(92,p+(p<45?7:p<75?4:1.5));setProgress(p,p<45?"確認原圖與 MODEL":p<75?"AI 試戴生成中":"整理生成結果");},900);}
     function stopProgress(done){clearInterval(state.progressTimer);state.progressTimer=null;if(done){setProgress(100,"完成");setTimeout(()=>{$("progressWrap").classList.add("hidden");$("progressText").classList.add("hidden");},900);}}
-    async function uploadSelfie(file){setStatus("自拍上傳中...", true); const form=new FormData(); form.append("action","wetw_ai_hair_upload_selfie"); form.append("post_id","ai-wear"); form.append("selfie", file, file.name||"selfie.jpg"); const res=await fetch("/api/ai-wear/upload-selfie",{method:"POST",body:form}); const json=await res.json().catch(()=>({})); if(!res.ok||json.status!=="success")throw new Error(json.message||"自拍上傳失敗"); state.selfie=json.data.selfie; saveLocal(); renderSelfie(); setStatus("自拍已保存，請選擇眼鏡款式。", true);}
+    function blobFromCanvas(canvas, type, quality){return new Promise((resolve,reject)=>canvas.toBlob((blob)=>blob?resolve(blob):reject(new Error("照片壓縮失敗")), type, quality));}
+    async function normalizeSelfieFile(file){
+      const maxUploadBytes = 1800 * 1024;
+      const maxSide = 1536;
+      const sourceUrl = URL.createObjectURL(file);
+      try{
+        const img = await new Promise((resolve,reject)=>{const image=new Image(); image.onload=()=>resolve(image); image.onerror=()=>reject(new Error("照片讀取失敗")); image.src=sourceUrl;});
+        const scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+        const width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+        const height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+        if(file.size <= maxUploadBytes && scale >= 1 && /image\/(jpeg|png|webp)/i.test(file.type||"")) return file;
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d", { alpha:false });
+        ctx.drawImage(img, 0, 0, width, height);
+        let quality = 0.9;
+        let blob = await blobFromCanvas(canvas, "image/jpeg", quality);
+        while(blob.size > maxUploadBytes && quality > 0.68){ quality -= 0.08; blob = await blobFromCanvas(canvas, "image/jpeg", quality); }
+        const baseName = String(file.name || "selfie").replace(/\.[^.]+$/, "");
+        return new File([blob], `${baseName}-aiwear.jpg`, { type:"image/jpeg", lastModified:Date.now() });
+      } finally {
+        URL.revokeObjectURL(sourceUrl);
+      }
+    }
+    async function uploadSelfie(file){setStatus("自拍處理中，解析度過高會自動降低後再上傳...", true); const normalized=await normalizeSelfieFile(file); const form=new FormData(); form.append("action","wetw_ai_hair_upload_selfie"); form.append("post_id","ai-wear"); form.append("selfie", normalized, normalized.name||"selfie.jpg"); const res=await fetch("/api/ai-wear/upload-selfie",{method:"POST",body:form}); const json=await res.json().catch(()=>({})); if(!res.ok||json.status!=="success")throw new Error(json.message||"自拍上傳失敗"); state.selfie=json.data.selfie; saveLocal(); renderSelfie(); const savedSize=normalized.size?`，檔案約 ${Math.round(normalized.size/1024)} KB`:""; setStatus(`自拍已保存${savedSize}，請選擇眼鏡款式。`, true);}
     async function generate(){const model=currentModel(); if(!state.selfie||!state.selfie.media_id){setStatus("請先上傳自拍照。", false);return;} if(!model){setStatus("請先選擇眼鏡款式。", false);return;} const button=$("generate"); const old=button.textContent; try{button.disabled=true; button.textContent="生成中..."; startProgress(); setStatus("AI 試戴生成中，通常需要 30-90 秒，請勿關閉頁面。", true); const form=new FormData(); form.append("action","wetw_ai_hair_generate"); form.append("post_id","ai-wear"); form.append("selfie_media_id", state.selfie.media_id); form.append("selfie_url", state.selfie.url||""); form.append("model_id", model.id); form.append("model_title", model.title||""); form.append("model_image_url", model.url||""); form.append("model_product_url", model.productUrl||model.product_url||""); const res=await fetch("/api/ai-wear/generate",{method:"POST",body:form}); const json=await res.json().catch(()=>({})); if(!res.ok||json.status!=="success")throw new Error(json.message||"生成失敗"); const data=json.data||{}; const result=data.result||{}; const resultUrl=result.url||data.resultUrl||data.inlineDataUrl; if(!resultUrl)throw new Error("AI 未回傳圖片。"); state.selfie=data.selfie||state.selfie; state.results.unshift({model_id:model.id,model_title:model.title||"MODEL",model_image_url:model.url||"",result_media_id:result.media_id||data.id,result_url:resultUrl,created_at:result.created_at||new Date().toLocaleString("zh-TW")}); state.results=state.results.slice(0,20); saveLocal(); renderSelfie(); renderResults(); stopProgress(true); setStatus(data.persistedImage===false?"生成完成。圖片已可下載；因圖片較大，系統只保存本次結果資訊。":"生成完成，結果已保存。", true);}catch(err){stopProgress(false);setStatus(err.message||String(err), false);}finally{button.disabled=false;button.textContent=old;}}
     $("choosePerson").onclick=()=>$("personFile").click();
     $("personFile").onchange=async(e)=>{const file=e.target.files&&e.target.files[0]; if(!file)return; const img=$("personPreview"); img.src=URL.createObjectURL(file); img.style.display="block"; try{await uploadSelfie(file);}catch(err){setStatus(err.message||String(err), false);}};
