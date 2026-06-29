@@ -60,7 +60,7 @@ const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
-const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000;
+const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000; // Legacy fallback only; new AI wear results are stored in R2.
 const DEFAULT_AI_WEAR_LIFF_ID = "2007221311-ISFxRBY3";
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
 
@@ -7515,6 +7515,36 @@ function base64ToUint8Array(value) {
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
+function aiWearMimeExtension(mimeType) {
+  const type = stringValue(mimeType).toLowerCase();
+  if (type.includes("png")) return "png";
+  if (type.includes("webp")) return "webp";
+  if (type.includes("gif")) return "gif";
+  return "jpg";
+}
+
+function aiWearResultObjectKey(id, mimeType) {
+  return `ai-wear/results/${stringValue(id)}.${aiWearMimeExtension(mimeType)}`;
+}
+
+async function storeAiWearGeneratedResult(env, id, generated) {
+  const mimeType = stringValue(generated && generated.mimeType) || "image/png";
+  const resultUrl = `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}`;
+  const bucket = env.AI_WEAR_BUCKET;
+  if (generated && generated.base64) {
+    if (!bucket || typeof bucket.put !== "function") throw httpError("AI 已產生圖片，但 R2 儲存桶尚未設定，系統無法保存。此錯誤不會扣會員 K 點。", 500, "ai_wear_r2_not_configured");
+    const bytes = base64ToUint8Array(generated.base64);
+    await bucket.put(aiWearResultObjectKey(id, mimeType), bytes, {
+      httpMetadata: { contentType: mimeType },
+      customMetadata: { kind: "ai-wear-result", id: stringValue(id) },
+    });
+    return { url: resultUrl, mimeType, storage: "r2" };
+  }
+  const remoteUrl = stringValue(generated && generated.url);
+  if (remoteUrl) return { url: remoteUrl, mimeType, storage: "remote" };
+  throw httpError("AI image2 未回傳圖片。", 502, "ai_wear_empty_image");
+}
 const CHECKIN_TEMPLATE_META_KEY = "checkin_reward_template";
 const DEFAULT_CHECKIN_TEMPLATE = {
   active: true,
@@ -7657,9 +7687,9 @@ async function generateAiWearImage(request, env) {
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
   let deductedPointCost = 0;
-  const storedResultBase64 = generated.base64 && generated.base64.length <= AI_WEAR_D1_RESULT_BASE64_MAX_CHARS ? generated.base64 : "";
-  if (generated.base64 && !storedResultBase64 && !generated.url) throw httpError("AI 已產生圖片，但結果檔案過大，系統無法保存。請改用較低解析度自拍或稍後重試。此錯誤不會扣會員 K 點。", 413);
-  const resultUrl = storedResultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(generated.url);
+  const storedResult = await storeAiWearGeneratedResult(env, id, generated);
+  const storedResultBase64 = "";
+  const resultUrl = storedResult.url;
   const inlineDataUrl = "";
   if (shouldDeductPoints) {
     await applyPointMutation(env, {
@@ -7683,8 +7713,8 @@ async function generateAiWearImage(request, env) {
     modelId,
     stringValue(reference.title).slice(0, 120),
     stringValue(selfie.url).slice(0, 500),
-    stringValue(generated.url || resultUrl).slice(0, 500),
-    stringValue(generated.mimeType || "image/png"),
+    stringValue(resultUrl).slice(0, 500),
+    stringValue(storedResult.mimeType || generated.mimeType || "image/png"),
     storedResultBase64,
     prompt.slice(0, 4000),
     deductedPointCost,
@@ -8290,9 +8320,17 @@ async function serveAiWearResultImage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
   const id = aiWearAssetIdFromPath(pathname, AI_WEAR_RESULT_ASSET_PREFIX);
   if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
-  const row = await env.DB.prepare("SELECT result_mime_type, result_base64, created_at FROM ai_wear_results WHERE id = ?").bind(id).first();
-  if (!row || !row.result_base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
-  return new Response(base64ToUint8Array(row.result_base64), { status: 200, headers: { ...corsHeaders, "Content-Type": row.result_mime_type || "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
+  const row = await env.DB.prepare("SELECT result_mime_type, result_base64, result_image_url, created_at FROM ai_wear_results WHERE id = ?").bind(id).first();
+  if (!row) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  const mimeType = stringValue(row.result_mime_type || "image/jpeg");
+  if (row.result_base64) {
+    return new Response(base64ToUint8Array(row.result_base64), { status: 200, headers: { ...corsHeaders, "Content-Type": mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
+  }
+  const bucket = env.AI_WEAR_BUCKET;
+  if (!bucket || typeof bucket.get !== "function") return new Response("AI wear R2 bucket is not configured", { status: 500, headers: corsHeaders });
+  const object = await bucket.get(aiWearResultObjectKey(id, mimeType));
+  if (!object) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  return new Response(object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
 }
 
 async function getCheckinTemplate(env) {

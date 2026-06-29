@@ -7,6 +7,10 @@ binding = "DB"
 database_name = "mlm_line_oa"
 database_id = "319f701f-e60e-46f1-b62a-48e44102bf79"
 
+[[r2_buckets]]
+binding = "AI_WEAR_BUCKET"
+bucket_name = "k-linksaas-images"
+
 [vars]
 # Set real values in Cloudflare Dashboard secrets / variables.
 # GAS_URL = "https://script.google.com/macros/s/..."
