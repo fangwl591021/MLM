@@ -7635,9 +7635,13 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
 }
 
 async function callImage2WearApi(settings, input, apiUrl) {
-  const ajaxUrl = stringValue(settings.aiweAjaxUrl || apiUrl).trim();
-  const nonce = stringValue(settings.aiweNonce).trim();
-  const postId = stringValue(settings.aiwePostId).trim();
+  let ajaxUrl = stringValue(settings.aiweAjaxUrl || apiUrl).trim();
+  let nonce = stringValue(settings.aiweNonce).trim();
+  let postId = stringValue(settings.aiwePostId).trim();
+  const runtimeConfig = await loadAiweRuntimeConfig(settings, ajaxUrl, postId);
+  ajaxUrl = runtimeConfig.ajaxUrl || ajaxUrl;
+  nonce = runtimeConfig.nonce || nonce;
+  postId = runtimeConfig.postId || postId;
   if (!ajaxUrl) throw httpError("請先在 AI 穿戴設定填入 AIWE AJAX URL。", 400);
   if (!nonce || !postId) throw httpError("請先在 AI 穿戴設定填入 nonce 與 post_id。", 400);
 
@@ -7649,7 +7653,6 @@ async function callImage2WearApi(settings, input, apiUrl) {
   const uploadJson = await parseAiWearJsonResponse(await fetch(ajaxUrl, {
     method: "POST",
     body: upload,
-    headers: aiWearOptionalAuthHeaders(settings),
   }), "自拍照上傳失敗");
   const selfie = uploadJson && uploadJson.data && uploadJson.data.selfie ? uploadJson.data.selfie : uploadJson && uploadJson.selfie ? uploadJson.selfie : {};
 
@@ -7668,7 +7671,6 @@ async function callImage2WearApi(settings, input, apiUrl) {
   const json = await parseAiWearJsonResponse(await fetch(ajaxUrl, {
     method: "POST",
     body: generate,
-    headers: aiWearOptionalAuthHeaders(settings),
   }), "AI產圖失敗");
   const data = json && json.data ? json.data : json;
   const result = data && data.result ? data.result : data;
@@ -7676,6 +7678,26 @@ async function callImage2WearApi(settings, input, apiUrl) {
   const base64 = stringValue(result && (result.base64 || result.b64_json || result.image_base64));
   if (!url && !base64) throw httpError("AI image2 未回傳圖片。", 502);
   return { base64, url, mimeType: stringValue(result && result.mime_type) || "image/png", selfie, raw: data };
+}
+
+async function loadAiweRuntimeConfig(settings, fallbackAjaxUrl, fallbackPostId) {
+  const pageUrl = stringValue(settings.aiwePageUrl || settings.pageUrl).trim() || (fallbackPostId ? `https://aiwe.cc/index.php/linecard_33/${encodeURIComponent(fallbackPostId)}/` : "");
+  if (!pageUrl) return {};
+  try {
+    const response = await fetch(pageUrl, { headers: { "User-Agent": "KLINK-AI-Wear/1.0" } });
+    if (!response.ok) return {};
+    const html = await response.text();
+    const ajaxMatch = html.match(/ajaxUrl\s*:\s*["']([^"']+)["']/);
+    const nonceMatch = html.match(/nonce\s*:\s*["']([^"']+)["']/);
+    const postMatch = html.match(/postId\s*:\s*(\d+)/);
+    return {
+      ajaxUrl: ajaxMatch ? ajaxMatch[1].replace(/\\\//g, "/") : fallbackAjaxUrl,
+      nonce: nonceMatch ? nonceMatch[1] : "",
+      postId: postMatch ? postMatch[1] : fallbackPostId,
+    };
+  } catch (_err) {
+    return {};
+  }
 }
 
 function aiWearOptionalAuthHeaders(settings) {
