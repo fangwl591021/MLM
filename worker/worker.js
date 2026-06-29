@@ -61,6 +61,7 @@ const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
 const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000;
+const DEFAULT_AI_WEAR_LIFF_ID = "2007221311-ISFxRBY3";
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
 
 請以眼鏡參考圖作為眼鏡款式來源，只參考眼鏡本身，不參考圖片中的人物、背景或其他元素。
@@ -73,6 +74,7 @@ const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物
 const DEFAULT_AI_WEAR_SETTINGS = {
   title: "康立負離子眼鏡系列",
   publicPath: "/ai-wear",
+  liffId: DEFAULT_AI_WEAR_LIFF_ID,
   prompt: DEFAULT_AI_WEAR_PROMPT,
   imageModel: "image2",
   imageApiUrl: "",
@@ -7568,9 +7570,12 @@ async function generateAiWearImage(request, env) {
   const reference = await env.DB.prepare("SELECT id, title, series, mime_type, base64 FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
   if (!reference || !reference.base64) throw httpError("找不到眼鏡參考圖。", 404);
   const personDimensions = readAiWearImageDimensions(personBuffer, personMimeType);
-  const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id") || selfie.lineUserId);
-  const displayName = stringValue(form.get("displayName") || form.get("display_name") || selfie.displayName).slice(0, 120);
+  const verifiedProfile = await verifyAiWearLineProfileFromForm(env, settings, form);
+  const verifiedLineUserId = stringValue(verifiedProfile && verifiedProfile.userId);
+  const lineUserId = verifiedLineUserId || stringValue(selfie.lineUserId);
+  const displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || form.get("displayName") || form.get("display_name") || selfie.displayName).slice(0, 120);
   const pointCost = Number(settings.pointCost || 0);
+  if (settings.pointDeductionEnabled && pointCost > 0 && !verifiedLineUserId) throw httpError("請先用 LINE 登入後再生成，系統需要確認會員 UID 才能扣點。", 401);
   if (settings.pointDeductionEnabled && pointCost > 0 && lineUserId) {
     const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
     if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
@@ -7867,6 +7872,7 @@ function normalizeAiWearSettings(input, existing = {}) {
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
     publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
+    liffId: normalizeAiWearLiffId(source.liffId || source.liff_id || current.liffId || DEFAULT_AI_WEAR_SETTINGS.liffId),
     prompt: stringValue(source.prompt || current.prompt || DEFAULT_AI_WEAR_SETTINGS.prompt).slice(0, 4000),
     imageModel: stringValue(source.imageModel || source.model || current.imageModel || DEFAULT_AI_WEAR_SETTINGS.imageModel).slice(0, 60),
     imageApiUrl,
@@ -7882,6 +7888,45 @@ function normalizeAiWearSettings(input, existing = {}) {
 }
 
 
+function normalizeAiWearLiffId(value) {
+  const text = stringValue(value).trim();
+  if (!text) return DEFAULT_AI_WEAR_LIFF_ID;
+  if (!/^\d+-[A-Za-z0-9_-]+$/.test(text)) return DEFAULT_AI_WEAR_LIFF_ID;
+  return text.slice(0, 80);
+}
+
+function aiWearLineClientId(env, settings) {
+  const configured = stringValue(env.AI_WEAR_LINE_LOGIN_CHANNEL_ID || env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || "").trim();
+  if (configured) return configured;
+  const liffId = normalizeAiWearLiffId(settings && settings.liffId);
+  const match = liffId.match(/^(\d+)-/);
+  return match ? match[1] : "";
+}
+
+async function verifyAiWearLineProfileFromForm(env, settings, form) {
+  const idToken = stringValue(form.get("idToken") || form.get("id_token") || form.get("lineIdToken") || form.get("line_id_token")).trim();
+  if (!idToken) return null;
+  const clientId = aiWearLineClientId(env, settings);
+  if (!clientId) throw httpError("AI 穿戴尚未設定 LINE Login Channel ID。", 500);
+  const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ id_token: idToken, client_id: clientId }).toString(),
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
+  if (!response.ok || !data || !data.sub) {
+    const message = data && (data.error_description || data.error) || text || "LINE ID Token verify failed";
+    throw httpError(`LINE 登入驗證失敗：${message}`, 401);
+  }
+  return {
+    userId: stringValue(data.sub),
+    displayName: stringValue(data.name),
+    pictureUrl: stringValue(data.picture),
+    email: stringValue(data.email),
+  };
+}
 function normalizeAiWearImageApiUrl(value) {
   const text = stringValue(value).trim();
   if (!text) return "";
@@ -7965,8 +8010,10 @@ async function uploadAiWearSelfie(request, env) {
   const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}.${ext}`;
   const now = Date.now();
-  const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id"));
-  const displayName = stringValue(form.get("displayName") || form.get("display_name")).slice(0, 120);
+  const settings = await loadAiWearSettingsRaw(env);
+  const verifiedProfile = await verifyAiWearLineProfileFromForm(env, settings, form);
+  const lineUserId = stringValue((verifiedProfile && verifiedProfile.userId) || form.get("lineUserId") || form.get("line_user_id"));
+  const displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || form.get("displayName") || form.get("display_name")).slice(0, 120);
   const fileName = stringValue(file.name || id).slice(0, 160);
   await env.DB.prepare(`INSERT INTO ai_wear_selfies (id, line_user_id, display_name, file_name, mime_type, size, base64, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, lineUserId, displayName, fileName, mimeType, buffer.byteLength, arrayBufferToBase64(buffer), now).run();
