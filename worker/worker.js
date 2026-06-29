@@ -7569,7 +7569,7 @@ async function generateAiWearImage(request, env) {
     });
   }
   const prompt = `${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
-  const generated = await callAiWearImageApi(settings, {
+  const generated = await callAiWearImageApi(env, settings, {
     prompt,
     personBuffer,
     personMimeType,
@@ -7607,11 +7607,11 @@ async function generateAiWearImage(request, env) {
   return { id, createdAt: now, resultUrl: resultUrl || inlineDataUrl, inlineDataUrl, persistedImage: Boolean(storedResultBase64 || generated.url), modelId, modelTitle: stringValue(reference.title) };
 }
 
-async function callAiWearImageApi(settings, input) {
-  const apiUrl = stringValue(settings.imageApiUrl || settings.aiweAjaxUrl).trim();
-  if (!apiUrl) throw httpError("請先在 AI 穿戴設定填入 image2 正式產圖 API URL。", 400);
+async function callAiWearImageApi(env, settings, input) {
+  const apiUrl = stringValue(env.AI_IMAGE2_API_URL || settings.imageApiUrl || settings.aiweAjaxUrl).trim();
+  if (!apiUrl) throw httpError("AI 穿戴後端尚未接上 image2 產圖服務。系統公開入口已固定為 /api/ai-wear/generate，請在 Worker 環境設定 AI_IMAGE2_API_URL。", 500);
   if (/wp-admin\/admin-ajax\.php/i.test(apiUrl)) {
-    throw httpError("目前填的是 AIWE WordPress AJAX URL，不是可直接使用的 image2 API。本系統已改為自有圖庫流程，請填入 image2 服務商正式產圖 API URL。", 400);
+    throw httpError("目前後端仍指向 AIWE WordPress AJAX，這不是正式 image2 產圖服務。本系統已改為自有圖庫流程，請改接正式 image2 provider。", 500);
   }
   const isOpenAiEndpoint = /(^|\.)openai\.com\/v1\/images\//i.test(apiUrl);
   if (isOpenAiEndpoint) return callOpenAiWearImageApi(settings, input, apiUrl);

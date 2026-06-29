@@ -165,8 +165,7 @@
             <label>本系統入口路徑<input id="aiWearPublicPath" type="text" placeholder="/ai-wear" /></label>
             <label>image2 API Key<input id="aiWearApiKey" type="password" placeholder="已設定可留空；輸入新值會覆蓋" /></label>
             <label>模型名稱<input id="aiWearModel" type="text" placeholder="image2" /></label>
-            <label class="aiWearWide">image2 API URL<input id="aiWearApiUrl" type="url" placeholder="請填入 image2 服務商正式產圖 API URL，不使用 aiwe WordPress AJAX" /></label>
-            <div class="aiWearNote aiWearWide">正式流程使用本系統自己的眼鏡圖庫與會員產圖紀錄；不再連 aiwe/linecard 的 WordPress MODEL 驗證。</div>
+            <div class="aiWearNote aiWearWide">本系統產圖入口固定為 /api/ai-wear/generate；管理員只需設定 image2 API Key、模型名稱、提示詞與點數扣抵。</div>
             <label class="aiWearWide">AI SHOW ROOM 提示詞<textarea id="aiWearPrompt"></textarea></label>
             <label>每次生成扣點<input id="aiWearPointCost" type="number" min="0" step="1" /></label>
             <label>扣點平台<select id="aiWearPointChannel"><option value="oa1">康立智能 · 1086</option><option value="oa2">康立全球 · 1584</option></select></label>
@@ -1174,8 +1173,8 @@
         publicPath: ($("aiWearPublicPath") ? $("aiWearPublicPath").value.trim() : "") || "/ai-wear",
         image2ApiKey: ($("aiWearApiKey") ? $("aiWearApiKey").value.trim() : ""),
         imageModel: ($("aiWearModel") ? $("aiWearModel").value.trim() : "") || "image2",
-        imageApiUrl: ($("aiWearApiUrl") ? $("aiWearApiUrl").value.trim() : ""),
-        aiweAjaxUrl: ($("aiWearApiUrl") ? $("aiWearApiUrl").value.trim() : ""),
+        imageApiUrl: "",
+        aiweAjaxUrl: "",
         aiweNonce: ($("aiWearNonce") ? $("aiWearNonce").value.trim() : ""),
         aiwePostId: ($("aiWearPostId") ? $("aiWearPostId").value.trim() : ""),
         prompt: ($("aiWearPrompt") ? $("aiWearPrompt").value.trim() : "") || DEFAULT_AI_WEAR_PROMPT,
@@ -1193,7 +1192,6 @@
       if ($("aiWearPublicLink")) { const href = new URL(settings.publicPath || "/ai-wear", location.origin).href; $("aiWearPublicLink").href = href; $("aiWearPublicLink").textContent = href; }
       if ($("aiWearApiKey")) { $("aiWearApiKey").value = ""; $("aiWearApiKey").placeholder = settings.hasImage2ApiKey ? "已設定，可留空不變" : "尚未設定，請輸入 image2 API Key"; }
       if ($("aiWearModel")) $("aiWearModel").value = settings.imageModel || "image2";
-      if ($("aiWearApiUrl")) $("aiWearApiUrl").value = settings.aiweAjaxUrl || settings.imageApiUrl || "";
       if ($("aiWearNonce")) $("aiWearNonce").value = settings.aiweNonce || "";
       if ($("aiWearPostId")) $("aiWearPostId").value = settings.aiwePostId || "";
       if ($("aiWearPrompt")) $("aiWearPrompt").value = settings.prompt || DEFAULT_AI_WEAR_PROMPT;
