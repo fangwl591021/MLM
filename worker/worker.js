@@ -833,6 +833,7 @@ export default {
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
       if (err && err.code) payload.code = err.code;
+      if (err && err.detail) payload.detail = err.detail;
       return jsonResponse(payload, err.status || 500, corsHeaders);
     }
   },
@@ -7888,6 +7889,7 @@ function translateAiWearApiError(message, detail = {}) {
   if (/Invalid size/i.test(text)) return "圖片輸出尺寸不符合 image2 規格，請重新產生一次。";
   if (/Incorrect API key/i.test(text)) return "API Key 不正確，請到 AI 穿戴設定重新確認。";
   if (/model .* does not exist/i.test(text) || /model.*not exist/i.test(text)) return "目前設定的模型不存在，請確認模型名稱是否正確。";
+  if (/Country, region, or territory not supported|not supported in your country|unsupported country|region.*not supported/i.test(text)) return "OpenAI 圖片服務回覆：目前這個帳號、IP 或所在地區不支援圖片生成。請確認 OpenAI 組織/帳務地區、使用環境 IP、或改用可支援的 image2 provider。此錯誤不會扣會員 K 點。";
   if (/Duplicate parameter/i.test(text)) return "產圖請求欄位重複，系統需要調整送出格式。";
   if (/rate limit/i.test(text)) return "產圖服務流量過高，請稍後再試。";
   if (/insufficient_quota|quota.*exceed|exceed.*quota|exceeded your current quota|billing hard limit|credit|額度/i.test(text)) {
@@ -7919,7 +7921,10 @@ async function parseAiWearImageResponse(response) {
   if (!response.ok) {
     const rawMessage = body && body.error && body.error.message ? body.error.message : body && body.message ? body.message : text;
     const debug = aiWearResponseDebug(response, body || {});
-    throw httpError(`AI image2 生成失敗 ${response.status}: ${translateAiWearApiError(rawMessage, debug)}`, 502);
+    const status = response.status >= 400 && response.status < 500 ? response.status : 502;
+    const err = httpError(`AI image2 生成失敗 ${response.status}: ${translateAiWearApiError(rawMessage, debug)}`, status, debug.code || "ai_image_error");
+    err.detail = debug;
+    throw err;
   }
   const item = body && Array.isArray(body.data) ? body.data[0] : body && body.data && body.data.result ? body.data.result : body && body.result ? body.result : body;
   const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64 || item.result_base64));
