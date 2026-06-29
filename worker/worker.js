@@ -72,6 +72,7 @@ const DEFAULT_AI_WEAR_SETTINGS = {
   publicPath: "/ai-wear",
   prompt: DEFAULT_AI_WEAR_PROMPT,
   imageModel: "image2",
+  imageApiUrl: "https://api.openai.com/v1/images/edits",
   pointDeductionEnabled: false,
   pointCost: 0,
   pointChannelKey: POINT_OA1,
@@ -7597,6 +7598,10 @@ async function generateAiWearImage(request, env) {
 
 async function callAiWearImageApi(settings, input) {
   const apiUrl = settings.imageApiUrl || "https://api.openai.com/v1/images/edits";
+  const isOpenAiEndpoint = /(^|\.)openai\.com\/v1\/images\//i.test(apiUrl);
+  if (isOpenAiEndpoint && !/^sk-(proj-)?[A-Za-z0-9_-]+/.test(stringValue(settings.image2ApiKey))) {
+    throw httpError("目前 API URL 是 OpenAI 圖片端點，但 image2 API Key 不是 OpenAI key 格式。請在 AI 穿戴設定填入 image2 服務商提供的正確 API URL，或改用 OpenAI sk-/sk-proj- key。", 400);
+  }
   const payload = new FormData();
   payload.append("model", settings.imageModel || "gpt-image-1");
   payload.append("prompt", input.prompt);
@@ -7648,11 +7653,13 @@ function normalizeAiWearSettings(input, existing = {}) {
     ? stringValue(source.pointChannelKey || source.channel_key || current.pointChannelKey)
     : DEFAULT_AI_WEAR_SETTINGS.pointChannelKey;
   const pointType = normalizePointType(source.pointType || source.point_type || current.pointType || DEFAULT_AI_WEAR_SETTINGS.pointType);
+  const imageApiUrl = normalizeAiWearImageApiUrl(source.imageApiUrl || source.image_api_url || source.apiUrl || source.api_url || current.imageApiUrl || DEFAULT_AI_WEAR_SETTINGS.imageApiUrl);
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
     publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
     prompt: stringValue(source.prompt || current.prompt || DEFAULT_AI_WEAR_SETTINGS.prompt).slice(0, 4000),
     imageModel: stringValue(source.imageModel || source.model || current.imageModel || DEFAULT_AI_WEAR_SETTINGS.imageModel).slice(0, 60),
+    imageApiUrl,
     image2ApiKey: keptApiKey,
     pointDeductionEnabled: source.pointDeductionEnabled === true || source.point_deduction_enabled === true || source.deductPoints === true,
     pointCost,
@@ -7661,6 +7668,13 @@ function normalizeAiWearSettings(input, existing = {}) {
   };
 }
 
+
+function normalizeAiWearImageApiUrl(value) {
+  const text = stringValue(value).trim();
+  if (!text) return DEFAULT_AI_WEAR_SETTINGS.imageApiUrl;
+  if (!/^https:\/\//i.test(text)) return DEFAULT_AI_WEAR_SETTINGS.imageApiUrl;
+  return text.slice(0, 500);
+}
 function sanitizeAiWearSettingsForClient(settings) {
   const data = { ...settings };
   data.hasImage2ApiKey = Boolean(data.image2ApiKey);
