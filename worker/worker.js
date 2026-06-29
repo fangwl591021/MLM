@@ -7545,6 +7545,15 @@ async function generateAiWearImage(request, env) {
   if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(personMimeType)) throw httpError("人物照片僅支援 JPG、PNG、WEBP。", 400);
   const personBuffer = await personFile.arrayBuffer();
   if (personBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請壓到 2MB 以內。", 400);
+  const maskFile = form.get("editMask") || form.get("mask") || form.get("maskImage");
+  let maskBuffer = null;
+  let maskMimeType = "";
+  if (maskFile && typeof maskFile.arrayBuffer === "function") {
+    maskMimeType = stringValue(maskFile.type || "image/png").toLowerCase();
+    if (maskMimeType !== "image/png") throw httpError("原圖鎖定遮罩必須是 PNG。", 400);
+    maskBuffer = await maskFile.arrayBuffer();
+    if (maskBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("原圖鎖定遮罩過大，請壓到 2MB 以內。", 400);
+  }
   const modelId = stringValue(form.get("modelId") || form.get("model_id"));
   if (!modelId || modelId.includes("..") || modelId.includes("/")) throw httpError("請選擇眼鏡款式。", 400);
   const reference = await env.DB.prepare("SELECT id, title, series, mime_type, base64 FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
@@ -7568,12 +7577,14 @@ async function generateAiWearImage(request, env) {
       note: `AI穿戴生成扣點 ${pointCost} 點`,
     });
   }
-  const prompt = `${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
+  const prompt = `請務必以遮罩為硬性限制：只允許修改透明遮罩區域中的眼鏡與接觸陰影；遮罩外的人物臉部、五官、髮型、衣服、背景、光線與照片風格必須保持原始照片，不得重畫、不得美化、不得換臉。\n\n${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
   const generated = await callAiWearImageApi(env, settings, {
     prompt,
     personBuffer,
     personMimeType,
     personFileName: stringValue(personFile.name || "person.jpg"),
+    maskBuffer,
+    maskMimeType,
     referenceBase64: stringValue(reference.base64),
     referenceMimeType: stringValue(reference.mime_type || "image/jpeg"),
     referenceFileName: stringValue(reference.id || "glasses.jpg"),
@@ -7629,8 +7640,9 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
   const payload = new FormData();
   payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
-  payload.append("size", "1024x1536");
+  payload.append("size", "auto");
   payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  if (input.maskBuffer) payload.append("mask", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-mask.png");
   payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
   return parseAiWearImageResponse(await fetch(apiUrl, {
     method: "POST",
@@ -7644,6 +7656,7 @@ async function callDirectImage2WearApi(settings, input, apiUrl) {
   payload.append("model", stringValue(settings.imageModel || "image2") || "image2");
   payload.append("prompt", input.prompt);
   payload.append("person_image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  if (input.maskBuffer) payload.append("mask_image", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-mask.png");
   payload.append("reference_image", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
   payload.append("reference_title", stringValue(input.referenceTitle || ""));
   payload.append("reference_series", stringValue(input.referenceSeries || ""));

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
@@ -114,8 +114,24 @@
       $("resultBox").innerHTML = url ? `<img src="${esc(url)}" alt="AI試戴結果"><p><a class="secondary" href="${esc(url)}" download="ai-wear-result.png">下載圖片</a></p>` : "尚無產出紀錄。";
     }
     function setProgress(percent,label){$("progressWrap").classList.remove("hidden");$("progressText").classList.remove("hidden");$("progressBar").style.width=`${Math.max(0,Math.min(100,percent))}%`;$("progressPercent").textContent=`${Math.round(percent)}%`;$("progressLabel").textContent=label||"生成中";}
-    function startProgress(){clearInterval(state.progressTimer);let p=8;setProgress(p,"上傳照片與參考圖");state.progressTimer=setInterval(()=>{p=Math.min(92,p+(p<45?7:p<75?4:1.5));setProgress(p,p<45?"分析臉部角度":p<75?"套用眼鏡款式":"整理生成結果");},900);}
+    function startProgress(){clearInterval(state.progressTimer);let p=8;setProgress(p,"上傳照片與參考圖");state.progressTimer=setInterval(()=>{p=Math.min(92,p+(p<45?7:p<75?4:1.5));setProgress(p,p<45?"建立原圖鎖定遮罩":p<75?"只編輯眼鏡區域":"整理生成結果");},900);}
     function stopProgress(done){clearInterval(state.progressTimer);state.progressTimer=null;if(done){setProgress(100,"完成");setTimeout(()=>{$("progressWrap").classList.add("hidden");$("progressText").classList.add("hidden");},900);}}
+    async function createGlassesMask(file){
+      const bitmap = await (window.createImageBitmap ? createImageBitmap(file) : new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=URL.createObjectURL(file);}));
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "rgba(0,0,0,1)";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      const x = Math.round(canvas.width * 0.14);
+      const y = Math.round(canvas.height * 0.20);
+      const w = Math.round(canvas.width * 0.72);
+      const h = Math.round(canvas.height * 0.30);
+      ctx.clearRect(x,y,w,h);
+      if (bitmap.close) bitmap.close();
+      return await new Promise((resolve,reject)=>canvas.toBlob((blob)=>blob?resolve(blob):reject(new Error("遮罩產生失敗")),"image/png"));
+    }
     async function generate(){
       if(!state.personFile){setStatus("請先上傳自拍照。", false);return;}
       if(!state.selected){setStatus("請先選擇眼鏡款式。", false);return;}
@@ -124,6 +140,8 @@
         button.disabled=true; button.textContent="生成中..."; startProgress(); setStatus("AI 試戴生成中，通常需要 30-90 秒，請勿關閉頁面。", true);
         const form = new FormData();
         form.append("personImage", state.personFile, state.personFile.name || "person.jpg");
+        const mask = await createGlassesMask(state.personFile);
+        form.append("editMask", mask, "glasses-mask.png");
         form.append("modelId", state.selected);
         form.append("displayName", "");
         const res = await fetch("/api/ai-wear/generate", { method:"POST", body:form });
