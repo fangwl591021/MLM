@@ -5283,10 +5283,14 @@ function wetwPointRowRank(item) {
 function normalizeWetwPointType(value) {
   const raw = stringValue(value).trim().toLowerCase();
   if (!raw) return "";
-  const compact = raw.replace(/[s_-]+/g, "");
+  const compact = raw.replace(/[\s_-]+/g, "");
   if (["giftmoney", "kpoint", "kpoints", "k點", "購物金", "系統k點"].includes(compact)) return "gift_money";
   if (["systempoint", "系統點數", "原始點數"].includes(compact)) return "system_point";
   return raw;
+}
+
+function normalizePointType(value) {
+  return normalizeWetwPointType(value) || "gift_money";
 }
 
 function wetwPointRowTypeText(row) {
