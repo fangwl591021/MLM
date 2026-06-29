@@ -59,6 +59,7 @@ const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
 const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
 const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000;
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
 
@@ -7960,7 +7961,7 @@ async function uploadAiWearSelfie(request, env) {
   const supported = new Set(["image/jpeg", "image/png", "image/webp"]);
   if (!supported.has(mimeType)) throw httpError("Only JPG, PNG, and WEBP are supported.", 400);
   const buffer = await file.arrayBuffer();
-  if (buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("Image too large. Please keep it under 2MB.", 400);
+  if (buffer.byteLength > AI_WEAR_SELFIE_MAX_BYTES) throw httpError("自拍照片仍然過大，請重新選擇或截圖後再上傳。", 400);
   const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}.${ext}`;
   const now = Date.now();
