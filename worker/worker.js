@@ -73,7 +73,7 @@ const DEFAULT_AI_WEAR_SETTINGS = {
   publicPath: "/ai-wear",
   prompt: DEFAULT_AI_WEAR_PROMPT,
   imageModel: "image2",
-  imageApiUrl: "https://api.openai.com/v1/images/edits",
+  imageApiUrl: "",
   pointDeductionEnabled: false,
   pointCost: 0,
   pointChannelKey: POINT_OA1,
@@ -7574,6 +7574,8 @@ async function generateAiWearImage(request, env) {
     referenceBase64: stringValue(reference.base64),
     referenceMimeType: stringValue(reference.mime_type || "image/jpeg"),
     referenceFileName: stringValue(reference.id || "glasses.jpg"),
+    referenceImageUrl: `${publicBaseUrl(env)}${AI_WEAR_REFERENCE_ASSET_PREFIX}${encodeURIComponent(stringValue(reference.id || ""))}`,
+    referenceTitle: stringValue(reference.title),
   });
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
@@ -7601,36 +7603,65 @@ async function generateAiWearImage(request, env) {
 }
 
 async function callAiWearImageApi(settings, input) {
-  const apiUrl = settings.imageApiUrl || "https://api.openai.com/v1/images/edits";
+  const apiUrl = stringValue(settings.imageApiUrl).trim();
+  if (!apiUrl) throw httpError("請先在 AI 穿戴設定填入 image2 API URL。", 400);
   const isOpenAiEndpoint = /(^|\.)openai\.com\/v1\/images\//i.test(apiUrl);
-  if (isOpenAiEndpoint && !/^sk-(proj-)?[A-Za-z0-9_-]+/.test(stringValue(settings.image2ApiKey))) {
-    throw httpError("目前 API URL 是 OpenAI 圖片端點，但 image2 API Key 不是 OpenAI key 格式。請在 AI 穿戴設定填入 image2 服務商提供的正確 API URL，或改用 OpenAI sk-/sk-proj- key。", 400);
+  if (isOpenAiEndpoint) return callOpenAiWearImageApi(settings, input, apiUrl);
+  return callImage2WearApi(settings, input, apiUrl);
+}
+
+async function callOpenAiWearImageApi(settings, input, apiUrl) {
+  if (!/^sk-(proj-)?[A-Za-z0-9_-]+/.test(stringValue(settings.image2ApiKey))) {
+    throw httpError("目前 API URL 是 OpenAI 圖片端點，但 image2 API Key 不是 OpenAI key 格式。請填入 image2 服務商 API URL，或改用 OpenAI key。", 400);
   }
   const requestedModel = stringValue(settings.imageModel || "gpt-image-1").trim() || "gpt-image-1";
-  const effectiveImageModel = isOpenAiEndpoint && requestedModel.toLowerCase() === "image2" ? "gpt-image-1" : requestedModel;
+  const effectiveImageModel = requestedModel.toLowerCase() === "image2" ? "gpt-image-1" : requestedModel;
   const payload = new FormData();
   payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
   payload.append("size", "1024x1536");
   payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
   payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
-  const response = await fetch(apiUrl, {
+  return parseAiWearImageResponse(await fetch(apiUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${settings.image2ApiKey}` },
     body: payload,
-  });
+  }));
+}
+
+async function callImage2WearApi(settings, input, apiUrl) {
+  const payload = new FormData();
+  payload.append("prompt", input.prompt);
+  payload.append("model", stringValue(settings.imageModel || "image2"));
+  payload.append("model_title", stringValue(input.referenceTitle || input.referenceFileName || "MODEL"));
+  payload.append("model_image_url", stringValue(input.referenceImageUrl));
+  payload.append("reference_image_url", stringValue(input.referenceImageUrl));
+  payload.append("selfie", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  payload.append("person_image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  payload.append("size", "1024x1536");
+  return parseAiWearImageResponse(await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${settings.image2ApiKey}`,
+      "X-API-Key": settings.image2ApiKey,
+    },
+    body: payload,
+  }));
+}
+
+async function parseAiWearImageResponse(response) {
   const text = await response.text();
   let body = null;
   try { body = JSON.parse(text); } catch (_err) { body = null; }
   if (!response.ok) {
-    const message = body && body.error && body.error.message ? body.error.message : text;
+    const message = body && body.error && body.error.message ? body.error.message : body && body.message ? body.message : text;
     throw httpError(`AI image2 生成失敗 ${response.status}: ${message}`, 502);
   }
-  const item = body && Array.isArray(body.data) ? body.data[0] : null;
-  const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64));
-  const url = stringValue(item && item.url);
+  const item = body && Array.isArray(body.data) ? body.data[0] : body && body.data && body.data.result ? body.data.result : body && body.result ? body.result : body;
+  const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64 || item.result_base64));
+  const url = stringValue(item && (item.url || item.image_url || item.result_url || item.output_url));
   if (!base64 && !url) throw httpError("AI image2 未回傳圖片。", 502);
-  return { base64, url, mimeType: "image/png" };
+  return { base64, url, mimeType: stringValue(item && item.mime_type) || "image/png" };
 }
 async function getAiWearSettings(env) {
   return sanitizeAiWearSettingsForClient(await loadAiWearSettingsRaw(env));
@@ -7677,8 +7708,8 @@ function normalizeAiWearSettings(input, existing = {}) {
 
 function normalizeAiWearImageApiUrl(value) {
   const text = stringValue(value).trim();
-  if (!text) return DEFAULT_AI_WEAR_SETTINGS.imageApiUrl;
-  if (!/^https:\/\//i.test(text)) return DEFAULT_AI_WEAR_SETTINGS.imageApiUrl;
+  if (!text) return "";
+  if (!/^https:\/\//i.test(text)) return "";
   return text.slice(0, 500);
 }
 function sanitizeAiWearSettingsForClient(settings) {
