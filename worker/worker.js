@@ -7624,7 +7624,8 @@ async function generateAiWearImage(request, env) {
     const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
     if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
   }
-  const prompt = buildAiWearIdentityPrompt(settings, reference, personDimensions, Boolean(maskBuffer));
+  const wearMode = normalizeAiWearWearMode(form.get("wear_mode") || form.get("wearMode"));
+  const prompt = buildAiWearIdentityPrompt(settings, reference, personDimensions, Boolean(maskBuffer), wearMode);
   const generated = await callAiWearImageApi(env, settings, {
     prompt,
     personBuffer,
@@ -7641,6 +7642,7 @@ async function generateAiWearImage(request, env) {
     personDimensions,
     referenceModelId: modelId,
     referenceProductUrl: stringValue(form.get("model_product_url") || form.get("modelProductUrl") || ""),
+    wearMode,
   });
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
@@ -7728,21 +7730,29 @@ async function resolveAiWearSelfieFromForm(form, env) {
     createdAt: numberOrZero(row.created_at),
   };
 }
-function buildAiWearIdentityPrompt(settings, reference, personDimensions, hasMask) {
+function normalizeAiWearWearMode(value) {
+  const text = stringValue(value).trim();
+  return text === "no_glasses" ? "no_glasses" : "has_glasses";
+}
+function buildAiWearIdentityPrompt(settings, reference, personDimensions, hasMask, wearMode = "has_glasses") {
   const dimensionsText = personDimensions && personDimensions.width && personDimensions.height
     ? `原人物照片尺寸：${personDimensions.width}x${personDimensions.height}。輸出必須維持同一構圖、人物比例、鏡頭距離與裁切範圍，不得放大、不得拉近、不得改成另一張證件照或棚拍照。`
     : "輸出必須維持原人物照片的構圖、人物比例、鏡頭距離與裁切範圍，不得放大、不得拉近、不得改成另一張證件照或棚拍照。";
+  const modeText = normalizeAiWearWearMode(wearMode) === "no_glasses"
+    ? "使用者選擇原圖未戴眼鏡：只在眼睛、鼻樑與鏡腳應接觸區域新增參考眼鏡，不需要移除舊眼鏡。"
+    : "使用者選擇原圖已有眼鏡：只在眼鏡區域先自然移除舊眼鏡，再置換成參考眼鏡。";
   const editScope = hasMask
-    ? "若有遮罩，遮罩只代表可修補眼鏡附近區域；即使在遮罩內，也只能為了移除舊眼鏡與套入新眼鏡做必要小範圍重建。"
-    : "即使沒有遮罩，也只能在眼鏡與其接觸陰影周邊做小範圍重建；不得重畫整張臉、不得改變臉型、不得改變眼睛、鼻子、嘴巴、眉毛、髮型、衣服、背景與光線。";
+    ? "遮罩透明區域是唯一可編輯範圍，只允許修改眼鏡、鼻墊、鏡片反光、鏡腳接觸陰影與被舊眼鏡遮住的小範圍皮膚。遮罩外所有像素必須保持原圖，不得重畫臉、頭髮、衣服、背景或整體光線。"
+    : "沒有遮罩時也只能在眼鏡與其接觸陰影周邊做小範圍重建；不得重畫整張臉、不得改變臉型、不得改變眼睛、鼻子、嘴巴、眉毛、髮型、衣服、背景與光線。";
   const customPrompt = stringValue(settings.prompt || DEFAULT_AI_WEAR_PROMPT).trim();
   return [
-    "任務：以第一張輸入的人物照片作為唯一主圖與身份基準，重新生成同一張照片，只增加或替換眼鏡。",
+    "任務：以第一張輸入的人物照片作為唯一主圖與身份基準，只對眼鏡區做局部編輯；遮罩外必須視為鎖定區，不得重新生成整張照片。",
     "輸入角色：第一張圖是本人原始照片，必須保留本人身份；第二張圖只是眼鏡款式參考，只能提取眼鏡本身的鏡框形狀、顏色、材質、粗細、鏡片大小、鼻墊、鏡腳、透明度與反光，不可提取第二張圖的背景、模特兒、構圖或光線。",
     dimensionsText,
+    modeText,
     editScope,
     "身份保真硬性規則：結果中的人物必須與第一張原圖同一人；保留原臉型、五官比例、膚色、表情、眼神、髮型、衣服、姿勢、拍攝角度、背景與光線。不得美化、不得年輕化、不得換臉、不得讓臉變尖、不得改變眼距或鼻型。",
-    "眼鏡處理：如果原圖已有眼鏡，先自然移除舊眼鏡在眼鏡區的遮擋，再依第二張參考圖換上新眼鏡；新眼鏡需符合原照片頭部角度、眼睛位置、鼻樑位置與透視，加入自然接觸陰影與鏡片反光。",
+    "眼鏡處理：若原圖已有眼鏡，只在遮罩眼鏡區自然移除舊眼鏡遮擋後置換新眼鏡；若原圖未戴眼鏡，只在遮罩眼鏡放置區新增新眼鏡。新眼鏡需符合原照片頭部角度、眼睛位置、鼻樑位置與透視，加入自然接觸陰影與鏡片反光。",
     "不接受結果：生成另一個相似人物、改變人物角度、裁切成不同照片、改背景、改衣服、改髮型、改臉部表情，全部視為失敗。",
     customPrompt,
     `眼鏡款式名稱：${stringValue(reference && reference.title)}`,
