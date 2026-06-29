@@ -34,7 +34,9 @@
     function esc(text){return String(text||"").replace(/[&<>"']/g,(m)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
     function setStatus(text, ok){const el=$("status"); el.textContent=text||""; el.className="status"+(ok===true?" ok":ok===false?" bad":"");}
     function readLocal(){try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); if(saved && typeof saved==="object"){state.selfie=saved.selfie||null; state.results=Array.isArray(saved.results)?saved.results.slice(0,20):[];}}catch(_err){}}
-    function saveLocal(){localStorage.setItem(STORAGE_KEY, JSON.stringify({ selfie:state.selfie, results:state.results.slice(0,20) }));}
+    function isDataUrl(value){return /^data:/i.test(String(value||""));}
+    function compactStoredResult(r){return r&&!isDataUrl(r.result_url)?r:null;}
+    function saveLocal(){try{const results=state.results.map(compactStoredResult).filter(Boolean).slice(0,20); localStorage.setItem(STORAGE_KEY, JSON.stringify({ selfie:state.selfie, results }));}catch(err){try{localStorage.setItem(STORAGE_KEY, JSON.stringify({ selfie:state.selfie, results:[] }));}catch(_err){} console.warn("AI wear local cache skipped", err);}}
     function modelSeries(model){return String(model.series||model.title||"未分類").replace(/負離子|眼鏡|系列|MODEL/gi,"").trim() || "未分類";}
     function currentModel(){return state.models.find((m)=>m.id===state.selected)||null;}
     async function initLineLogin(){

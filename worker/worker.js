@@ -7647,6 +7647,10 @@ async function generateAiWearImage(request, env) {
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
   let deductedPointCost = 0;
+  const storedResultBase64 = generated.base64 && generated.base64.length <= AI_WEAR_D1_RESULT_BASE64_MAX_CHARS ? generated.base64 : "";
+  if (generated.base64 && !storedResultBase64 && !generated.url) throw httpError("AI 已產生圖片，但結果檔案過大，系統無法保存。請改用較低解析度自拍或稍後重試。此錯誤不會扣會員 K 點。", 413);
+  const resultUrl = storedResultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(generated.url);
+  const inlineDataUrl = "";
   if (shouldDeductPoints) {
     await applyPointMutation(env, {
       channelKey: settings.pointChannelKey,
@@ -7662,9 +7666,6 @@ async function generateAiWearImage(request, env) {
     });
     deductedPointCost = pointCost;
   }
-  const storedResultBase64 = generated.base64 && generated.base64.length <= AI_WEAR_D1_RESULT_BASE64_MAX_CHARS ? generated.base64 : "";
-  const resultUrl = storedResultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(generated.url);
-  const inlineDataUrl = generated.base64 ? `data:${stringValue(generated.mimeType || "image/png")};base64,${generated.base64}` : "";
   await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id,
     lineUserId,
