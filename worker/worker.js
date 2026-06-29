@@ -194,11 +194,6 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
-      if (url.pathname === "/api/ai-wear/repair" && request.method === "POST") {
-        const data = await repairAiWearBaseImage(request, env);
-        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
-      }
-
       if (url.pathname === "/api/ai-wear/generate" && request.method === "POST") {
         const data = await generateAiWearImage(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
@@ -1262,7 +1257,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/generate" || path === "/api/ai-wear/repair") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/generate") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -7539,37 +7534,6 @@ async function getAiWearPublicData(env) {
   };
 }
 
-async function repairAiWearBaseImage(request, env) {
-  await ensureAiWearSchema(env);
-  const settings = await loadAiWearSettingsRaw(env);
-  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，無法做舊眼鏡小範圍修補。", 400);
-  const form = await request.formData();
-  const personFile = form.get("personImage") || form.get("person") || form.get("image");
-  if (!personFile || typeof personFile.arrayBuffer !== "function") throw httpError("請上傳人物照片。", 400);
-  const personMimeType = stringValue(personFile.type || "").toLowerCase();
-  if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(personMimeType)) throw httpError("人物照片僅支援 JPG、PNG、WEBP。", 400);
-  const personBuffer = await personFile.arrayBuffer();
-  if (personBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請壓到 2MB 以內。", 400);
-  const maskFile = form.get("editMask") || form.get("mask") || form.get("maskImage");
-  if (!maskFile || typeof maskFile.arrayBuffer !== "function") throw httpError("小範圍修補必須提供眼鏡區遮罩。", 400);
-  const maskMimeType = stringValue(maskFile.type || "image/png").toLowerCase();
-  if (maskMimeType !== "image/png") throw httpError("修補遮罩必須是 PNG。", 400);
-  const maskBuffer = await maskFile.arrayBuffer();
-  if (maskBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("修補遮罩過大，請壓到 2MB 以內。", 400);
-  const generated = await callAiWearRepairApi(env, settings, {
-    prompt: "只在透明遮罩區域內移除人物原本配戴的眼鏡、鏡框、鏡片反光與鼻墊痕跡，補回自然皮膚、眉眼周圍與背景。遮罩外必須完全保持原照片，不得修改臉型、五官、髮型、衣服、背景、光線、人物大小、構圖或裁切。不要加入新眼鏡。",
-    personBuffer,
-    personMimeType,
-    personFileName: stringValue(personFile.name || "person.jpg"),
-    maskBuffer,
-    maskMimeType,
-  });
-  return {
-    resultUrl: stringValue(generated.url),
-    inlineDataUrl: generated.base64 ? `data:${stringValue(generated.mimeType || "image/png")};base64,${generated.base64}` : "",
-    persistedImage: false,
-  };
-}
 async function generateAiWearImage(request, env) {
   await ensureAiWearSchema(env);
   const settings = await loadAiWearSettingsRaw(env);
@@ -7667,28 +7631,6 @@ async function callAiWearImageApi(env, settings, input) {
   return callDirectImage2WearApi(settings, input, apiUrl);
 }
 
-async function callAiWearRepairApi(env, settings, input) {
-  const key = stringValue(settings.image2ApiKey).trim();
-  const defaultOpenAiImageEditUrl = /^sk-(proj-)?[A-Za-z0-9_-]+/.test(key) ? "https://api.openai.com/v1/images/edits" : "";
-  const apiUrl = stringValue(env.AI_IMAGE2_API_URL || settings.imageApiUrl || settings.aiweAjaxUrl || defaultOpenAiImageEditUrl).trim();
-  if (!apiUrl) throw httpError("AI 穿戴修補端點尚未設定。", 500);
-  const isOpenAiEndpoint = /(^|\.)openai\.com\/v1\/images\//i.test(apiUrl);
-  if (!isOpenAiEndpoint) throw httpError("目前只支援 OpenAI 圖片端點做舊眼鏡小範圍修補。", 400);
-  if (!/^sk-(proj-)?[A-Za-z0-9_-]+/.test(key)) throw httpError("OpenAI 圖片修補需要 OpenAI key 格式。", 400);
-  const requestedModel = stringValue(settings.imageModel || "gpt-image-1").trim() || "gpt-image-1";
-  const effectiveImageModel = requestedModel.toLowerCase() === "image2" ? "gpt-image-1" : requestedModel;
-  const payload = new FormData();
-  payload.append("model", effectiveImageModel);
-  payload.append("prompt", input.prompt);
-  payload.append("size", "auto");
-  payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
-  payload.append("mask", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-repair-mask.png");
-  return parseAiWearImageResponse(await fetch(apiUrl, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${settings.image2ApiKey}` },
-    body: payload,
-  }));
-}
 async function callOpenAiWearImageApi(settings, input, apiUrl) {
   if (!/^sk-(proj-)?[A-Za-z0-9_-]+/.test(stringValue(settings.image2ApiKey))) {
     throw httpError("目前 API URL 是 OpenAI 圖片端點，但 image2 API Key 不是 OpenAI key 格式。請填入 image2 服務商 API URL，或改用 OpenAI key。", 400);
