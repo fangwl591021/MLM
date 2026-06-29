@@ -165,7 +165,9 @@
             <label>本系統入口路徑<input id="aiWearPublicPath" type="text" placeholder="/ai-wear" /></label>
             <label>image2 API Key<input id="aiWearApiKey" type="password" placeholder="已設定可留空；輸入新值會覆蓋" /></label>
             <label>模型名稱<input id="aiWearModel" type="text" placeholder="image2" /></label>
-            <label class="aiWearWide">image2 API URL<input id="aiWearApiUrl" type="url" placeholder="請填 image2 服務商產圖端點，不要填 OpenAI URL" /></label>
+            <label class="aiWearWide">AIWE AJAX URL<input id="aiWearApiUrl" type="url" placeholder="https://aiwe.cc/wp-admin/admin-ajax.php" /></label>
+            <label>nonce<input id="aiWearNonce" type="text" placeholder="參考程式中的 AIAIR.nonce" /></label>
+            <label>post_id<input id="aiWearPostId" type="text" placeholder="參考程式中的 AIAIR.postId" /></label>
             <label class="aiWearWide">AI SHOW ROOM 提示詞<textarea id="aiWearPrompt"></textarea></label>
             <label>每次生成扣點<input id="aiWearPointCost" type="number" min="0" step="1" /></label>
             <label>扣點平台<select id="aiWearPointChannel"><option value="oa1">康立智能 · 1086</option><option value="oa2">康立全球 · 1584</option></select></label>
@@ -1174,6 +1176,9 @@
         image2ApiKey: ($("aiWearApiKey") ? $("aiWearApiKey").value.trim() : ""),
         imageModel: ($("aiWearModel") ? $("aiWearModel").value.trim() : "") || "image2",
         imageApiUrl: ($("aiWearApiUrl") ? $("aiWearApiUrl").value.trim() : ""),
+        aiweAjaxUrl: ($("aiWearApiUrl") ? $("aiWearApiUrl").value.trim() : ""),
+        aiweNonce: ($("aiWearNonce") ? $("aiWearNonce").value.trim() : ""),
+        aiwePostId: ($("aiWearPostId") ? $("aiWearPostId").value.trim() : ""),
         prompt: ($("aiWearPrompt") ? $("aiWearPrompt").value.trim() : "") || DEFAULT_AI_WEAR_PROMPT,
         pointDeductionEnabled: Boolean($("aiWearDeductEnabled") && $("aiWearDeductEnabled").checked),
         pointCost: Math.max(0, Math.floor(Number($("aiWearPointCost") && $("aiWearPointCost").value || 0) || 0)),
@@ -1183,13 +1188,15 @@
     }
 
     function renderAiWearSettings(data) {
-      const settings = Object.assign({ title: "康立負離子眼鏡系列", publicPath: "/ai-wear", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", imageApiUrl: "", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money" }, data || {});
+      const settings = Object.assign({ title: "康立負離子眼鏡系列", publicPath: "/ai-wear", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", imageApiUrl: "", aiweAjaxUrl: "", aiweNonce: "", aiwePostId: "", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money" }, data || {});
       if ($("aiWearTitle")) $("aiWearTitle").value = settings.title || "";
       if ($("aiWearPublicPath")) $("aiWearPublicPath").value = settings.publicPath || "/ai-wear";
       if ($("aiWearPublicLink")) { const href = new URL(settings.publicPath || "/ai-wear", location.origin).href; $("aiWearPublicLink").href = href; $("aiWearPublicLink").textContent = href; }
       if ($("aiWearApiKey")) { $("aiWearApiKey").value = ""; $("aiWearApiKey").placeholder = settings.hasImage2ApiKey ? "已設定，可留空不變" : "尚未設定，請輸入 image2 API Key"; }
       if ($("aiWearModel")) $("aiWearModel").value = settings.imageModel || "image2";
-      if ($("aiWearApiUrl")) $("aiWearApiUrl").value = settings.imageApiUrl || "";
+      if ($("aiWearApiUrl")) $("aiWearApiUrl").value = settings.aiweAjaxUrl || settings.imageApiUrl || "";
+      if ($("aiWearNonce")) $("aiWearNonce").value = settings.aiweNonce || "";
+      if ($("aiWearPostId")) $("aiWearPostId").value = settings.aiwePostId || "";
       if ($("aiWearPrompt")) $("aiWearPrompt").value = settings.prompt || DEFAULT_AI_WEAR_PROMPT;
       if ($("aiWearDeductEnabled")) $("aiWearDeductEnabled").checked = settings.pointDeductionEnabled === true;
       if ($("aiWearPointCost")) $("aiWearPointCost").value = Number(settings.pointCost || 0);
