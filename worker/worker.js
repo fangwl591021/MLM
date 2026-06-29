@@ -7861,7 +7861,7 @@ function aiWearOptionalAuthHeaders(settings) {
   return key ? { Authorization: `Bearer ${key}`, "X-API-Key": key } : {};
 }
 
-function translateAiWearApiError(message) {
+function translateAiWearApiError(message, detail = {}) {
   const text = stringValue(message).trim();
   if (!text) return "產圖服務沒有回傳錯誤內容，請稍後再試。";
   if (/Invalid size/i.test(text) && /minimum pixel budget/i.test(text)) return "圖片解析度低於 image2 最小像素要求；系統已調整輸出尺寸，請重新產生一次。";
@@ -7869,9 +7869,28 @@ function translateAiWearApiError(message) {
   if (/Incorrect API key/i.test(text)) return "API Key 不正確，請到 AI 穿戴設定重新確認。";
   if (/model .* does not exist/i.test(text) || /model.*not exist/i.test(text)) return "目前設定的模型不存在，請確認模型名稱是否正確。";
   if (/Duplicate parameter/i.test(text)) return "產圖請求欄位重複，系統需要調整送出格式。";
-  if (/insufficient_quota|quota.*exceed|exceed.*quota|exceeded your current quota|billing hard limit|credit|額度/i.test(text)) return "OpenAI 圖片額度或 Project 限制不足；請到 OpenAI Platform 檢查 Billing 餘額、Project Limits、Images / gpt-image-2 權限。此錯誤不會扣會員 K 點。";
   if (/rate limit/i.test(text)) return "產圖服務流量過高，請稍後再試。";
+  if (/insufficient_quota|quota.*exceed|exceed.*quota|exceeded your current quota|billing hard limit|credit|額度/i.test(text)) {
+    const code = stringValue(detail.code);
+    const type = stringValue(detail.type);
+    const requestId = stringValue(detail.requestId);
+    const meta = [type && `type=${type}`, code && `code=${code}`, requestId && `request_id=${requestId}`].filter(Boolean).join("，");
+    return `OpenAI 回傳 quota 類錯誤：${text}${meta ? `（${meta}）` : ""}。這不等於一定是餘額用完；請用 request_id 到 OpenAI Logs 查實際原因，常見是 Project usage limit、rate limit、模型權限或帳務/組織狀態限制。此錯誤不會扣會員 K 點。`;
+  }
   return text;
+}
+function aiWearResponseDebug(response, body) {
+  const error = body && body.error && typeof body.error === "object" ? body.error : {};
+  return {
+    type: stringValue(error.type || (body && body.type)),
+    code: stringValue(error.code || (body && body.code)),
+    param: stringValue(error.param || (body && body.param)),
+    requestId: stringValue(response.headers.get("x-request-id") || response.headers.get("openai-request-id") || response.headers.get("cf-ray")),
+    retryAfter: stringValue(response.headers.get("retry-after")),
+    limitRequests: stringValue(response.headers.get("x-ratelimit-limit-requests")),
+    remainingRequests: stringValue(response.headers.get("x-ratelimit-remaining-requests")),
+    resetRequests: stringValue(response.headers.get("x-ratelimit-reset-requests")),
+  };
 }
 async function parseAiWearImageResponse(response) {
   const text = await response.text();
@@ -7879,7 +7898,8 @@ async function parseAiWearImageResponse(response) {
   try { body = JSON.parse(text); } catch (_err) { body = null; }
   if (!response.ok) {
     const rawMessage = body && body.error && body.error.message ? body.error.message : body && body.message ? body.message : text;
-    throw httpError(`AI image2 生成失敗 ${response.status}: ${translateAiWearApiError(rawMessage)}`, 502);
+    const debug = aiWearResponseDebug(response, body || {});
+    throw httpError(`AI image2 生成失敗 ${response.status}: ${translateAiWearApiError(rawMessage, debug)}`, 502);
   }
   const item = body && Array.isArray(body.data) ? body.data[0] : body && body.data && body.data.result ? body.data.result : body && body.result ? body.result : body;
   const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64 || item.result_base64));
