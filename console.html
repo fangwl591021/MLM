@@ -152,7 +152,7 @@
         </article>
       </section>
       <section class="section" id="aiWearPanel">
-        <div class="sectionHead"><h3>AI穿戴設定</h3><div class="sectionActions"><span class="muted">AI SHOW ROOM / image2 / 點數扣抵</span><a class="openLink" href="/console">返回主控台</a></div></div>
+        <div class="sectionHead"><h3>AI穿戴設定</h3><div class="sectionActions"><span class="muted">本系統圖庫 / image2 / 點數扣抵</span><a class="openLink" href="/console">返回主控台</a></div></div>
         <article class="card aiWearCard">
           <div class="aiWearLinkBox">
             <strong>本系統會員入口</strong>
@@ -165,9 +165,8 @@
             <label>本系統入口路徑<input id="aiWearPublicPath" type="text" placeholder="/ai-wear" /></label>
             <label>image2 API Key<input id="aiWearApiKey" type="password" placeholder="已設定可留空；輸入新值會覆蓋" /></label>
             <label>模型名稱<input id="aiWearModel" type="text" placeholder="image2" /></label>
-            <label class="aiWearWide">AIWE AJAX URL<input id="aiWearApiUrl" type="url" placeholder="https://aiwe.cc/wp-admin/admin-ajax.php" /></label>
-            <label>nonce<input id="aiWearNonce" type="text" placeholder="參考程式中的 AIAIR.nonce" /></label>
-            <label>post_id<input id="aiWearPostId" type="text" placeholder="參考程式中的 AIAIR.postId" /></label>
+            <label class="aiWearWide">image2 API URL<input id="aiWearApiUrl" type="url" placeholder="請填入 image2 服務商正式產圖 API URL，不使用 aiwe WordPress AJAX" /></label>
+            <div class="aiWearNote aiWearWide">正式流程使用本系統自己的眼鏡圖庫與會員產圖紀錄；不再連 aiwe/linecard 的 WordPress MODEL 驗證。</div>
             <label class="aiWearWide">AI SHOW ROOM 提示詞<textarea id="aiWearPrompt"></textarea></label>
             <label>每次生成扣點<input id="aiWearPointCost" type="number" min="0" step="1" /></label>
             <label>扣點平台<select id="aiWearPointChannel"><option value="oa1">康立智能 · 1086</option><option value="oa2">康立全球 · 1584</option></select></label>

@@ -7608,11 +7608,14 @@ async function generateAiWearImage(request, env) {
 }
 
 async function callAiWearImageApi(settings, input) {
-  const apiUrl = stringValue(settings.aiweAjaxUrl || settings.imageApiUrl).trim();
-  if (!apiUrl) throw httpError("請先在 AI 穿戴設定填入 AIWE AJAX URL。", 400);
+  const apiUrl = stringValue(settings.imageApiUrl || settings.aiweAjaxUrl).trim();
+  if (!apiUrl) throw httpError("請先在 AI 穿戴設定填入 image2 正式產圖 API URL。", 400);
+  if (/wp-admin\/admin-ajax\.php/i.test(apiUrl)) {
+    throw httpError("目前填的是 AIWE WordPress AJAX URL，不是可直接使用的 image2 API。本系統已改為自有圖庫流程，請填入 image2 服務商正式產圖 API URL。", 400);
+  }
   const isOpenAiEndpoint = /(^|\.)openai\.com\/v1\/images\//i.test(apiUrl);
   if (isOpenAiEndpoint) return callOpenAiWearImageApi(settings, input, apiUrl);
-  return callImage2WearApi(settings, input, apiUrl);
+  return callDirectImage2WearApi(settings, input, apiUrl);
 }
 
 async function callOpenAiWearImageApi(settings, input, apiUrl) {
@@ -7634,91 +7637,25 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
   }));
 }
 
-async function callImage2WearApi(settings, input, apiUrl) {
-  let ajaxUrl = stringValue(settings.aiweAjaxUrl || apiUrl).trim();
-  let nonce = stringValue(settings.aiweNonce).trim();
-  let postId = stringValue(settings.aiwePostId).trim();
-  const runtimeConfig = await loadAiweRuntimeConfig(settings, ajaxUrl, postId);
-  ajaxUrl = runtimeConfig.ajaxUrl || ajaxUrl;
-  nonce = runtimeConfig.nonce || nonce;
-  postId = runtimeConfig.postId || postId;
-  if (!ajaxUrl) throw httpError("請先在 AI 穿戴設定填入 AIWE AJAX URL。", 400);
-  if (!nonce || !postId) throw httpError("請先在 AI 穿戴設定填入 nonce 與 post_id。", 400);
-
-  const upload = new FormData();
-  upload.append("action", "wetw_ai_hair_upload_selfie");
-  upload.append("nonce", nonce);
-  upload.append("post_id", postId);
-  upload.append("selfie", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
-  const uploadJson = await parseAiWearJsonResponse(await fetch(ajaxUrl, {
+async function callDirectImage2WearApi(settings, input, apiUrl) {
+  const payload = new FormData();
+  payload.append("model", stringValue(settings.imageModel || "image2") || "image2");
+  payload.append("prompt", input.prompt);
+  payload.append("person_image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  payload.append("reference_image", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
+  payload.append("reference_title", stringValue(input.referenceTitle || ""));
+  payload.append("reference_series", stringValue(input.referenceSeries || ""));
+  return parseAiWearImageResponse(await fetch(apiUrl, {
     method: "POST",
-    body: upload,
-  }), "自拍照上傳失敗");
-  const selfie = uploadJson && uploadJson.data && uploadJson.data.selfie ? uploadJson.data.selfie : uploadJson && uploadJson.selfie ? uploadJson.selfie : {};
-
-  const generate = new FormData();
-  generate.append("action", "wetw_ai_hair_generate");
-  generate.append("nonce", nonce);
-  generate.append("post_id", postId);
-  generate.append("model_id", stringValue(input.referenceModelId || input.referenceFileName || ""));
-  generate.append("model_title", stringValue(input.referenceTitle || "MODEL"));
-  generate.append("model_image_url", stringValue(input.referenceImageUrl));
-  generate.append("model_product_url", stringValue(input.referenceProductUrl || ""));
-  if (selfie && selfie.media_id) generate.append("selfie_media_id", stringValue(selfie.media_id));
-  if (selfie && selfie.url) generate.append("selfie_url", stringValue(selfie.url));
-  if (!(selfie && selfie.media_id)) generate.append("selfie", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
-
-  const json = await parseAiWearJsonResponse(await fetch(ajaxUrl, {
-    method: "POST",
-    body: generate,
-  }), "AI產圖失敗");
-  const data = json && json.data ? json.data : json;
-  const result = data && data.result ? data.result : data;
-  const url = stringValue(result && (result.url || result.result_url || result.image_url));
-  const base64 = stringValue(result && (result.base64 || result.b64_json || result.image_base64));
-  if (!url && !base64) throw httpError("AI image2 未回傳圖片。", 502);
-  return { base64, url, mimeType: stringValue(result && result.mime_type) || "image/png", selfie, raw: data };
+    headers: aiWearOptionalAuthHeaders(settings),
+    body: payload,
+  }));
 }
-
-async function loadAiweRuntimeConfig(settings, fallbackAjaxUrl, fallbackPostId) {
-  const pageUrl = stringValue(settings.aiwePageUrl || settings.pageUrl).trim() || (fallbackPostId ? `https://aiwe.cc/index.php/linecard_33/${encodeURIComponent(fallbackPostId)}/` : "");
-  if (!pageUrl) return {};
-  try {
-    const response = await fetch(pageUrl, { headers: { "User-Agent": "KLINK-AI-Wear/1.0" } });
-    if (!response.ok) return {};
-    const html = await response.text();
-    const ajaxMatch = html.match(/ajaxUrl\s*:\s*["']([^"']+)["']/);
-    const nonceMatch = html.match(/nonce\s*:\s*["']([^"']+)["']/);
-    const postMatch = html.match(/postId\s*:\s*(\d+)/);
-    return {
-      ajaxUrl: ajaxMatch ? ajaxMatch[1].replace(/\\\//g, "/") : fallbackAjaxUrl,
-      nonce: nonceMatch ? nonceMatch[1] : "",
-      postId: postMatch ? postMatch[1] : fallbackPostId,
-    };
-  } catch (_err) {
-    return {};
-  }
-}
-
 function aiWearOptionalAuthHeaders(settings) {
   const key = stringValue(settings.image2ApiKey).trim();
   return key ? { Authorization: `Bearer ${key}`, "X-API-Key": key } : {};
 }
 
-async function parseAiWearJsonResponse(response, fallbackMessage) {
-  const text = await response.text();
-  let body = null;
-  try { body = JSON.parse(text); } catch (_err) { body = null; }
-  if (!response.ok) {
-    const message = body && body.data && body.data.message ? body.data.message : body && body.message ? body.message : text;
-    throw httpError(`AI image2 生成失敗 ${response.status}: ${message || fallbackMessage}`, 502);
-  }
-  if (body && body.success === false) {
-    const message = body.data && body.data.message ? body.data.message : body.message || fallbackMessage;
-    throw httpError(message, 502);
-  }
-  return body || {};
-}
 async function parseAiWearImageResponse(response) {
   const text = await response.text();
   let body = null;
