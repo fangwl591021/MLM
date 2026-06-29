@@ -1518,19 +1518,23 @@ async function processGatewayForwardedWebhook(env, channelKey, config, payload) 
 
   const monitorEvents = [];
   for (const event of payload.events || []) {
-    await recordPointEvent(env, channelKey, event);
-    await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
     const userId = event.source && event.source.userId ? event.source.userId : "";
-    if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
-      // consumed by the ad hoc NFC testing setup flow
-    } else if (isSmartDailyRewardEvent(channelKey, event)) {
-      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
+    if (isSmartDailyRewardEvent(channelKey, event)) {
       if (userId) await handleSmartDailyReward(env, channelKey, provider, event, userId);
-    } else if (isSmartPointQueryEvent(channelKey, event)) {
+      await recordPointEvent(env, channelKey, event);
       await mirrorPointMessageToMonitor(env, config, provider, event, userId);
+    } else if (isSmartPointQueryEvent(channelKey, event)) {
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
+      await recordPointEvent(env, channelKey, event);
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
     } else {
-      monitorEvents.push(event);
+      await recordPointEvent(env, channelKey, event);
+      await tryApplyBindingCode(env, channelKey, userId, event.message && event.message.text);
+      if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
+        // consumed by the ad hoc NFC testing setup flow
+      } else {
+        monitorEvents.push(event);
+      }
     }
   }
 
@@ -1935,20 +1939,22 @@ async function processPointWebhook(env, channelKey, config, payload, rawBody, si
   };
 
   for (const event of payload.events || []) {
-    await recordPointEvent(env, channelKey, event);
-    await tryApplyBindingCode(env, channelKey, event.source && event.source.userId, event.message && event.message.text);
     const userId = event.source && event.source.userId ? event.source.userId : "";
-    if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
-      continue;
-    }
     if (isSmartDailyRewardEvent(channelKey, event)) {
-      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       if (userId) await handleSmartDailyReward(env, channelKey, provider, event, userId);
+      await recordPointEvent(env, channelKey, event);
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       continue;
     }
     if (isSmartPointQueryEvent(channelKey, event)) {
-      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
       if (userId) await handlePointQueryKeyword(env, provider, event, userId);
+      await recordPointEvent(env, channelKey, event);
+      await mirrorPointMessageToMonitor(env, config, provider, event, userId);
+      continue;
+    }
+    await recordPointEvent(env, channelKey, event);
+    await tryApplyBindingCode(env, channelKey, userId, event.message && event.message.text);
+    if (userId && await handleNfcTestConversation(env, channelKey, provider, event, userId)) {
       continue;
     }
     const delta = detectCheckinPointDelta(channelKey, event.message && event.message.text);
