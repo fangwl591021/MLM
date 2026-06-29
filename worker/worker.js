@@ -7606,8 +7606,8 @@ async function callAiWearImageApi(settings, input) {
   payload.append("model", settings.imageModel || "gpt-image-1");
   payload.append("prompt", input.prompt);
   payload.append("size", "1024x1536");
-  payload.append("image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
-  payload.append("image", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
+  payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${settings.image2ApiKey}` },
