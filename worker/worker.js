@@ -699,6 +699,11 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/ai-wear-diagnose" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await diagnoseAiWearOpenAi(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/ai-wear-gallery" && request.method === "GET") {
         await assertDashboardAuth(request, env);
         const data = await listAiWearReferences(env);
@@ -7917,6 +7922,38 @@ async function parseAiWearImageResponse(response) {
   const url = stringValue(item && (item.url || item.image_url || item.result_url || item.output_url));
   if (!base64 && !url) throw httpError("AI image2 未回傳圖片。", 502);
   return { base64, url, mimeType: stringValue(item && item.mime_type) || "image/png" };
+}
+async function diagnoseAiWearOpenAi(env) {
+  const settings = await loadAiWearSettingsRaw(env);
+  const key = stringValue(settings.image2ApiKey).trim();
+  const model = stringValue(settings.imageModel || "image2").trim() || "image2";
+  const apiUrl = stringValue(env.AI_IMAGE2_API_URL || settings.imageApiUrl || settings.aiweAjaxUrl || "").trim();
+  const looksOpenAiKey = /^sk-(proj-)?[A-Za-z0-9_-]+/.test(key);
+  if (!key) return { ok: false, message: "AI image2 API Key 尚未設定。", model, apiUrlConfigured: Boolean(apiUrl), looksOpenAiKey };
+  const startedAt = Date.now();
+  const response = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${key}` } });
+  const text = await response.text();
+  let body = null;
+  try { body = JSON.parse(text); } catch (_err) { body = null; }
+  const debug = aiWearResponseDebug(response, body || {});
+  const models = body && Array.isArray(body.data) ? body.data.map((item) => stringValue(item && item.id)).filter(Boolean) : [];
+  const imageModels = models.filter((id) => /image|dall|gpt-image/i.test(id));
+  const error = body && body.error && typeof body.error === "object" ? body.error : null;
+  return {
+    ok: response.ok,
+    httpStatus: response.status,
+    elapsedMs: Date.now() - startedAt,
+    requestId: debug.requestId,
+    errorType: stringValue(error && error.type),
+    errorCode: stringValue(error && error.code),
+    errorMessage: stringValue(error && error.message || (!response.ok ? text : "")),
+    configuredModel: model,
+    apiUrlConfigured: Boolean(apiUrl),
+    apiUrlHost: apiUrl ? (() => { try { return new URL(apiUrl).host; } catch (_err) { return "invalid"; } })() : "openai.com default",
+    looksOpenAiKey,
+    visibleImageModels: imageModels.slice(0, 20),
+    visibleImageModelCount: imageModels.length,
+  };
 }
 async function getAiWearSettings(env) {
   return sanitizeAiWearSettingsForClient(await loadAiWearSettingsRaw(env));
