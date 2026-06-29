@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>康立負離子眼鏡系列</title>
+  <style>
+    :root{color-scheme:light;--ink:#101828;--muted:#667085;--line:#e4eaf2;--green:#08bf5b;--purple:#7c4ddb;--bg:#f6f8fb;--panel:#fff}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}button,input{font:inherit}button{cursor:pointer}
+    .wrap{max-width:720px;margin:0 auto;padding:18px 14px 44px}.head{background:linear-gradient(135deg,#fff 0%,#f1e9ff 100%);border:1px solid var(--line);border-radius:22px;padding:20px}.head h1{margin:0 0 8px;font-size:26px}.head p{margin:0;color:var(--muted);line-height:1.6}.card{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 16px 42px rgba(16,24,40,.06)}.step{display:flex;align-items:center;gap:10px;margin:0 0 14px}.num{width:32px;height:32px;border-radius:999px;background:var(--purple);color:#fff;display:grid;place-items:center;font-weight:900}.step h2{margin:0;font-size:21px}.drop{border:2px dashed #c7b2ff;border-radius:18px;background:#fbf8ff;padding:16px;text-align:center}.primary{width:100%;min-height:52px;border:0;border-radius:14px;background:var(--purple);color:#fff;font-weight:900}.green{background:var(--green)}.secondary{border:1px solid #cfd8e6;border-radius:12px;background:#fff;color:#101828;font-weight:800;padding:10px 12px}.muted{color:var(--muted)}.preview{max-width:100%;max-height:360px;border-radius:16px;margin:12px auto 0;display:none;border:1px solid var(--line)}.models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.model{border:2px solid transparent;border-radius:18px;background:#fff;padding:10px;box-shadow:0 10px 24px rgba(16,24,40,.05);text-align:center}.model.active{border-color:var(--purple);background:#fbf8ff}.model img{width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:14px;background:#f8fafc}.model strong{display:block;margin-top:8px;font-size:15px}.model span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.bar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.result img{width:100%;border-radius:18px;border:1px solid var(--line)}.status{margin-top:12px;border-radius:14px;padding:12px;background:#f8fafc;color:var(--muted);line-height:1.55}.status.bad{background:#fff1f3;color:#b42318}.status.ok{background:#ecfdf3;color:#067647}.empty{padding:18px;background:#f8fafc;border-radius:16px;color:var(--muted);line-height:1.6}.hidden{display:none!important}@media(max-width:560px){.models{grid-template-columns:1fr}.head h1{font-size:24px}.wrap{padding:12px 10px 32px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="head">
+      <h1 id="title">康立負離子眼鏡系列</h1>
+      <p id="subtitle">上傳自拍照，選擇眼鏡款式，AI 會產生試戴圖片。</p>
+    </section>
+
+    <section class="card">
+      <div class="step"><div class="num">1</div><h2>上傳自拍照或選取相片</h2></div>
+      <div class="drop">
+        <input id="personFile" class="hidden" type="file" accept="image/jpeg,image/png,image/webp" />
+        <button id="choosePerson" class="primary" type="button">選取自拍照</button>
+        <p class="muted">支援 JPG / PNG / WEBP。請使用清楚正面或半側臉照片。</p>
+        <img id="personPreview" class="preview" alt="自拍預覽" />
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="bar"><div class="step"><div class="num">2</div><h2>選擇 MODEL</h2></div><button id="reload" class="secondary" type="button">重新整理</button></div>
+      <div id="models" class="models"><div class="empty">載入眼鏡素材中...</div></div>
+    </section>
+
+    <section class="card">
+      <div class="step"><div class="num">3</div><h2>預覽與生成</h2></div>
+      <button id="generate" class="primary green" type="button">預覽與生成</button>
+      <div id="status" class="status">請先上傳自拍照並選擇眼鏡款式。</div>
+    </section>
+
+    <section class="card result">
+      <div class="step"><div class="num">4</div><h2>我的產出紀錄</h2></div>
+      <div id="resultBox" class="empty">尚無產出紀錄。產生成功後，這裡會顯示預覽與下載按鈕。</div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let state = { settings: {}, models: [], selected: null, personFile: null };
+    function esc(text){return String(text||"").replace(/[&<>"']/g,(m)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
+    function setStatus(text, ok){const el=$("status"); el.textContent=text||""; el.className="status"+(ok===true?" ok":ok===false?" bad":"");}
+    async function loadPublic(){
+      setStatus("讀取設定與素材庫...", true);
+      const res = await fetch("/api/ai-wear-public", { cache:"no-store" });
+      const json = await res.json().catch(()=>({}));
+      if(!res.ok || json.status!=="success") throw new Error(json.message||"AI穿戴資料載入失敗");
+      state.settings = json.data.settings || {};
+      state.models = json.data.gallery || [];
+      $("title").textContent = state.settings.title || "康立負離子眼鏡系列";
+      const cost = Number(state.settings.pointCost || 0);
+      $("subtitle").textContent = state.settings.pointDeductionEnabled && cost > 0 ? `上傳自拍照，選擇眼鏡款式，每次生成扣 ${cost} K點。` : "上傳自拍照，選擇眼鏡款式，AI 會產生試戴圖片。";
+      renderModels();
+      setStatus(state.models.length ? "請上傳自拍照並選擇眼鏡款式。" : "素材庫尚無眼鏡款式，請先到後台上傳。", state.models.length ? null : false);
+    }
+    function renderModels(){
+      const box=$("models");
+      if(!state.models.length){box.innerHTML='<div class="empty">素材庫尚無眼鏡款式。</div>';return;}
+      box.innerHTML = state.models.map((m)=>`<button class="model ${state.selected===m.id?'active':''}" type="button" data-id="${esc(m.id)}"><img src="${esc(m.url)}" alt="${esc(m.title)}"><strong>${esc(m.title||'MODEL')}</strong><span>${esc(m.series||'')}</span></button>`).join("");
+      box.querySelectorAll(".model").forEach((btn)=>btn.onclick=()=>{state.selected=btn.dataset.id;renderModels();});
+    }
+    function renderResult(item){
+      const url = item && (item.resultUrl || item.resultImageUrl);
+      $("resultBox").className = url ? "" : "empty";
+      $("resultBox").innerHTML = url ? `<img src="${esc(url)}" alt="AI試戴結果"><p><a class="secondary" href="${esc(url)}" download>下載圖片</a></p>` : "尚無產出紀錄。";
+    }
+    async function generate(){
+      if(!state.personFile){setStatus("請先上傳自拍照。", false);return;}
+      if(!state.selected){setStatus("請先選擇眼鏡款式。", false);return;}
+      const button=$("generate"); const old=button.textContent;
+      try{
+        button.disabled=true; button.textContent="生成中..."; setStatus("AI 試戴生成中，請稍候。", true);
+        const form = new FormData();
+        form.append("personImage", state.personFile, state.personFile.name || "person.jpg");
+        form.append("modelId", state.selected);
+        form.append("displayName", "");
+        const res = await fetch("/api/ai-wear/generate", { method:"POST", body:form });
+        const json = await res.json().catch(()=>({}));
+        if(!res.ok || json.status!=="success") throw new Error(json.message||"生成失敗");
+        renderResult(json.data || {});
+        setStatus("生成完成，結果已保存。", true);
+      }catch(err){setStatus(err.message||String(err), false);}finally{button.disabled=false;button.textContent=old;}
+    }
+    $("choosePerson").onclick=()=>$("personFile").click();
+    $("personFile").onchange=(e)=>{const file=e.target.files&&e.target.files[0]; if(!file)return; state.personFile=file; const img=$("personPreview"); img.src=URL.createObjectURL(file); img.style.display="block"; setStatus("自拍照已選取，請選擇眼鏡款式。", true);};
+    $("reload").onclick=()=>loadPublic().catch((err)=>setStatus(err.message||String(err), false));
+    $("generate").onclick=generate;
+    loadPublic().catch((err)=>setStatus(err.message||String(err), false));
+  </script>
+</body>
+</html>

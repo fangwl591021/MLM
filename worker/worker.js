@@ -159,6 +159,10 @@ export default {
         return serveFrontendHtml("index.html", corsHeaders);
       }
 
+      if ((url.pathname === "/ai-wear" || url.pathname === "/ai-wear.html") && (request.method === "GET" || request.method === "HEAD")) {
+        return serveFrontendHtml("ai-wear.html", corsHeaders);
+      }
+
       if (url.pathname === "/calendar" && (request.method === "GET" || request.method === "HEAD")) {
         return Response.redirect(`${url.origin}/console/calendar`, 302);
       }
@@ -178,6 +182,16 @@ export default {
       }
       if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearResultImage(env, url.pathname, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear-public" && request.method === "GET") {
+        const data = await getAiWearPublicData(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear/generate" && request.method === "POST") {
+        const data = await generateAiWearImage(request, env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/auth/session" && request.method === "GET") {
@@ -786,7 +800,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/console/calendar", "/console/events", "/console/ai-wear", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/console/calendar", "/console/events", "/console/ai-wear", "/ai-wear", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -1238,7 +1252,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/generate") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -7490,14 +7504,121 @@ async function ensureAppMetaSchema(env) {
 }
 
 
-async function getAiWearSettings(env) {
+
+async function loadAiWearSettingsRaw(env) {
   await ensureAppMetaSchema(env);
   const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(AI_WEAR_SETTINGS_META_KEY).first();
   let stored = {};
   if (row && row.value) {
     try { stored = JSON.parse(row.value) || {}; } catch (_err) { stored = {}; }
   }
-  return sanitizeAiWearSettingsForClient(normalizeAiWearSettings(stored));
+  return normalizeAiWearSettings(stored);
+}
+
+async function getAiWearPublicData(env) {
+  await ensureAiWearSchema(env);
+  const settings = await loadAiWearSettingsRaw(env);
+  const gallery = await listAiWearReferences(env);
+  return {
+    settings: sanitizeAiWearSettingsForClient(settings),
+    gallery: gallery.items || [],
+  };
+}
+
+async function generateAiWearImage(request, env) {
+  await ensureAiWearSchema(env);
+  const settings = await loadAiWearSettingsRaw(env);
+  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
+  const form = await request.formData();
+  const personFile = form.get("personImage") || form.get("person") || form.get("image");
+  if (!personFile || typeof personFile.arrayBuffer !== "function") throw httpError("請上傳人物照片。", 400);
+  const personMimeType = stringValue(personFile.type || "").toLowerCase();
+  if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(personMimeType)) throw httpError("人物照片僅支援 JPG、PNG、WEBP。", 400);
+  const personBuffer = await personFile.arrayBuffer();
+  if (personBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請壓到 2MB 以內。", 400);
+  const modelId = stringValue(form.get("modelId") || form.get("model_id"));
+  if (!modelId || modelId.includes("..") || modelId.includes("/")) throw httpError("請選擇眼鏡款式。", 400);
+  const reference = await env.DB.prepare("SELECT id, title, series, mime_type, base64 FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
+  if (!reference || !reference.base64) throw httpError("找不到眼鏡參考圖。", 404);
+  const lineUserId = stringValue(form.get("lineUserId") || form.get("line_user_id"));
+  const displayName = stringValue(form.get("displayName") || form.get("display_name")).slice(0, 120);
+  const pointCost = Number(settings.pointCost || 0);
+  if (settings.pointDeductionEnabled && pointCost > 0 && lineUserId) {
+    const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+    if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
+    await applyPointMutation(env, {
+      channelKey: settings.pointChannelKey,
+      lineUserId,
+      pointType: settings.pointType,
+      pointDelta: -pointCost,
+      action: "ai_wear_generate",
+      source: "ai-wear",
+      sourceEventId: `ai-wear:${lineUserId}:${Date.now()}`,
+      businessKey: `ai-wear:${lineUserId}:${Date.now()}:${crypto.randomUUID()}`,
+      operatorName: "AI穿戴",
+      note: `AI穿戴生成扣點 ${pointCost} 點`,
+    });
+  }
+  const prompt = `${settings.prompt || DEFAULT_AI_WEAR_PROMPT}\n\n眼鏡款式名稱：${stringValue(reference.title)}\n系列：${stringValue(reference.series)}`;
+  const generated = await callAiWearImageApi(settings, {
+    prompt,
+    personBuffer,
+    personMimeType,
+    personFileName: stringValue(personFile.name || "person.jpg"),
+    referenceBase64: stringValue(reference.base64),
+    referenceMimeType: stringValue(reference.mime_type || "image/jpeg"),
+    referenceFileName: stringValue(reference.id || "glasses.jpg"),
+  });
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const now = Date.now();
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    id,
+    lineUserId,
+    displayName,
+    modelId,
+    stringValue(reference.title).slice(0, 120),
+    "",
+    stringValue(generated.url).slice(0, 500),
+    stringValue(generated.mimeType || "image/png"),
+    stringValue(generated.base64),
+    prompt.slice(0, 4000),
+    settings.pointDeductionEnabled && lineUserId ? pointCost : 0,
+    settings.pointChannelKey,
+    settings.pointType,
+    "completed",
+    now,
+  ).run();
+  return { id, createdAt: now, resultUrl: generated.base64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : generated.url, modelId, modelTitle: stringValue(reference.title) };
+}
+
+async function callAiWearImageApi(settings, input) {
+  const apiUrl = settings.imageApiUrl || "https://api.openai.com/v1/images/edits";
+  const payload = new FormData();
+  payload.append("model", settings.imageModel || "gpt-image-1");
+  payload.append("prompt", input.prompt);
+  payload.append("size", "1024x1536");
+  payload.append("image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
+  payload.append("image", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), input.referenceFileName || "glasses.jpg");
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${settings.image2ApiKey}` },
+    body: payload,
+  });
+  const text = await response.text();
+  let body = null;
+  try { body = JSON.parse(text); } catch (_err) { body = null; }
+  if (!response.ok) {
+    const message = body && body.error && body.error.message ? body.error.message : text;
+    throw httpError(`AI image2 生成失敗 ${response.status}: ${message}`, 502);
+  }
+  const item = body && Array.isArray(body.data) ? body.data[0] : null;
+  const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64));
+  const url = stringValue(item && item.url);
+  if (!base64 && !url) throw httpError("AI image2 未回傳圖片。", 502);
+  return { base64, url, mimeType: "image/png" };
+}
+async function getAiWearSettings(env) {
+  return sanitizeAiWearSettingsForClient(await loadAiWearSettingsRaw(env));
 }
 
 async function saveAiWearSettings(env, input) {
@@ -7546,7 +7667,9 @@ function sanitizeAiWearSettingsForClient(settings) {
 function normalizeAiWearPublicPath(value) {
   const text = stringValue(value).trim() || "/ai-wear";
   if (/^https?:\/\//i.test(text)) return "/ai-wear";
-  return (text.startsWith("/") ? text : `/${text}`).replace(/\/+/g, "/").slice(0, 120) || "/ai-wear";
+  const path = (text.startsWith("/") ? text : `/${text}`).replace(/\/+/g, "/").slice(0, 120) || "/ai-wear";
+  if (/^\/(api|admin|console|dashboard|assets|internal|line-webhook|webhook)(\/|$)/i.test(path)) return "/ai-wear";
+  return path;
 }
 
 async function ensureAiWearSchema(env) {
