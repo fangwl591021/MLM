@@ -7602,8 +7602,10 @@ async function callAiWearImageApi(settings, input) {
   if (isOpenAiEndpoint && !/^sk-(proj-)?[A-Za-z0-9_-]+/.test(stringValue(settings.image2ApiKey))) {
     throw httpError("目前 API URL 是 OpenAI 圖片端點，但 image2 API Key 不是 OpenAI key 格式。請在 AI 穿戴設定填入 image2 服務商提供的正確 API URL，或改用 OpenAI sk-/sk-proj- key。", 400);
   }
+  const requestedModel = stringValue(settings.imageModel || "gpt-image-1").trim() || "gpt-image-1";
+  const effectiveImageModel = isOpenAiEndpoint && requestedModel.toLowerCase() === "image2" ? "gpt-image-1" : requestedModel;
   const payload = new FormData();
-  payload.append("model", settings.imageModel || "gpt-image-1");
+  payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
   payload.append("size", "1024x1536");
   payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
