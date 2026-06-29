@@ -7575,22 +7575,11 @@ async function generateAiWearImage(request, env) {
   const lineUserId = verifiedLineUserId || stringValue(selfie.lineUserId);
   const displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || form.get("displayName") || form.get("display_name") || selfie.displayName).slice(0, 120);
   const pointCost = Number(settings.pointCost || 0);
+  const shouldDeductPoints = Boolean(settings.pointDeductionEnabled && pointCost > 0 && lineUserId);
   if (settings.pointDeductionEnabled && pointCost > 0 && !verifiedLineUserId) throw httpError("請先用 LINE 登入後再生成，系統需要確認會員 UID 才能扣點。", 401);
-  if (settings.pointDeductionEnabled && pointCost > 0 && lineUserId) {
+  if (shouldDeductPoints) {
     const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
     if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
-    await applyPointMutation(env, {
-      channelKey: settings.pointChannelKey,
-      lineUserId,
-      pointType: settings.pointType,
-      pointDelta: -pointCost,
-      action: "ai_wear_generate",
-      source: "ai-wear",
-      sourceEventId: `ai-wear:${lineUserId}:${Date.now()}`,
-      businessKey: `ai-wear:${lineUserId}:${Date.now()}:${crypto.randomUUID()}`,
-      operatorName: "AI穿戴",
-      note: `AI穿戴生成扣點 ${pointCost} 點`,
-    });
   }
   const prompt = buildAiWearIdentityPrompt(settings, reference, personDimensions, Boolean(maskBuffer));
   const generated = await callAiWearImageApi(env, settings, {
@@ -7612,6 +7601,22 @@ async function generateAiWearImage(request, env) {
   });
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
+  let deductedPointCost = 0;
+  if (shouldDeductPoints) {
+    await applyPointMutation(env, {
+      channelKey: settings.pointChannelKey,
+      lineUserId,
+      pointType: settings.pointType,
+      pointDelta: -pointCost,
+      action: "ai_wear_generate",
+      source: "ai-wear",
+      sourceEventId: `ai-wear:${lineUserId}:${id}`,
+      businessKey: `ai-wear:${lineUserId}:${id}`,
+      operatorName: "AI穿戴",
+      note: `AI穿戴生成扣點 ${pointCost} 點`,
+    });
+    deductedPointCost = pointCost;
+  }
   const storedResultBase64 = generated.base64 && generated.base64.length <= AI_WEAR_D1_RESULT_BASE64_MAX_CHARS ? generated.base64 : "";
   const resultUrl = storedResultBase64 ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(id)}` : stringValue(generated.url);
   const inlineDataUrl = generated.base64 ? `data:${stringValue(generated.mimeType || "image/png")};base64,${generated.base64}` : "";
@@ -7626,7 +7631,7 @@ async function generateAiWearImage(request, env) {
     stringValue(generated.mimeType || "image/png"),
     storedResultBase64,
     prompt.slice(0, 4000),
-    settings.pointDeductionEnabled && lineUserId ? pointCost : 0,
+    deductedPointCost,
     settings.pointChannelKey,
     settings.pointType,
     "completed",
@@ -7821,6 +7826,7 @@ function translateAiWearApiError(message) {
   if (/Incorrect API key/i.test(text)) return "API Key 不正確，請到 AI 穿戴設定重新確認。";
   if (/model .* does not exist/i.test(text) || /model.*not exist/i.test(text)) return "目前設定的模型不存在，請確認模型名稱是否正確。";
   if (/Duplicate parameter/i.test(text)) return "產圖請求欄位重複，系統需要調整送出格式。";
+  if (/insufficient_quota|quota exceeded|exceeded your current quota|billing hard limit|credits/i.test(text)) return "OpenAI 圖片額度或 Project 限制不足；請到 OpenAI Platform 檢查 Billing 餘額、Project Limits、Images / gpt-image-2 權限。此錯誤不會扣會員 K 點。";
   if (/rate limit/i.test(text)) return "產圖服務流量過高，請稍後再試。";
   return text;
 }
