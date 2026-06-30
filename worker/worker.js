@@ -865,6 +865,7 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
     .replaceAll("<label>K點類型<select id=\"pointType\"><option value=\"gift_money\">購物金</option><option value=\"system_point\">原始點數</option></select></label>", "<input id=\"pointType\" type=\"hidden\" value=\"gift_money\" />")
     .replaceAll("可用K點合計", "K點餘額")
     .replaceAll("扣除後可用K點", "K點餘額");
+  if (fileName === "ai-wear.html") html = rewriteAiWearMobileShareHtml(html);
   if (options && options.smartMonitorDashboard) html = rewriteSmartMonitorDashboardHtml(html);
   return new Response(html, {
     status: 200,
@@ -878,6 +879,11 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
   });
 }
 
+function rewriteAiWearMobileShareHtml(html) {
+  return String(html || "")
+    .replace(/ if\(isMobileShareDevice\(\)\)\{const file=new File\(\[blob\],"ai-wear-share\.jpg",\{type:"image\/jpeg"\}\); if\(navigator\.canShare&&navigator\.canShare\(\{files:\[file\]\}\)&&navigator\.share\)\{await navigator\.share\(\{title:"AI 眼鏡試戴",text:caption,url:data\.shareUrl,files:\[file\]\}\); setStatus\("已開啟手機分享，可選擇 FB、IG 或其他社群。", true\); return;\}\}/, "")
+    .replace("請在該筆紀錄下方選擇 FB、LINE、複製文案或下載 IG 圖。", "請在該筆紀錄下方選擇 FB、LINE、複製文案、下載 IG 圖或手機分享。");
+}
 async function fetchFrontendHtmlSource(fileName) {
   if (fileName === "console.html") {
     const apiResponse = await fetch(`https://api.github.com/repos/fangwl591021/MLM/contents/${fileName}?ref=main`, {
