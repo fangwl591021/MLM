@@ -1293,7 +1293,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results") return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -7709,26 +7709,7 @@ async function generateAiWearImage(request, env) {
   const storedResultBase64 = "";
   const resultUrl = storedResult.url;
   const inlineDataUrl = "";
-  if (shouldDeductPoints) {
-    await applyWetwPointMutation(env, {
-      channelKey: settings.pointChannelKey,
-      lineUserId,
-      pointType: settings.pointType,
-      pointDelta: -pointCost,
-      action: "ai_wear_generate",
-      source: "ai-wear",
-      sourceEventId: `ai-wear:${lineUserId}:${id}`,
-      businessKey: `ai-wear:${lineUserId}:${id}`,
-      operatorId: `ai-wear:${lineUserId}`,
-      operatorName: "AI穿戴",
-      note: `AI穿戴生成扣點 ${pointCost} 點`,
-    }, {
-      event_name: "AI穿戴扣點",
-      event_content: `AI穿戴生成扣點 ${pointCost} 點`,
-      shop_remark: `AI穿戴生成扣點；model=${modelId}；result=${id}`,
-    });
-    deductedPointCost = pointCost;
-  }
+  // Final billing happens in saveAiWearResult after the browser-side original-photo composite is stored.
   await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id,
     lineUserId,
@@ -7743,7 +7724,7 @@ async function generateAiWearImage(request, env) {
     deductedPointCost,
     settings.pointChannelKey,
     settings.pointType,
-    "completed",
+    "generated_raw",
     now,
   ).run();
   const finalUrl = resultUrl || inlineDataUrl;
@@ -8310,35 +8291,61 @@ async function serveAiWearReferenceImage(env, pathname, corsHeaders) {
 
 async function saveAiWearResult(request, env) {
   await ensureAiWearSchema(env);
-  const contentType = stringValue(request.headers.get("content-type")).toLowerCase();
+  const settings = await loadAiWearSettingsRaw(env);
   const now = Date.now();
+  const contentType = request.headers.get("content-type") || "";
   let body = {};
   let resultMimeType = "";
   let resultUrl = "";
+  let fileBuffer = null;
+
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
     body = Object.fromEntries(Array.from(form.entries()).filter(([, value]) => typeof value === "string"));
     const file = form.get("resultImage");
     if (file && typeof file.arrayBuffer === "function") {
       resultMimeType = stringValue(file.type || "image/jpeg").toLowerCase();
-      const buffer = await file.arrayBuffer();
-      if (buffer.byteLength > AI_WEAR_RESULT_UPLOAD_MAX_BYTES) throw httpError("合成結果圖片過大，請重新上傳較低解析度自拍。", 400);
-      const tempId = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
-      const stored = await storeAiWearGeneratedResult(env, tempId, { base64: arrayBufferToBase64(buffer), mimeType: resultMimeType });
-      body.__storedId = tempId;
-      resultUrl = stored.url;
+      fileBuffer = await file.arrayBuffer();
+      if (fileBuffer.byteLength > AI_WEAR_RESULT_UPLOAD_MAX_BYTES) throw httpError("合成結果圖片過大，請重新上傳較低解析度自拍。", 400);
     }
   } else {
     body = await safeJson(request);
   }
+
+  const configuredPointCost = Math.max(0, Math.floor(Number(settings.pointCost || 0) || 0));
+  const shouldDeductPoints = Boolean(settings.pointDeductionEnabled && configuredPointCost > 0);
+  let verifiedProfile = null;
+  let lineUserId = stringValue(body.lineUserId || body.line_user_id);
+  let displayName = stringValue(body.displayName || body.display_name).slice(0, 120);
+
+  if (shouldDeductPoints) {
+    verifiedProfile = await verifyAiWearLineProfileFromToken(env, settings, body.idToken || body.id_token || body.lineIdToken || body.line_id_token);
+    lineUserId = stringValue(verifiedProfile && verifiedProfile.userId);
+    displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || displayName).slice(0, 120);
+    if (!lineUserId) throw httpError("請先用 LINE 登入後再保存 AI 穿戴結果，系統需要確認會員 UID 才能扣點。", 401);
+    const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+    if (balance < configuredPointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${configuredPointCost} 點。`, 402);
+  }
+
   const id = stringValue(body.__storedId) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  if (fileBuffer) {
+    const stored = await storeAiWearGeneratedResult(env, id, { base64: arrayBufferToBase64(fileBuffer), mimeType: resultMimeType });
+    resultUrl = stored.url;
+  }
   const modelId = stringValue(body.modelId || body.model_id);
   const model = modelId ? await env.DB.prepare("SELECT title FROM ai_wear_references WHERE id = ?").bind(modelId).first() : null;
   if (!resultUrl) resultUrl = stringValue(body.resultImageUrl || body.result_image_url).slice(0, 500);
+  if (!resultUrl) throw httpError("AI 穿戴結果圖片尚未保存，未扣會員 K 點。", 400, "ai_wear_missing_result_image");
+
+  const initialPointCost = shouldDeductPoints ? 0 : Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0));
+  const initialStatus = shouldDeductPoints ? "pending_point_deduction" : stringValue(body.status || "completed").slice(0, 40);
+  const pointChannelKey = shouldDeductPoints ? settings.pointChannelKey : stringValue(body.pointChannelKey || body.point_channel_key);
+  const pointType = shouldDeductPoints ? settings.pointType : normalizePointType(body.pointType || body.point_type || "gift_money");
+
   await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id,
-    stringValue(body.lineUserId || body.line_user_id),
-    stringValue(body.displayName || body.display_name).slice(0, 120),
+    lineUserId,
+    displayName,
     modelId,
     stringValue(model && model.title || body.modelTitle || body.model_title).slice(0, 120),
     stringValue(body.personImageUrl || body.person_image_url).slice(0, 500),
@@ -8346,13 +8353,43 @@ async function saveAiWearResult(request, env) {
     resultMimeType,
     "",
     stringValue(body.prompt).slice(0, 4000),
-    Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0)),
-    stringValue(body.pointChannelKey || body.point_channel_key),
-    normalizePointType(body.pointType || body.point_type || "gift_money"),
-    stringValue(body.status || "completed").slice(0, 40),
+    initialPointCost,
+    pointChannelKey,
+    pointType,
+    initialStatus,
     now,
   ).run();
-  return { id, createdAt: now, resultUrl };
+
+  let deductedPointCost = 0;
+  if (shouldDeductPoints) {
+    await applyWetwPointMutation(env, {
+      channelKey: settings.pointChannelKey,
+      lineUserId,
+      pointType: settings.pointType,
+      pointDelta: -configuredPointCost,
+      action: "ai_wear_generate",
+      source: "ai-wear",
+      sourceEventId: `ai-wear:${lineUserId}:${id}`,
+      businessKey: `ai-wear:${lineUserId}:${id}`,
+      operatorId: `ai-wear:${lineUserId}`,
+      operatorName: "AI穿戴",
+      note: `AI穿戴生成扣點 ${configuredPointCost} 點`,
+    }, {
+      event_name: "AI穿戴扣點",
+      event_content: `AI穿戴生成扣點 ${configuredPointCost} 點`,
+      shop_remark: `AI穿戴生成扣點；model=${modelId}；result=${id}`,
+    });
+    deductedPointCost = configuredPointCost;
+    await env.DB.prepare("UPDATE ai_wear_results SET point_cost = ?, point_channel_key = ?, point_type = ?, status = ? WHERE id = ?").bind(
+      deductedPointCost,
+      settings.pointChannelKey,
+      settings.pointType,
+      "completed",
+      id,
+    ).run();
+  }
+
+  return { id, createdAt: now, resultUrl, deductedPointCost };
 }
 
 async function listAiWearResults(env, searchParams) {

@@ -139,6 +139,7 @@
       form.append("resultImage", blob, "ai-wear-original-composite.jpg");
       form.append("lineUserId", state.auth.userId||"");
       form.append("displayName", state.auth.displayName||"");
+      if(state.auth.idToken)form.append("idToken", state.auth.idToken);
       form.append("modelId", model.id||"");
       form.append("modelTitle", model.title||"");
       form.append("personImageUrl", state.selfie&&state.selfie.url?state.selfie.url:"");
