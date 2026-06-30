@@ -7838,20 +7838,9 @@ function chooseOpenAiWearImageSize(dimensions, model) {
   const width = Number(dimensions && dimensions.width) || 0;
   const height = Number(dimensions && dimensions.height) || 0;
   if (!width || !height) return "auto";
-  const normalizedModel = stringValue(model).toLowerCase();
   const ratio = width / height;
-  if (normalizedModel === "gpt-image-2") {
-    const minPixels = 1024 * 1024;
-    const maxSide = Math.max(width, height);
-    const downscale = maxSide > 1536 ? 1536 / maxSide : 1;
-    const upscale = width * height < minPixels ? Math.sqrt(minPixels / (width * height)) : 1;
-    const scale = Math.max(upscale, downscale);
-    const scaledWidth = Math.max(256, Math.round((width * scale) / 16) * 16);
-    const scaledHeight = Math.max(256, Math.round((height * scale) / 16) * 16);
-    if (scaledWidth * scaledHeight >= minPixels) return `${scaledWidth}x${scaledHeight}`;
-  }
-  if (ratio > 1.25) return "1536x1024";
-  if (ratio < 0.8) return "1024x1536";
+  if (ratio > 1.12) return "1536x1024";
+  if (ratio < 0.9) return "1024x1536";
   return "1024x1024";
 }
 async function callAiWearImageApi(env, settings, input) {
@@ -7876,7 +7865,7 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
   const payload = new FormData();
   payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
-  payload.append("size", "1024x1536");
+  payload.append("size", chooseOpenAiWearImageSize(input.personDimensions, effectiveImageModel));
   payload.append("quality", "low");
   payload.append("n", "1");
   payload.append("background", "opaque");
