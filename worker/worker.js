@@ -3496,8 +3496,8 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
   return {
     campaign,
     event: {
-      uid:
-fc-test:${token}`,
+      uid: `fc-test:${token}`,
+
       summary: eventTitle,
       description: `${eventTitle}贈點 ${points} K點`,
       location: flow.address,
