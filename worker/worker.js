@@ -427,8 +427,8 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
-      if (url.pathname === "/admin/smart-monitor" && request.method === "GET") {
-        return Response.redirect(`${url.origin}/dashboard?floor=${FLOOR_SMART}`, 302);
+      if (url.pathname === "/admin/smart-monitor" && (request.method === "GET" || request.method === "HEAD")) {
+        return serveFrontendHtml("index.html", corsHeaders, { smartMonitorDashboard: true });
       }
 
       if (url.pathname === "/admin/smart-monitor-data" && request.method === "GET") {
@@ -942,9 +942,8 @@ function rewriteSmartMonitorDashboardHtml(html) {
     .replaceAll('<button type="button" class="floorTab active" data-floor="main">\u7522\u54c1\u5ba2\u670d</button><button type="button" class="floorTab" data-floor="admin">\u884c\u653f\u5ba2\u670d</button>', '<a class="floorTab" href="/dashboard?floor=main">\u7522\u54c1\u5ba2\u670d</a><a class="floorTab" href="/dashboard?floor=admin">\u884c\u653f\u5ba2\u670d</a><a class="smartMonitorBtn active" href="/admin/smart-monitor">\u5eb7\u7acb\u667a\u80fd\u76e3\u63a7</a>');
 }
 function rewriteFrontendLinks(html) {
-  return String(html || "")
+  let rewritten = String(html || "")
     .replace(/<button type="button" class="floorTab(?: active)?" data-floor="smart">[^<]*<\/button>/g, "")
-    .replace(/<a class="smartMonitorBtn(?: active)?" href="\/admin\/smart-monitor">[^<]*<\/a>/g, "")
     .replaceAll('href="console.html"', 'href="/console"')
     .replaceAll("href='console.html'", "href='/console'")
     .replaceAll('href="index.html?floor=main"', 'href="/dashboard?floor=main"')
@@ -960,9 +959,14 @@ function rewriteFrontendLinks(html) {
     .replaceAll('location.href = "index.html?floor=admin"', 'location.href = "/dashboard?floor=admin"')
     .replaceAll("location.href = 'index.html?floor=admin'", "location.href = '/dashboard?floor=admin'")
     .replaceAll('href="knowledge-base.html"', 'href="/knowledge-base"')
-    .replaceAll("href='knowledge-base.html'", "href='/knowledge-base'")
-    .replaceAll('.motherSyncBtn{margin-left:auto;', '.smartMonitorBtn{height:36px;border:1px solid #b6ecc8;border-radius:999px;background:#fff;color:#067a35;padding:0 14px;font-weight:760;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.smartMonitorBtn:hover{background:#effcf4}.motherSyncBtn{margin-left:auto;')
-    .replaceAll('<button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button>', '<a class="smartMonitorBtn" href="/admin/smart-monitor">康立智能監控</a><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button>');
+    .replaceAll("href='knowledge-base.html'", "href='/knowledge-base'");
+  if (!rewritten.includes('.smartMonitorBtn{')) {
+    rewritten = rewritten.replaceAll('.motherSyncBtn{margin-left:auto;', '.smartMonitorBtn{height:36px;border:1px solid #b6ecc8;border-radius:999px;background:#fff;color:#067a35;padding:0 14px;font-weight:760;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.smartMonitorBtn:hover{background:#effcf4}.motherSyncBtn{margin-left:auto;');
+  }
+  if (!rewritten.includes('href="/admin/smart-monitor"')) {
+    rewritten = rewritten.replaceAll('<button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button>', '<a class="smartMonitorBtn" href="/admin/smart-monitor">康立智能監控</a><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button>');
+  }
+  return rewritten;
 }
 
 function resolveFloor(request) {
