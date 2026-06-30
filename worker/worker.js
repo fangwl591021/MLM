@@ -194,8 +194,8 @@ export default {
       if (url.pathname.startsWith(AI_WEAR_SELFIE_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearSelfieImage(env, url.pathname, corsHeaders);
       }
-      if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && request.method === "GET") {
-        return serveAiWearResultImage(env, url.pathname, corsHeaders);
+      if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && (request.method === "GET" || request.method === "HEAD")) {
+        return serveAiWearResultImage(env, url.pathname, corsHeaders, request.method);
       }
       if (url.pathname.startsWith(AI_WEAR_SHARE_ASSET_PREFIX) && (request.method === "GET" || request.method === "HEAD")) {
         return serveAiWearShareImage(env, url.pathname, corsHeaders, request.method);
@@ -8551,7 +8551,7 @@ async function listAiWearResults(env, searchParams) {
   return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
 }
 
-async function serveAiWearResultImage(env, pathname, corsHeaders) {
+async function serveAiWearResultImage(env, pathname, corsHeaders, method = "GET") {
   await ensureAiWearSchema(env);
   const id = aiWearAssetIdFromPath(pathname, AI_WEAR_RESULT_ASSET_PREFIX);
   if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
