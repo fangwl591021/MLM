@@ -7660,6 +7660,56 @@ async function getAiWearPublicData(env) {
   };
 }
 
+async function validateAiWearSelfieForTryOn(env, settings, selfie) {
+  const buffer = selfie && selfie.buffer;
+  const mimeType = stringValue(selfie && selfie.mimeType || "image/jpeg").toLowerCase();
+  if (!buffer || !buffer.byteLength) throw httpError("請重新上傳真人自拍照。", 400, "ai_wear_invalid_selfie");
+  const dimensions = readAiWearImageDimensions(buffer, mimeType);
+  if (!dimensions || !dimensions.width || !dimensions.height) throw httpError("照片格式無法判讀，請重新上傳 JPG、PNG 或 WEBP 真人自拍照。", 400, "ai_wear_invalid_selfie");
+  if (dimensions.width < 320 || dimensions.height < 320) throw httpError("照片解析度太低，請重新上傳清楚的真人自拍照。", 400, "ai_wear_invalid_selfie");
+  const ratio = dimensions.width / dimensions.height;
+  if (ratio < 0.38 || ratio > 2.65) throw httpError("照片比例不適合 AI 試戴，請重新上傳正面或半身真人自拍照。", 400, "ai_wear_invalid_selfie");
+
+  const key = stringValue((settings && settings.image2ApiKey) || env.OPENAI_API_KEY).trim();
+  if (!/^sk-(proj-)?[A-Za-z0-9_-]+/.test(key)) return { ok: true, skipped: "non_openai_key" };
+
+  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
+  const model = env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-5-mini";
+  const imageDataUrl = `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`;
+  const prompt = [
+    "你是 AI 眼鏡試戴的自拍照合格檢查器。只輸出 JSON，不要說明。",
+    "qualified=true 的條件：圖片必須是真人照片，且主要內容是一位顧客本人；臉部清楚可見；眼睛、鼻樑與眼鏡配戴位置可判斷；不是廣告海報、DM、名片、截圖、商品圖、多人合照、插畫、證件拼貼或文字版面。",
+    "若畫面有大量文案、促銷字、診所/品牌版面、設計邊框，或人物只是海報/廣告中的一部分，qualified 必須是 false。",
+    "輸出格式：{\"qualified\":boolean,\"reason\":\"繁體中文短原因\",\"face_count\":number,\"is_real_person_photo\":boolean,\"is_poster_or_ad\":boolean,\"face_clear\":boolean,\"eye_area_visible\":boolean,\"confidence\":number}"
+  ].join("\n");
+  let payload;
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        input: [{ role: "user", content: [{ type: "input_text", text: prompt }, { type: "input_image", image_url: imageDataUrl }] }],
+        text: { format: { type: "json_object" } },
+        max_output_tokens: 600,
+      }),
+    });
+    const bodyText = await response.text();
+    if (!response.ok) throw new Error(`OpenAI HTTP ${response.status}: ${bodyText.slice(0, 500)}`);
+    payload = parseStrictJsonObject(extractOpenAIText(JSON.parse(bodyText)));
+  } catch (err) {
+    console.warn("AI wear selfie validation failed", err && err.message ? err.message : err);
+    throw httpError("自拍照合格檢查失敗，請稍後再試；系統尚未產生圖片，也不會扣點。", 502, "ai_wear_selfie_validation_failed");
+  }
+  const faceCount = Number(payload.face_count || payload.faceCount || 0);
+  const confidence = Number(payload.confidence || 0);
+  const invalid = payload.qualified !== true || payload.is_real_person_photo === false || payload.is_poster_or_ad === true || payload.face_clear === false || payload.eye_area_visible === false || (faceCount && faceCount !== 1) || (confidence && confidence < 0.65);
+  if (invalid) {
+    const reason = stringValue(payload.reason || "照片不符合真人自拍照條件").slice(0, 120);
+    throw httpError(`${reason}，請重新上傳真人自拍照。`, 400, "ai_wear_invalid_selfie");
+  }
+  return { ok: true, validation: payload };
+}
 async function preflightAiWearGenerate(request, env) {
   await ensureAiWearSchema(env);
   const settings = await loadAiWearSettingsRaw(env);
@@ -7668,6 +7718,7 @@ async function preflightAiWearGenerate(request, env) {
   const selfie = await resolveAiWearSelfieFromForm(form, env);
   if (!selfie || !selfie.buffer || !selfie.buffer.byteLength) throw httpError("請先上傳人物照片。", 400);
   if (selfie.buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請重新上傳較小的照片。", 400);
+  await validateAiWearSelfieForTryOn(env, settings, selfie);
   const modelId = stringValue(form.get("modelId") || form.get("model_id"));
   if (!modelId || modelId.includes("..") || modelId.includes("/")) throw httpError("請先選擇眼鏡款式。", 400);
   const reference = await env.DB.prepare("SELECT id, title, series FROM ai_wear_references WHERE id = ? AND active = 1").bind(modelId).first();
@@ -7702,6 +7753,7 @@ async function generateAiWearImage(request, env) {
   const personMimeType = selfie.mimeType;
   if (!personBuffer || !personBuffer.byteLength) throw httpError("請上傳人物照片。", 400);
   if (personBuffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請壓到 2MB 以內。", 400);
+  await validateAiWearSelfieForTryOn(env, settings, selfie);
   const maskFile = form.get("editMask") || form.get("mask") || form.get("maskImage");
   let maskBuffer = null;
   let maskMimeType = "";
@@ -8252,6 +8304,7 @@ async function uploadAiWearSelfie(request, env) {
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}.${ext}`;
   const now = Date.now();
   const settings = await loadAiWearSettingsRaw(env);
+  await validateAiWearSelfieForTryOn(env, settings, { buffer, mimeType, fileName: stringValue(file.name || id), size: buffer.byteLength });
   const verifiedProfile = await verifyAiWearLineProfileFromForm(env, settings, form);
   const lineUserId = stringValue((verifiedProfile && verifiedProfile.userId) || form.get("lineUserId") || form.get("line_user_id"));
   const displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || form.get("displayName") || form.get("display_name")).slice(0, 120);
