@@ -8232,6 +8232,12 @@ function aiWearAssetIdFromPath(pathname, prefix) {
   return id;
 }
 
+function aiWearStoredAssetIdFromPath(pathname, prefix) {
+  const id = decodeURIComponent(String(pathname || "").slice(prefix.length));
+  if (!id || id.includes("..") || id.includes("/")) return "";
+  return id;
+}
+
 async function uploadAiWearSelfie(request, env) {
   await ensureAiWearSchema(env);
   const form = await request.formData();
@@ -8272,7 +8278,7 @@ function aiWearSelfieToClient(selfie, env) {
 
 async function serveAiWearSelfieImage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
-  const id = aiWearAssetIdFromPath(pathname, AI_WEAR_SELFIE_ASSET_PREFIX);
+  const id = aiWearStoredAssetIdFromPath(pathname, AI_WEAR_SELFIE_ASSET_PREFIX);
   if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
   const row = await env.DB.prepare("SELECT mime_type, base64, created_at FROM ai_wear_selfies WHERE id = ?").bind(id).first();
   if (!row || !row.base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
