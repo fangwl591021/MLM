@@ -935,13 +935,16 @@ function rewriteSmartMonitorDashboardHtml(html) {
     .replaceAll("apiUrlForFloor(\"/api/data\", floorAtStart)", "apiUrlForFloor(\"/api/data\", 'smart') + '&smart=1'")
     .replaceAll(initialFloorBlock, smartInitialFloorBlock)
     .replaceAll('const FLOORS = { main: "產品客服", admin: "行政客服" };', 'const FLOORS = { smart: "康立智能" };')
+    .replaceAll('const FLOORS = { main: "\u7522\u54c1\u5ba2\u670d", admin: "\u884c\u653f\u5ba2\u670d", smart: "\u5eb7\u7acb\u667a\u80fd" };', 'const FLOORS = { smart: "\u5eb7\u7acb\u667a\u80fd" };')
     .replaceAll('.smartMonitorBtn:hover{background:#effcf4}', '.smartMonitorBtn.active{background:#e7f8ef;color:#067a35;box-shadow:inset 0 0 0 1px #067a35}.smartMonitorBtn:hover{background:#effcf4}')
     .replaceAll('class="smartMonitorBtn" href="/admin/smart-monitor"', 'class="smartMonitorBtn active" href="/admin/smart-monitor"')
     .replaceAll('<a class="smartMonitorBtn active" href="/admin/smart-monitor">康立智能監控</a>', '')
-    .replaceAll('<button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button>', '<a class="floorTab" href="/dashboard?floor=main">產品客服</a><a class="floorTab" href="/dashboard?floor=admin">行政客服</a><button type="button" class="floorTab active" data-floor="smart">康立智能</button>');
+    .replaceAll('<button type="button" class="floorTab active" data-floor="main">\u7522\u54c1\u5ba2\u670d</button><button type="button" class="floorTab" data-floor="admin">\u884c\u653f\u5ba2\u670d</button>', '<a class="floorTab" href="/dashboard?floor=main">\u7522\u54c1\u5ba2\u670d</a><a class="floorTab" href="/dashboard?floor=admin">\u884c\u653f\u5ba2\u670d</a><a class="smartMonitorBtn active" href="/admin/smart-monitor">\u5eb7\u7acb\u667a\u80fd\u76e3\u63a7</a>');
 }
 function rewriteFrontendLinks(html) {
   return String(html || "")
+    .replace(/<button type="button" class="floorTab(?: active)?" data-floor="smart">[^<]*<\/button>/g, "")
+    .replace(/<a class="smartMonitorBtn(?: active)?" href="\/admin\/smart-monitor">[^<]*<\/a>/g, "")
     .replaceAll('href="console.html"', 'href="/console"')
     .replaceAll("href='console.html'", "href='/console'")
     .replaceAll('href="index.html?floor=main"', 'href="/dashboard?floor=main"')
@@ -2363,6 +2366,10 @@ async function pointMutation(env, body, action) {
     operatorId,
     operatorName,
   };
+  return applyWetwPointMutation(env, input, body);
+}
+
+async function applyWetwPointMutation(env, input, body = {}) {
   const wetwBalanceBefore = await fetchWetwLatestPointBalance(env, input, body).catch(() => null);
   const wetw = await insertWetwPointMutation(env, input, body);
   const queriedWetwBalanceAfter = await fetchWetwLatestPointBalance(env, input, body).catch(() => null);
@@ -3308,6 +3315,17 @@ async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
   const accountKey = `${channelKey}:${lineUserId}:${pointType}`;
   const row = await env.DB.prepare("SELECT balance FROM point_accounts WHERE account_key = ?").bind(accountKey).first();
   return Number(row && row.balance || 0);
+}
+
+async function getLiveFirstPointAccountBalance(env, channelKey, lineUserId, pointType) {
+  try {
+    const live = await livePointBalanceRow(env, channelKey, lineUserId, pointType);
+    const balance = Number(live && live.balance);
+    if (Number.isFinite(balance)) return balance;
+  } catch (_err) {
+    // Fall back to the local cache only when the mother-site lookup is unavailable.
+  }
+  return getPointAccountBalance(env, channelKey, lineUserId, pointType);
 }
 
 async function resolveCalendarRewardContext(env, body) {
@@ -7615,7 +7633,7 @@ async function preflightAiWearGenerate(request, env) {
   if (settings.pointDeductionEnabled && pointCost > 0 && !lineUserId) throw httpError("請先用 LINE 登入後再生成，系統需要確認會員 UID 才能扣點。", 401);
   let balance = 0;
   if (settings.pointDeductionEnabled && pointCost > 0) {
-    balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+    balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
     if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
   }
   return {
@@ -7661,7 +7679,7 @@ async function generateAiWearImage(request, env) {
   const shouldDeductPoints = Boolean(settings.pointDeductionEnabled && pointCost > 0 && lineUserId);
   if (settings.pointDeductionEnabled && pointCost > 0 && !verifiedLineUserId) throw httpError("請先用 LINE 登入後再生成，系統需要確認會員 UID 才能扣點。", 401);
   if (shouldDeductPoints) {
-    const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+    const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
     if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
   }
   const wearMode = normalizeAiWearWearMode(form.get("wear_mode") || form.get("wearMode"));
@@ -7692,7 +7710,7 @@ async function generateAiWearImage(request, env) {
   const resultUrl = storedResult.url;
   const inlineDataUrl = "";
   if (shouldDeductPoints) {
-    await applyPointMutation(env, {
+    await applyWetwPointMutation(env, {
       channelKey: settings.pointChannelKey,
       lineUserId,
       pointType: settings.pointType,
@@ -7701,8 +7719,13 @@ async function generateAiWearImage(request, env) {
       source: "ai-wear",
       sourceEventId: `ai-wear:${lineUserId}:${id}`,
       businessKey: `ai-wear:${lineUserId}:${id}`,
+      operatorId: `ai-wear:${lineUserId}`,
       operatorName: "AI穿戴",
       note: `AI穿戴生成扣點 ${pointCost} 點`,
+    }, {
+      event_name: "AI穿戴扣點",
+      event_content: `AI穿戴生成扣點 ${pointCost} 點`,
+      shop_remark: `AI穿戴生成扣點；model=${modelId}；result=${id}`,
     });
     deductedPointCost = pointCost;
   }
@@ -7873,7 +7896,11 @@ async function callOpenAiWearImageApi(settings, input, apiUrl) {
   const payload = new FormData();
   payload.append("model", effectiveImageModel);
   payload.append("prompt", input.prompt);
-  payload.append("size", chooseOpenAiWearImageSize(input.personDimensions, effectiveImageModel));
+  payload.append("size", "1024x1536");
+  payload.append("quality", "low");
+  payload.append("n", "1");
+  payload.append("background", "opaque");
+  payload.append("output_format", "jpeg");
   payload.append("image[]", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), `PRIMARY_PERSON_KEEP_IDENTITY_${input.personFileName || "person.jpg"}`);
   if (input.maskBuffer) payload.append("mask", new Blob([input.maskBuffer], { type: input.maskMimeType || "image/png" }), "glasses-mask.png");
   payload.append("image[]", new Blob([base64ToUint8Array(input.referenceBase64)], { type: input.referenceMimeType || "image/jpeg" }), `GLASSES_STYLE_REFERENCE_ONLY_${input.referenceFileName || "glasses.jpg"}`);
@@ -7960,7 +7987,7 @@ async function parseAiWearImageResponse(response) {
   const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64 || item.result_base64));
   const url = stringValue(item && (item.url || item.image_url || item.result_url || item.output_url));
   if (!base64 && !url) throw httpError("AI image2 未回傳圖片。", 502);
-  return { base64, url, mimeType: stringValue(item && item.mime_type) || "image/png" };
+  return { base64, url, mimeType: stringValue(item && item.mime_type) || "image/jpeg" };
 }
 async function diagnoseAiWearOpenAi(env) {
   const settings = await loadAiWearSettingsRaw(env);
@@ -8096,7 +8123,7 @@ async function fetchAiWearMemberPoints(env, body) {
   const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
   const lineUserId = stringValue(profile && profile.userId);
   if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
-  const balance = await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+  const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
   return {
     lineUserId,
     displayName: stringValue((body && body.displayName) || (profile && profile.displayName)),

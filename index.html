@@ -66,7 +66,7 @@
   <div class="app">
     <aside class="left">
       <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="https://mlm.fangwl591021.workers.dev/console">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
-      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><button type="button" class="floorTab" data-floor="smart">康立智能</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
+      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
       <section class="config">
         <section class="settingsPanel">
           <div class="settingTitle"><h3>登入身份</h3><span class="roleBadge">Token 僅存在本機</span></div>
@@ -163,7 +163,7 @@
     const DEFAULT_API_BASE = "https://mlm.fangwl591021.workers.dev";
     const AUTH_STORAGE_KEY = "klink_dashboard_auth";
     const TAG_OPTIONS = ["產品問題", "行政問題", "訂單物流", "退換貨", "客訴", "負評", "建議", "待追蹤", "VIP"];
-    const FLOORS = { main: "產品客服", admin: "行政客服", smart: "康立智能" };
+    const FLOORS = { main: "產品客服", admin: "行政客服" };
     const DASHBOARD_SYNC_TIMEOUT_MS = 20000;
     const POINT_SOURCES = [
       { key: "oa2", name: "康立全球", loginId: "1584", canGrant: false, deductPriority: true },
@@ -887,12 +887,13 @@
     }
     function renderLinePayload(payload) {
       if (!payload || typeof payload !== "object") return "";
-      const messages = Array.isArray(payload.messages) ? payload.messages : [];
+      const messages = Array.isArray(payload.messages) ? payload.messages : Array.isArray(payload.lineMessages) ? payload.lineMessages : payload.lineMessage ? [payload.lineMessage] : payload.message ? [payload.message] : payload.type ? [payload] : [];
       if (!messages.length) return "";
       return `<div class="linePayload">${messages.map(renderLineMessage).join("")}</div>`;
     }
     function renderLineMessage(message) {
       const item = message && typeof message === "object" ? message : {};
+      if (item.type === "postback") { const action = item.postback || item; const params = action.params && typeof action.params === "object" ? Object.entries(action.params).map(([key, value]) => key + ": " + value).join("\n") : ""; const parts = [action.displayText, action.label, action.text, action.data, params].filter(Boolean).map(String); return '<div class="lineUnsupported">' + esc(parts.join("\n") || "\u9ede\u9078\u4e8b\u4ef6") + '</div>'; }
       if (item.type === "image") return renderLineImage(item.originalContentUrl || item.previewImageUrl);
       if (item.type === "flex") return renderFlexContainer(item.contents, item.altText || "Flex 訊息");
       if (item.type === "template") return `<div class="lineUnsupported">${esc(item.altText || "Template 訊息")}</div>`;
