@@ -58,6 +58,7 @@ const AI_WEAR_SETTINGS_META_KEY = "ai_wear_settings";
 const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
 const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
+const AI_WEAR_SHARE_ASSET_PREFIX = "/assets/ai-wear/share/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
 const AI_WEAR_RESULT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
@@ -169,6 +170,9 @@ export default {
       if ((url.pathname === "/ai-wear" || url.pathname === "/ai-wear.html") && (request.method === "GET" || request.method === "HEAD")) {
         return serveFrontendHtml("ai-wear.html", corsHeaders);
       }
+      if (url.pathname.startsWith("/ai-wear/share/") && (request.method === "GET" || request.method === "HEAD")) {
+        return serveAiWearSharePage(env, url.pathname, corsHeaders);
+      }
 
       if (url.pathname === "/calendar" && (request.method === "GET" || request.method === "HEAD")) {
         return Response.redirect(`${url.origin}/console/calendar`, 302);
@@ -192,6 +196,9 @@ export default {
       }
       if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearResultImage(env, url.pathname, corsHeaders);
+      }
+      if (url.pathname.startsWith(AI_WEAR_SHARE_ASSET_PREFIX) && request.method === "GET") {
+        return serveAiWearShareImage(env, url.pathname, corsHeaders);
       }
 
       if (url.pathname === "/api/ai-wear-public" && request.method === "GET") {
@@ -217,6 +224,10 @@ export default {
 
       if (url.pathname === "/api/ai-wear/generate" && request.method === "POST") {
         const data = await generateAiWearImage(request, env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+      if (url.pathname === "/api/ai-wear-share" && request.method === "POST") {
+        const data = await createAiWearShare(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -1298,7 +1309,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results") return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path.startsWith("/ai-wear/share/")) return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -3485,7 +3496,8 @@ async function resolveNfcTestRewardContext(env, campaign, body) {
   return {
     campaign,
     event: {
-      uid: `nfc-test:${token}`,
+      uid:
+fc-test:${token}`,
       summary: eventTitle,
       description: `${eventTitle}贈點 ${points} K點`,
       location: flow.address,
@@ -8148,6 +8160,18 @@ async function ensureAiWearSchema(env) {
     base64 TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL DEFAULT 0
   )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_shares (
+    id TEXT PRIMARY KEY,
+    result_id TEXT NOT NULL DEFAULT '',
+    sharer_line_user_id TEXT NOT NULL DEFAULT '',
+    sharer_name TEXT NOT NULL DEFAULT '',
+    caption TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
+    image_mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    clicks INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    last_clicked_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_results (
     id TEXT PRIMARY KEY,
     line_user_id TEXT NOT NULL DEFAULT '',
@@ -8380,6 +8404,66 @@ async function saveAiWearResult(request, env) {
   return { id, createdAt: now, resultUrl, deductedPointCost };
 }
 
+async function createAiWearShare(request, env) {
+  await ensureAiWearSchema(env);
+  const form = await request.formData();
+  const file = form.get("shareImage");
+  if (!file || typeof file.arrayBuffer !== "function") throw httpError("分享圖片尚未建立。", 400, "ai_wear_share_missing_image");
+  const mimeType = stringValue(file.type || "image/jpeg").toLowerCase();
+  if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)) throw httpError("分享圖片格式不支援。", 400);
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > AI_WEAR_RESULT_UPLOAD_MAX_BYTES) throw httpError("分享圖片過大，請重新產生。", 400);
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const now = Date.now();
+  const bucket = env.AI_WEAR_BUCKET;
+  if (!bucket || typeof bucket.put !== "function") throw httpError("R2 儲存桶尚未設定，無法建立分享圖。", 500, "ai_wear_r2_not_configured");
+  await bucket.put(aiWearShareObjectKey(id, mimeType), buffer, {
+    httpMetadata: { contentType: mimeType },
+    customMetadata: { kind: "ai-wear-share", id },
+  });
+  const imageUrl = `${publicBaseUrl(env)}${AI_WEAR_SHARE_ASSET_PREFIX}${encodeURIComponent(id)}`;
+  const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  await env.DB.prepare(`INSERT INTO ai_wear_shares (id, result_id, sharer_line_user_id, sharer_name, caption, image_url, image_mime_type, clicks, created_at, last_clicked_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`).bind(
+    id,
+    stringValue(form.get("resultId") || form.get("result_id")).slice(0, 120),
+    stringValue(form.get("sharerId") || form.get("sharer_id") || form.get("lineUserId") || form.get("line_user_id")).slice(0, 160),
+    stringValue(form.get("sharerName") || form.get("sharer_name") || form.get("displayName") || form.get("display_name")).slice(0, 120),
+    stringValue(form.get("caption") || "").slice(0, 500),
+    imageUrl,
+    mimeType,
+    now,
+  ).run();
+  return { id, shareUrl, imageUrl, createdAt: now };
+}
+
+async function serveAiWearShareImage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = aiWearAssetIdFromPath(pathname, AI_WEAR_SHARE_ASSET_PREFIX);
+  if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT image_mime_type, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  if (!row) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  const mimeType = stringValue(row.image_mime_type || "image/jpeg");
+  const bucket = env.AI_WEAR_BUCKET;
+  if (!bucket || typeof bucket.get !== "function") return new Response("AI wear R2 bucket is not configured", { status: 500, headers: corsHeaders });
+  const object = await bucket.get(aiWearShareObjectKey(id, mimeType));
+  if (!object) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  return new Response(object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
+}
+
+async function serveAiWearSharePage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = decodeURIComponent(String(pathname || "").replace(/^\/ai-wear\/share\//, ""));
+  if (!id || id.includes("..") || id.includes("/")) return new Response("Not found", { status: 404, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  if (!row) return new Response("Not found", { status: 404, headers: corsHeaders });
+  await env.DB.prepare("UPDATE ai_wear_shares SET clicks = clicks + 1, last_clicked_at = ? WHERE id = ?").bind(Date.now(), id).run();
+  const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
+  const description = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
+  const imageUrl = stringValue(row.image_url);
+  const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  const html = `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(shareUrl)}"><meta property="og:image" content="${escapeHtml(imageUrl)}"><meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}"><meta property="og:image:type" content="image/jpeg"><meta name="twitter:card" content="summary_large_image"><style>body{margin:0;font-family:Arial,'Noto Sans TC',sans-serif;background:#f4f7fb;color:#101828}.wrap{max-width:720px;margin:0 auto;padding:22px}.card{background:#fff;border:1px solid #d8e0eb;border-radius:18px;padding:18px;box-shadow:0 16px 42px rgba(16,24,40,.08)}img{display:block;width:100%;border-radius:14px;border:1px solid #e4e9f2}h1{font-size:24px;margin:14px 0 8px}p{color:#526070;line-height:1.6}.btn{display:inline-block;margin-top:12px;background:#06c755;color:#fff;text-decoration:none;font-weight:900;border-radius:12px;padding:12px 16px}</style></head><body><main class="wrap"><section class="card"><img src="${escapeHtml(imageUrl)}" alt="AI 眼鏡試戴分享圖"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><a class="btn" href="/ai-wear">我也要試戴</a></section></main></body></html>`;
+  return new Response(html, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" } });
+}
 async function listAiWearResults(env, searchParams) {
   await ensureAiWearSchema(env);
   const limit = clampNumber(searchParams && searchParams.get("limit") || 50, 1, 200);
