@@ -2388,13 +2388,14 @@ async function pointMutation(env, body, action) {
 }
 
 async function applyWetwPointMutation(env, input, body = {}) {
+  const localBalanceBefore = await getPointAccountBalance(env, input.channelKey, input.lineUserId, input.pointType || "gift_money").catch(() => null);
   const wetwBalanceBefore = await fetchWetwLatestPointBalance(env, input, body).catch(() => null);
   const wetw = await insertWetwPointMutation(env, input, body);
   const queriedWetwBalanceAfter = await fetchWetwLatestPointBalance(env, input, body).catch(() => null);
   const expectedWetwBalanceAfter = Number.isFinite(wetwBalanceBefore)
     ? wetwBalanceBefore + Number(input.pointDelta || 0)
     : null;
-  const wetwBalanceAfter = chooseMutationBalanceAfter(input.pointDelta, queriedWetwBalanceAfter, expectedWetwBalanceAfter);
+  const wetwBalanceAfter = chooseMutationBalanceAfter(input.pointDelta, queriedWetwBalanceAfter, expectedWetwBalanceAfter, localBalanceBefore);
   const local = await applyPointMutation(env, {
     ...input,
     source: "wetw",
@@ -2702,15 +2703,25 @@ function findAutoRewardWetwMatch(row, wetwRows) {
   }) || null;
 }
 
-function chooseMutationBalanceAfter(delta, queriedBalance, expectedBalance) {
+function chooseMutationBalanceAfter(delta, queriedBalance, expectedBalance, localBalanceBefore = null) {
   const queried = Number(queriedBalance);
   const expected = Number(expectedBalance);
+  const localBefore = Number(localBalanceBefore);
   const hasQueried = Number.isFinite(queried);
   const hasExpected = Number.isFinite(expected);
-  if (!hasQueried) return hasExpected ? expected : null;
-  if (!hasExpected) return queried;
   const change = Number(delta || 0);
-  if (change > 0 && queried < expected) return expected;
+  const localExpected = Number.isFinite(localBefore) ? localBefore + change : null;
+  const hasLocalExpected = Number.isFinite(localExpected);
+  if (!hasQueried) {
+    if (change > 0 && hasExpected && hasLocalExpected) return Math.max(expected, localExpected);
+    if (hasExpected) return expected;
+    return hasLocalExpected ? localExpected : null;
+  }
+  if (!hasExpected) {
+    if (change > 0 && hasLocalExpected) return Math.max(queried, localExpected);
+    return queried;
+  }
+  if (change > 0) return Math.max(queried, expected, hasLocalExpected ? localExpected : expected);
   if (change < 0 && queried > expected) return expected;
   return queried;
 }
