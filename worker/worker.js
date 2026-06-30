@@ -951,7 +951,9 @@ function rewriteSmartMonitorDashboardHtml(html) {
     .replaceAll('.smartMonitorBtn:hover{background:#effcf4}', '.smartMonitorBtn.active{background:#e7f8ef;color:#067a35;box-shadow:inset 0 0 0 1px #067a35}.smartMonitorBtn:hover{background:#effcf4}')
     .replaceAll('class="smartMonitorBtn" href="/admin/smart-monitor"', 'class="smartMonitorBtn active" href="/admin/smart-monitor"')
     .replaceAll('<a class="smartMonitorBtn active" href="/admin/smart-monitor">康立智能監控</a>', '')
-    .replaceAll('<button type="button" class="floorTab active" data-floor="main">\u7522\u54c1\u5ba2\u670d</button><button type="button" class="floorTab" data-floor="admin">\u884c\u653f\u5ba2\u670d</button>', '<a class="floorTab" href="/dashboard?floor=main">\u7522\u54c1\u5ba2\u670d</a><a class="floorTab" href="/dashboard?floor=admin">\u884c\u653f\u5ba2\u670d</a><a class="smartMonitorBtn active" href="/admin/smart-monitor">\u5eb7\u7acb\u667a\u80fd\u76e3\u63a7</a>');
+    .replaceAll('<button type="button" class="floorTab active" data-floor="main">\u7522\u54c1\u5ba2\u670d</button><button type="button" class="floorTab" data-floor="admin">\u884c\u653f\u5ba2\u670d</button>', '<a class="floorTab" href="/dashboard?floor=main">\u7522\u54c1\u5ba2\u670d</a><a class="floorTab" href="/dashboard?floor=admin">\u884c\u653f\u5ba2\u670d</a><a class="smartMonitorBtn active" href="/admin/smart-monitor">\u5eb7\u7acb\u667a\u80fd\u76e3\u63a7</a>')
+    .replaceAll('</style>', '.smart-monitor .composer{position:sticky!important;bottom:0!important;z-index:12!important;border-top:2px solid #06c755!important;box-shadow:0 -12px 28px rgba(15,23,42,.12)!important}.smart-monitor .sendPrimary{background:#06c755!important}.smart-monitor .sendSplit{background:#00b14f!important}</style>')
+    .replaceAll('<body>', '<body class="smart-monitor">');
 }
 function rewriteFrontendLinks(html) {
   let rewritten = String(html || "")

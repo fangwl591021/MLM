@@ -736,7 +736,7 @@
         const endpoint = logOnly ? "/api/log-reply" : "/api/send";
         const res = await fetch(apiUrl(endpoint), { method: "POST", headers: authJsonHeaders(), body: JSON.stringify({ floor: state.floor, userId: state.activeUserId, text, userName: realName(current) }) });
         const json = await res.json();
-        if (!res.ok || json.status !== "success") throw new Error(json.message || "送出失敗");
+        if (!res.ok || json.status !== "success") throw new Error([json.message, json.detail].filter(Boolean).join("：") || "送出失敗");
         els.replyText.value = ""; els.sendMenu.hidden = true; await sync();
       } catch (err) {
         showError(err.message || String(err));
