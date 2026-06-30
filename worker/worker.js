@@ -197,8 +197,8 @@ export default {
       if (url.pathname.startsWith(AI_WEAR_RESULT_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearResultImage(env, url.pathname, corsHeaders);
       }
-      if (url.pathname.startsWith(AI_WEAR_SHARE_ASSET_PREFIX) && request.method === "GET") {
-        return serveAiWearShareImage(env, url.pathname, corsHeaders);
+      if (url.pathname.startsWith(AI_WEAR_SHARE_ASSET_PREFIX) && (request.method === "GET" || request.method === "HEAD")) {
+        return serveAiWearShareImage(env, url.pathname, corsHeaders, request.method);
       }
 
       if (url.pathname === "/api/ai-wear-public" && request.method === "GET") {
@@ -881,6 +881,10 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
 
 function rewriteAiWearMobileShareHtml(html) {
   return String(html || "")
+    .replace(".tabs{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px}.tab{white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:850;color:#344054}", ".tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:2px 0 12px}.tab{min-width:0;white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 6px;font-weight:850;color:#344054}")
+    .replace("function renderTabs(){const series=[\"全部\",...Array.from(new Set(state.models.map(modelSeries).filter(Boolean))).sort((a,b)=>a.localeCompare(b,\"zh-Hant\"))]; if(!series.includes(state.series))state.series=\"全部\"; $(\"seriesTabs\").innerHTML=series.map((s)=>`<button class=\"tab ${state.series===s?'active':''}\" type=\"button\" data-series=\"${esc(s)}\">${esc(s)}</button>`).join(\"\"); $(\"seriesTabs\").querySelectorAll(\".tab\").forEach((btn)=>btn.onclick=()=>{state.series=btn.dataset.series; renderTabs(); renderModels();});}", "function seriesSortValue(value){const text=String(value||\"\"); const num=Number((text.match(/\\d+/)||[\"\"])[0]); return Number.isFinite(num)?num:9999;}\n    function renderTabs(){const series=[\"全部\",...Array.from(new Set(state.models.map(modelSeries).filter(Boolean))).sort((a,b)=>seriesSortValue(a)-seriesSortValue(b)||a.localeCompare(b,\"zh-Hant\"))]; if(!series.includes(state.series))state.series=\"全部\"; $(\"seriesTabs\").innerHTML=series.map((s)=>`<button class=\"tab ${state.series===s?'active':''}\" type=\"button\" data-series=\"${esc(s)}\">${esc(s)}</button>`).join(\"\"); $(\"seriesTabs\").querySelectorAll(\".tab\").forEach((btn)=>btn.onclick=()=>{state.series=btn.dataset.series; renderTabs(); renderModels();});}")
+    .replace("const shareImageUrl=data.imageUrl||\"\"; sharePayloads[key]={blob,caption,shareUrl,shareImageUrl,imageUrl};", "const shareImageUrl=normalizeFlexImageUrl(data.imageUrl||\"\"); sharePayloads[key]={blob,caption,shareUrl,shareImageUrl,imageUrl};")
+    .replace("function lineShareUrl(url){return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url||\"\")}`;}", "function lineShareUrl(url){return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url||\"\")}`;}\n    function normalizeFlexImageUrl(url){const value=String(url||\"\"); if(!value)return \"\"; if(value.startsWith(location.origin+\"/assets/ai-wear/share/\")&&!/\\.(jpe?g|png|webp)(?:[?#]|$)/i.test(value))return value+\".jpg\"; return value;}")
     .replace(/ if\(isMobileShareDevice\(\)\)\{const file=new File\(\[blob\],"ai-wear-share\.jpg",\{type:"image\/jpeg"\}\); if\(navigator\.canShare&&navigator\.canShare\(\{files:\[file\]\}\)&&navigator\.share\)\{await navigator\.share\(\{title:"AI 眼鏡試戴",text:caption,url:data\.shareUrl,files:\[file\]\}\); setStatus\("已開啟手機分享，可選擇 FB、IG 或其他社群。", true\); return;\}\}/, "")
     .replace("請在該筆紀錄下方選擇 FB、LINE、複製文案或下載 IG 圖。", "請在該筆紀錄下方選擇 FB、LINE、複製文案、下載 IG 圖或手機分享。");
 }
@@ -8214,7 +8218,8 @@ async function ensureAiWearSchema(env) {
 }
 
 function aiWearAssetIdFromPath(pathname, prefix) {
-  const id = decodeURIComponent(String(pathname || "").slice(prefix.length));
+  const rawId = decodeURIComponent(String(pathname || "").slice(prefix.length));
+  const id = rawId.replace(/\.(?:jpe?g|png|webp)$/i, "");
   if (!id || id.includes("..") || id.includes("/")) return "";
   return id;
 }
@@ -8443,7 +8448,7 @@ async function createAiWearShare(request, env) {
     httpMetadata: { contentType: mimeType },
     customMetadata: { kind: "ai-wear-share", id },
   });
-  const imageUrl = `${publicBaseUrl(env)}${AI_WEAR_SHARE_ASSET_PREFIX}${encodeURIComponent(id)}`;
+  const imageUrl = `${publicBaseUrl(env)}${AI_WEAR_SHARE_ASSET_PREFIX}${encodeURIComponent(id)}.${aiWearMimeExtension(mimeType)}`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
   await env.DB.prepare(`INSERT INTO ai_wear_shares (id, result_id, sharer_line_user_id, sharer_name, caption, image_url, image_mime_type, clicks, created_at, last_clicked_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`).bind(
     id,
@@ -8458,7 +8463,7 @@ async function createAiWearShare(request, env) {
   return { id, shareUrl, imageUrl, createdAt: now };
 }
 
-async function serveAiWearShareImage(env, pathname, corsHeaders) {
+async function serveAiWearShareImage(env, pathname, corsHeaders, method = "GET") {
   await ensureAiWearSchema(env);
   const id = aiWearAssetIdFromPath(pathname, AI_WEAR_SHARE_ASSET_PREFIX);
   if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
@@ -8469,7 +8474,7 @@ async function serveAiWearShareImage(env, pathname, corsHeaders) {
   if (!bucket || typeof bucket.get !== "function") return new Response("AI wear R2 bucket is not configured", { status: 500, headers: corsHeaders });
   const object = await bucket.get(aiWearShareObjectKey(id, mimeType));
   if (!object) return new Response("Image not found", { status: 404, headers: corsHeaders });
-  return new Response(object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
+  return new Response(method === "HEAD" ? null : object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
 }
 
 async function serveAiWearSharePage(env, pathname, corsHeaders) {
@@ -8481,7 +8486,8 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   await env.DB.prepare("UPDATE ai_wear_shares SET clicks = clicks + 1, last_clicked_at = ? WHERE id = ?").bind(Date.now(), id).run();
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
   const description = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
-  const imageUrl = stringValue(row.image_url);
+  const rawImageUrl = stringValue(row.image_url);
+  const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
   const settings = await getAiWearSettings(env);
   const liffId = normalizeAiWearLiffId(settings && settings.liffId);
@@ -8529,7 +8535,7 @@ async function serveAiWearResultImage(env, pathname, corsHeaders) {
   if (!bucket || typeof bucket.get !== "function") return new Response("AI wear R2 bucket is not configured", { status: 500, headers: corsHeaders });
   const object = await bucket.get(aiWearResultObjectKey(id, mimeType));
   if (!object) return new Response("Image not found", { status: 404, headers: corsHeaders });
-  return new Response(object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
+  return new Response(method === "HEAD" ? null : object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
 }
 
 async function getCheckinTemplate(env) {
