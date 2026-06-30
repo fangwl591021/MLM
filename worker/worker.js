@@ -7678,8 +7678,10 @@ async function validateAiWearSelfieForTryOn(env, settings, selfie) {
   const imageDataUrl = `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`;
   const prompt = [
     "你是 AI 眼鏡試戴的自拍照合格檢查器。只輸出 JSON，不要說明。",
-    "qualified=true 的條件：圖片必須是真人照片，且主要內容是一位顧客本人；臉部清楚可見；眼睛、鼻樑與眼鏡配戴位置可判斷；不是廣告海報、DM、名片、截圖、商品圖、多人合照、插畫、證件拼貼或文字版面。",
-    "若畫面有大量文案、促銷字、診所/品牌版面、設計邊框，或人物只是海報/廣告中的一部分，qualified 必須是 false。",
+    "qualified=true 的條件：圖片必須是真人照片，且主要內容是一位顧客本人；臉部清楚可見；眼睛、鼻樑與眼鏡配戴位置可判斷。",
+    "允許真實生活背景：戶外風景、店面、室內、招牌、海報牆、產品、手持物、制服、文字背景都可以，只要照片主體是可試戴眼鏡的真人。",
+    "qualified=false 只用在：畫面主體不是顧客本人照片，而是廣告海報、DM、名片、截圖、商品圖、插畫、證件拼貼、多人合照，或人物臉部太小/太糊/眼鼻區不可判斷。",
+    "is_poster_or_ad=true 只代表整張圖主要是版面設計或宣傳物；不要因為真實自拍背景有文字、招牌、牆上海報或產品就標成 true。",
     "輸出格式：{\"qualified\":boolean,\"reason\":\"繁體中文短原因\",\"face_count\":number,\"is_real_person_photo\":boolean,\"is_poster_or_ad\":boolean,\"face_clear\":boolean,\"eye_area_visible\":boolean,\"confidence\":number}"
   ].join("\n");
   let payload;
@@ -7702,8 +7704,7 @@ async function validateAiWearSelfieForTryOn(env, settings, selfie) {
     throw httpError("自拍照合格檢查失敗，請稍後再試；系統尚未產生圖片，也不會扣點。", 502, "ai_wear_selfie_validation_failed");
   }
   const faceCount = Number(payload.face_count || payload.faceCount || 0);
-  const confidence = Number(payload.confidence || 0);
-  const invalid = payload.qualified !== true || payload.is_real_person_photo === false || payload.is_poster_or_ad === true || payload.face_clear === false || payload.eye_area_visible === false || (faceCount && faceCount !== 1) || (confidence && confidence < 0.65);
+  const invalid = payload.qualified !== true || payload.is_real_person_photo === false || payload.face_clear === false || payload.eye_area_visible === false || (faceCount && faceCount !== 1);
   if (invalid) {
     const reason = stringValue(payload.reason || "照片不符合真人自拍照條件").slice(0, 120);
     throw httpError(`${reason}，請重新上傳真人自拍照。`, 400, "ai_wear_invalid_selfie");
