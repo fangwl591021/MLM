@@ -60,6 +60,7 @@ const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
+const AI_WEAR_RESULT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
 const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000; // Legacy fallback only; new AI wear results are stored in R2.
 const DEFAULT_AI_WEAR_LIFF_ID = "2007221311-ISFxRBY3";
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。

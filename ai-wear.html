@@ -84,17 +84,17 @@
           const faces = await detector.detect(img);
           if(faces && faces[0] && faces[0].boundingBox){
             const b = faces[0].boundingBox;
-            const padX = mode === "has_glasses" ? 0.20 : 0.14;
-            const padY = mode === "has_glasses" ? 0.10 : 0.06;
+            const padX = mode === "has_glasses" ? 0.10 : 0.08;
+            const padY = mode === "has_glasses" ? 0.035 : 0.025;
             const x = clamp(Math.round(b.x + b.width * (0.08 - padX)), 0, width - 1);
             const y = clamp(Math.round(b.y + b.height * (0.18 - padY)), 0, height - 1);
             const w = clamp(Math.round(b.width * (0.84 + padX * 2)), 1, width - x);
-            const h = clamp(Math.round(b.height * (0.28 + padY * 2)), 1, height - y);
+            const h = clamp(Math.round(b.height * (0.16 + padY * 2)), 1, height - y);
             return {x,y,w,h};
           }
         }catch(_err){}
       }
-      const band = mode === "has_glasses" ? { x:0.18, y:0.20, w:0.64, h:0.30 } : { x:0.24, y:0.23, w:0.52, h:0.22 };
+      const band = mode === "has_glasses" ? { x:0.24, y:0.23, w:0.52, h:0.16 } : { x:0.28, y:0.25, w:0.44, h:0.13 };
       return {x:Math.round(width*band.x),y:Math.round(height*band.y),w:Math.round(width*band.w),h:Math.round(height*band.h)};
     }
     async function buildGlassesMaskBlob(){
