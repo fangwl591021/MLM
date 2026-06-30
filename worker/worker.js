@@ -7556,6 +7556,9 @@ function aiWearMimeExtension(mimeType) {
 function aiWearResultObjectKey(id, mimeType) {
   return `ai-wear/results/${stringValue(id)}.${aiWearMimeExtension(mimeType)}`;
 }
+function aiWearShareObjectKey(id, mimeType) {
+  return `ai-wear/shares/${stringValue(id)}.${aiWearMimeExtension(mimeType)}`;
+}
 
 async function storeAiWearGeneratedResult(env, id, generated) {
   const mimeType = stringValue(generated && generated.mimeType) || "image/png";
