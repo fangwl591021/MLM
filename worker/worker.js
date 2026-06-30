@@ -1857,7 +1857,7 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
     "ORDER BY id ASC LIMIT 1"
   ).bind(userId, channelKey, pointType, rewardDate).first();
   if (existing) {
-    const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
+    const balance = await getLiveFirstPointAccountBalance(env, channelKey, userId, pointType).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
     await env.DB.prepare(
       "UPDATE daily_keyword_rewards " +
       "SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP " +
@@ -4078,9 +4078,9 @@ async function applyPointMutation(env, input) {
   const existingBalance = existingAccount ? Number(existingAccount.balance || 0) : null;
   const explicitBalanceAfter = Number(input.balanceAfter ?? input.balance_after);
   const delta = Number(input.pointDelta || 0);
-  const balanceAfter = Number.isFinite(existingBalance)
-    ? existingBalance + delta
-    : (Number.isFinite(explicitBalanceAfter) ? explicitBalanceAfter : delta);
+  const balanceAfter = Number.isFinite(explicitBalanceAfter)
+    ? explicitBalanceAfter
+    : (Number.isFinite(existingBalance) ? existingBalance + delta : delta);
 
   await env.DB.prepare(`
     INSERT INTO point_accounts (account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at)
@@ -4287,10 +4287,7 @@ async function upsertLivePointAccountCache(env, channelKey, lineUserId, pointTyp
     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(account_key) DO UPDATE SET
       master_member_ref = COALESCE(NULLIF(excluded.master_member_ref, ''), point_accounts.master_member_ref),
-      balance = CASE
-        WHEN point_accounts.balance IS NULL OR point_accounts.balance = 0 THEN excluded.balance
-        ELSE point_accounts.balance
-      END,
+      balance = excluded.balance,
       updated_at = CURRENT_TIMESTAMP
   `).bind(accountKey, masterMemberRef || null, channelKey, lineUserId, pointType, Number(balance || 0)).run();
   return masterMemberRef;
@@ -5321,10 +5318,7 @@ async function syncCrmPoints(env, body) {
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(account_key) DO UPDATE SET
         master_member_ref = excluded.master_member_ref,
-        balance = CASE
-          WHEN point_accounts.balance IS NULL OR point_accounts.balance = 0 THEN excluded.balance
-          ELSE point_accounts.balance
-        END,
+        balance = excluded.balance,
         updated_at = CURRENT_TIMESTAMP
     `).bind(row.accountKey, row.masterMemberRef, row.channelKey, row.lineUserId, row.pointType, row.balance).run();
   }
@@ -6435,7 +6429,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(userId, channelKey, pointType, rewardDate).first();
 
   if (existingSameDay) {
-    const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
+    const balance = await getLiveFirstPointAccountBalance(env, channelKey, userId, pointType).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
     await env.DB.prepare(`
       UPDATE daily_keyword_rewards
       SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
@@ -6450,7 +6444,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
 
   if (inserted && inserted.meta && inserted.meta.changes === 0) {
-    const balance = await getPointAccountBalance(env, channelKey, userId, pointType).catch(() => 0);
+    const balance = await getLiveFirstPointAccountBalance(env, channelKey, userId, pointType).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
     return { readonly: false, duplicate: true, points, balance_after: balance };
   }
 
