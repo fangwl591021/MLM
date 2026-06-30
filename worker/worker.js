@@ -8509,7 +8509,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
   const settings = await getAiWearSettings(env);
   const liffId = normalizeAiWearLiffId(settings && settings.liffId);
-  const lineAppUrl = `line://app/${encodeURIComponent(liffId)}`;
+  const lineAppUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearTry=1`;
   const browserUrl = `${publicBaseUrl(env)}/ai-wear`;
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
   const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
@@ -8525,7 +8525,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
         { type: "text", text: description, size: "sm", wrap: true, color: "#526070" },
       ] },
       footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
-        { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: `https://liff.line.me/${liffId}` } },
+        { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: lineAppUrl } },
         { type: "button", style: "link", height: "sm", action: { type: "uri", label: "查看分享頁", uri: shareUrl } },
         { type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "分享", uri: shareActionUrl } },
       ] },
