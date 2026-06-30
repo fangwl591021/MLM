@@ -231,6 +231,11 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/ai-wear-share-card" && request.method === "GET") {
+        const data = await getAiWearShareCard(env, url.searchParams);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/auth/session" && request.method === "GET") {
         const session = await verifyConsoleSession(request, env);
         if (!session.ok) return jsonResponse({ status: "error", message: session.message || "尚未登入" }, 401, corsHeaders);
@@ -1322,7 +1327,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path.startsWith("/ai-wear/share/")) return false;
+  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path === "/api/ai-wear-share-card" || path.startsWith("/ai-wear/share/")) return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
@@ -8478,6 +8483,20 @@ async function serveAiWearShareImage(env, pathname, corsHeaders, method = "GET")
   return new Response(method === "HEAD" ? null : object.body, { status: 200, headers: { ...corsHeaders, "Content-Type": stringValue(object.httpMetadata && object.httpMetadata.contentType) || mimeType, "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.created_at || 0}"` } });
 }
 
+async function getAiWearShareCard(env, searchParams) {
+  await ensureAiWearSchema(env);
+  const id = stringValue(searchParams && searchParams.get("id")).trim();
+  if (!id || id.includes("..") || id.includes("/")) throw httpError("分享資料不存在。", 404);
+  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  if (!row) throw httpError("分享資料不存在。", 404);
+  const rawImageUrl = stringValue(row.image_url);
+  const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
+  const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
+  const caption = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
+  return { id, title, caption, shareUrl, imageUrl };
+}
+
 async function serveAiWearSharePage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
   const id = decodeURIComponent(String(pathname || "").replace(/^\/ai-wear\/share\//, ""));
@@ -8495,7 +8514,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const lineAppUrl = `line://app/${encodeURIComponent(liffId)}`;
   const browserUrl = `${publicBaseUrl(env)}/ai-wear`;
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
-  const shareActionUrl = `${shareUrl}?lineShare=1`;
+  const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
   const flexPayload = {
     type: "flex",
     altText: `${title}：${description}`.slice(0, 400),
@@ -8509,8 +8528,8 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
       ] },
       footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
         { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: `https://liff.line.me/${liffId}` } },
-        { type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "分享", uri: shareActionUrl } },
         { type: "button", style: "link", height: "sm", action: { type: "uri", label: "查看分享頁", uri: shareUrl } },
+        { type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "分享", uri: shareActionUrl } },
       ] },
     },
   };
