@@ -76,7 +76,6 @@ const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物
 const DEFAULT_AI_WEAR_SETTINGS = {
   title: "康立負離子眼鏡系列",
   publicPath: "/ai-wear",
-  purchaseLineUrl: "",
   liffId: DEFAULT_AI_WEAR_LIFF_ID,
   prompt: DEFAULT_AI_WEAR_PROMPT,
   imageModel: "image2",
@@ -215,6 +214,12 @@ export default {
       if (url.pathname === "/api/ai-wear/member-points" && request.method === "POST") {
         const body = await safeJson(request).catch(() => ({}));
         const data = await fetchAiWearMemberPoints(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear/member-settings" && request.method === "POST") {
+        const body = await safeJson(request).catch(() => ({}));
+        const data = await saveAiWearMemberSettings(env, body);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -5358,6 +5363,97 @@ function wetwPointRowRankFromLedger(row) {
   return Number.isFinite(created) ? created : 0;
 }
 
+async function ensureCrmMemberAiWearFields(env) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  await ensureColumn(env, "crm_members", "ai_wear_purchase_line_url", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "crm_members", "ai_wear_share_caption", "TEXT NOT NULL DEFAULT ''");
+}
+
+function defaultAiWearShareCaption() {
+  return "我正在試戴康立負離子眼鏡，你覺得這副適合我嗎？";
+}
+
+function normalizeAiWearShareCaption(value) {
+  return stringValue(value).trim().slice(0, 500);
+}
+
+async function resolveAiWearCrmMemberRef(env, lineUserId) {
+  const uid = stringValue(lineUserId).trim();
+  if (!env.DB || !uid) return "";
+  const linked = await env.DB.prepare(`
+    SELECT master_member_ref
+    FROM member_line_links
+    WHERE line_user_id = ? AND channel_key IN (?, ?, 'chat')
+    ORDER BY CASE channel_key WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, linked_at DESC
+    LIMIT 1
+  `).bind(uid, POINT_OA1, POINT_OA2, POINT_OA1, POINT_OA2).first();
+  if (linked && linked.master_member_ref) return stringValue(linked.master_member_ref);
+  const member = await env.DB.prepare(`
+    SELECT member_ref
+    FROM crm_members
+    WHERE json_extract(source_json, '$.LINE_user_id') = ?
+       OR json_extract(source_json, '$.user_login') = ?
+       OR json_extract(source_json, '$.line_user_id') = ?
+       OR json_extract(source_json, '$.lineUserId') = ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(uid, uid, uid, uid).first();
+  return stringValue(member && member.member_ref);
+}
+
+function aiWearMemberSettingsResponse(row, lineUserId = "") {
+  const caption = normalizeAiWearShareCaption(row && row.ai_wear_share_caption);
+  return {
+    memberRef: stringValue(row && row.member_ref),
+    lineUserId: stringValue(lineUserId),
+    purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row && row.ai_wear_purchase_line_url),
+    shareCaption: caption || defaultAiWearShareCaption(),
+  };
+}
+
+async function loadAiWearMemberSettings(env, lineUserId) {
+  await ensureCrmMemberAiWearFields(env);
+  const uid = stringValue(lineUserId).trim();
+  if (!uid) return aiWearMemberSettingsResponse(null, uid);
+  const memberRef = await resolveAiWearCrmMemberRef(env, uid);
+  if (!memberRef) return aiWearMemberSettingsResponse(null, uid);
+  const row = await env.DB.prepare(`
+    SELECT member_ref, ai_wear_purchase_line_url, ai_wear_share_caption
+    FROM crm_members
+    WHERE member_ref = ?
+    LIMIT 1
+  `).bind(memberRef).first();
+  return aiWearMemberSettingsResponse(row, uid);
+}
+
+async function saveAiWearMemberSettings(env, body) {
+  await ensureCrmMemberAiWearFields(env);
+  const settings = await loadAiWearSettingsRaw(env);
+  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
+  const lineUserId = stringValue(profile && profile.userId);
+  if (!lineUserId) throw httpError("請先用 LINE 登入後再儲存 AI 試戴分享設定。", 401);
+  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(body && (body.purchaseLineUrl ?? body.purchase_line_url), true);
+  const shareCaption = normalizeAiWearShareCaption(body && (body.shareCaption ?? body.share_caption));
+  let memberRef = await resolveAiWearCrmMemberRef(env, lineUserId);
+  if (!memberRef) memberRef = `aiwear:${shortHash(lineUserId)}`;
+  const sourceJson = JSON.stringify({ LINE_user_id: lineUserId, LINE_display_name: stringValue(profile.displayName), pictureUrl: stringValue(profile.pictureUrl), source: "ai-wear" });
+  await env.DB.prepare(`
+    INSERT INTO crm_members (member_ref, name, source, source_json, ai_wear_purchase_line_url, ai_wear_share_caption, created_at, updated_at)
+    VALUES (?, ?, 'ai-wear', ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(member_ref) DO UPDATE SET
+      name = CASE WHEN crm_members.name IS NULL OR crm_members.name = '' THEN excluded.name ELSE crm_members.name END,
+      ai_wear_purchase_line_url = excluded.ai_wear_purchase_line_url,
+      ai_wear_share_caption = excluded.ai_wear_share_caption,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(memberRef, stringValue(profile.displayName), sourceJson, purchaseLineUrl, shareCaption).run();
+  const row = await env.DB.prepare(`
+    SELECT member_ref, ai_wear_purchase_line_url, ai_wear_share_caption
+    FROM crm_members
+    WHERE member_ref = ?
+    LIMIT 1
+  `).bind(memberRef).first();
+  return aiWearMemberSettingsResponse(row, lineUserId);
+}
 async function searchCrmMemberCandidates(env, url) {
   if (!env.DB) throw httpError("DB is not configured", 500);
   const q = stringValue(url.searchParams.get("q") || url.searchParams.get("query")).trim();
@@ -5375,10 +5471,11 @@ async function searchCrmMemberCandidates(env, url) {
 }
 
 async function queryCrmMemberCandidates(env, q, limit) {
+  await ensureCrmMemberAiWearFields(env);
   const lowered = q.toLowerCase();
   const like = `%${lowered}%`;
   const rows = await env.DB.prepare(`
-    SELECT member_ref, name, phone, email, level, source, source_json, updated_at
+    SELECT member_ref, name, phone, email, level, source, source_json, ai_wear_purchase_line_url, ai_wear_share_caption, updated_at
     FROM crm_members
     WHERE LOWER(member_ref) LIKE ?
        OR LOWER(name) LIKE ?
@@ -5413,11 +5510,12 @@ async function queryCrmMemberCandidates(env, q, limit) {
 }
 
 async function listCrmMembers(env, url) {
+  await ensureCrmMemberAiWearFields(env);
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const q = stringValue(url.searchParams.get("q")).toLowerCase();
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
   let sql = `
-    SELECT member_ref, name, phone, email, level, source, source_json, points_snapshot, updated_at
+    SELECT member_ref, name, phone, email, level, source, source_json, ai_wear_purchase_line_url, ai_wear_share_caption, points_snapshot, updated_at
     FROM crm_members
   `;
   const where = [];
@@ -5444,6 +5542,7 @@ async function listCrmMembers(env, url) {
 }
 
 async function syncCrmMembers(env, body) {
+  await ensureCrmMemberAiWearFields(env);
   const members = Array.isArray(body.members) ? body.members : await fetchWetwArray(env, "members", body || {});
   let count = 0;
   let links = 0;
@@ -6069,8 +6168,8 @@ function crmAdminToolHtml(headers) {
       </div>
       <div class="tableWrap">
         <table class="table">
-          <thead><tr><th>會員 ID</th><th>姓名</th><th>電話</th><th>店家/等級</th><th>LINE uid</th><th>更新時間</th></tr></thead>
-          <tbody id="memberRows"><tr><td colspan="6">尚未讀取資料</td></tr></tbody>
+          <thead><tr><th>會員 ID</th><th>姓名</th><th>電話</th><th>店家/等級</th><th>LINE uid</th><th>AI 試戴 LINE</th><th>分享文案</th><th>更新時間</th></tr></thead>
+          <tbody id="memberRows"><tr><td colspan="8">尚未讀取資料</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -6103,7 +6202,7 @@ async function call(path,opt){
 function renderMembers(data){
   const rows=(data.data||data.members||[]);
   $("visibleCount").textContent=rows.length;
-  if(!rows.length){$("memberRows").innerHTML='<tr><td colspan="6">沒有資料</td></tr>';return;}
+  if(!rows.length){$("memberRows").innerHTML='<tr><td colspan="8">沒有資料</td></tr>';return;}
   $("memberRows").innerHTML=rows.map(function(row){
     let raw={};
     try{raw=JSON.parse(row.source_json||"{}");}catch(_err){}
@@ -6114,6 +6213,8 @@ function renderMembers(data){
       '<td>'+esc(row.phone||raw.phone)+'</td>'+
       '<td><span class="pill orange">'+esc(row.level||raw.shop_id||"")+'</span></td>'+
       '<td style="font-size:12px;color:#667085">'+esc(lineUid)+'</td>'+
+      '<td style="font-size:12px;color:#667085">'+esc(row.ai_wear_purchase_line_url||"")+'</td>'+
+      '<td style="font-size:12px;color:#667085;max-width:280px">'+esc(row.ai_wear_share_caption||"")+'</td>'+
       '<td style="font-size:12px;color:#667085">'+esc(row.updated_at||"")+'</td>'+
     '</tr>';
   }).join("");
@@ -8290,15 +8391,9 @@ function normalizeAiWearSettings(input, existing = {}) {
   const aiweAjaxUrl = normalizeAiWearImageApiUrl(source.aiweAjaxUrl || source.aiwe_ajax_url || source.ajaxUrl || source.ajax_url || current.aiweAjaxUrl || current.ajaxUrl || imageApiUrl);
   const aiweNonce = stringValue(source.aiweNonce || source.aiwe_nonce || source.nonce || current.aiweNonce || current.nonce).slice(0, 120);
   const aiwePostId = stringValue(source.aiwePostId || source.aiwe_post_id || source.postId || source.post_id || current.aiwePostId || current.postId).slice(0, 40);
-  const hasPurchaseLineUrlInput = Object.prototype.hasOwnProperty.call(source, "purchaseLineUrl") || Object.prototype.hasOwnProperty.call(source, "purchase_line_url") || Object.prototype.hasOwnProperty.call(source, "purchaseUrl") || Object.prototype.hasOwnProperty.call(source, "purchase_url");
-  const purchaseLineUrlSource = hasPurchaseLineUrlInput
-    ? (source.purchaseLineUrl ?? source.purchase_line_url ?? source.purchaseUrl ?? source.purchase_url ?? "")
-    : (current.purchaseLineUrl || DEFAULT_AI_WEAR_SETTINGS.purchaseLineUrl);
-  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(purchaseLineUrlSource, hasPurchaseLineUrlInput);
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
     publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
-    purchaseLineUrl,
     liffId: normalizeAiWearLiffId(source.liffId || source.liff_id || current.liffId || DEFAULT_AI_WEAR_SETTINGS.liffId),
     prompt: stringValue(source.prompt || current.prompt || DEFAULT_AI_WEAR_SETTINGS.prompt).slice(0, 4000),
     imageModel: stringValue(source.imageModel || source.model || current.imageModel || DEFAULT_AI_WEAR_SETTINGS.imageModel).slice(0, 60),
@@ -8368,6 +8463,7 @@ async function fetchAiWearMemberPoints(env, body) {
   const lineUserId = stringValue(profile && profile.userId);
   if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
   const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+  const memberSettings = await loadAiWearMemberSettings(env, lineUserId);
   return {
     lineUserId,
     displayName: stringValue((body && body.displayName) || (profile && profile.displayName)),
@@ -8376,6 +8472,7 @@ async function fetchAiWearMemberPoints(env, body) {
     pointChannelKey: settings.pointChannelKey,
     pointType: settings.pointType,
     pointCost: Number(settings.pointCost || 0),
+    memberSettings,
   };
 }
 function normalizeAiWearPurchaseLineUrl(value, strict = false) {
@@ -8440,10 +8537,12 @@ async function ensureAiWearSchema(env) {
     caption TEXT NOT NULL DEFAULT '',
     image_url TEXT NOT NULL DEFAULT '',
     image_mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    purchase_line_url TEXT NOT NULL DEFAULT '',
     clicks INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT 0,
     last_clicked_at INTEGER NOT NULL DEFAULT 0
   )`).run();
+  await ensureColumn(env, "ai_wear_shares", "purchase_line_url", "TEXT NOT NULL DEFAULT ''");
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_results (
     id TEXT PRIMARY KEY,
     line_user_id TEXT NOT NULL DEFAULT '',
@@ -8703,17 +8802,27 @@ async function createAiWearShare(request, env) {
   });
   const imageUrl = `${publicBaseUrl(env)}${AI_WEAR_SHARE_ASSET_PREFIX}${encodeURIComponent(id)}.${aiWearMimeExtension(mimeType)}`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
-  await env.DB.prepare(`INSERT INTO ai_wear_shares (id, result_id, sharer_line_user_id, sharer_name, caption, image_url, image_mime_type, clicks, created_at, last_clicked_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`).bind(
+  const settings = await loadAiWearSettingsRaw(env);
+  const profile = await verifyAiWearLineProfileFromForm(env, settings, form).catch(() => null);
+  const verifiedLineUserId = stringValue(profile && profile.userId);
+  const submittedLineUserId = stringValue(form.get("sharerId") || form.get("sharer_id") || form.get("lineUserId") || form.get("line_user_id")).slice(0, 160);
+  const lineUserId = verifiedLineUserId || submittedLineUserId;
+  const memberSettings = lineUserId ? await loadAiWearMemberSettings(env, lineUserId).catch(() => aiWearMemberSettingsResponse(null, lineUserId)) : aiWearMemberSettingsResponse(null, "");
+  const submittedCaption = normalizeAiWearShareCaption(form.get("caption") || "");
+  const caption = submittedCaption || memberSettings.shareCaption || defaultAiWearShareCaption();
+  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(memberSettings.purchaseLineUrl || form.get("purchaseLineUrl") || form.get("purchase_line_url"));
+  await env.DB.prepare(`INSERT INTO ai_wear_shares (id, result_id, sharer_line_user_id, sharer_name, caption, image_url, image_mime_type, purchase_line_url, clicks, created_at, last_clicked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`).bind(
     id,
     stringValue(form.get("resultId") || form.get("result_id")).slice(0, 120),
-    stringValue(form.get("sharerId") || form.get("sharer_id") || form.get("lineUserId") || form.get("line_user_id")).slice(0, 160),
-    stringValue(form.get("sharerName") || form.get("sharer_name") || form.get("displayName") || form.get("display_name")).slice(0, 120),
-    stringValue(form.get("caption") || "").slice(0, 500),
+    lineUserId,
+    stringValue(form.get("sharerName") || form.get("sharer_name") || form.get("displayName") || form.get("display_name") || (profile && profile.displayName)).slice(0, 120),
+    caption,
     imageUrl,
     mimeType,
+    purchaseLineUrl,
     now,
   ).run();
-  return { id, shareUrl, imageUrl, createdAt: now };
+  return { id, shareUrl, imageUrl, purchaseLineUrl, caption, createdAt: now };
 }
 
 async function serveAiWearShareImage(env, pathname, corsHeaders, method = "GET") {
@@ -8734,21 +8843,21 @@ async function getAiWearShareCard(env, searchParams) {
   await ensureAiWearSchema(env);
   const id = stringValue(searchParams && searchParams.get("id")).trim();
   if (!id || id.includes("..") || id.includes("/")) throw httpError("分享資料不存在。", 404);
-  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url FROM ai_wear_shares WHERE id = ?").bind(id).first();
   if (!row) throw httpError("分享資料不存在。", 404);
   const rawImageUrl = stringValue(row.image_url);
   const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
   const caption = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
-  return { id, title, caption, shareUrl, imageUrl };
+  return { id, title, caption, shareUrl, imageUrl, purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row.purchase_line_url) };
 }
 
 async function serveAiWearSharePage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
   const id = decodeURIComponent(String(pathname || "").replace(/^\/ai-wear\/share\//, ""));
   if (!id || id.includes("..") || id.includes("/")) return new Response("Not found", { status: 404, headers: corsHeaders });
-  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
   if (!row) return new Response("Not found", { status: 404, headers: corsHeaders });
   await env.DB.prepare("UPDATE ai_wear_shares SET clicks = clicks + 1, last_clicked_at = ? WHERE id = ?").bind(Date.now(), id).run();
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
@@ -8762,7 +8871,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const browserUrl = `${publicBaseUrl(env)}/ai-wear`;
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
   const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
-  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(settings && settings.purchaseLineUrl);
+  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(row.purchase_line_url);
   const flexFooterContents = [
     { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: lineAppUrl } },
     { type: "button", style: "link", height: "sm", action: { type: "uri", label: "查看分享頁", uri: shareUrl } },
