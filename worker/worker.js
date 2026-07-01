@@ -3430,6 +3430,37 @@ async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
 }
 
 
+async function highestKnownPointBalance(env, channelKey, lineUserId, pointType, fallbackBalance = null) {
+  const values = [];
+  const pushValue = (value) => {
+    const number = Number(value);
+    if (Number.isFinite(number)) values.push(number);
+  };
+  pushValue(fallbackBalance);
+  if (!env.DB || !channelKey || !lineUserId || !pointType) return values.length ? Math.max(...values) : 0;
+
+  const local = await env.DB.prepare(`
+    SELECT balance
+    FROM point_accounts
+    WHERE channel_key = ?
+      AND line_user_id = ?
+      AND point_type = ?
+    LIMIT 1
+  `).bind(channelKey, lineUserId, pointType).first();
+  pushValue(local && local.balance);
+
+  const ledger = await env.DB.prepare(`
+    SELECT MAX(balance_after) AS balance
+    FROM point_ledger
+    WHERE channel_key = ?
+      AND line_user_id = ?
+      AND point_type = ?
+  `).bind(channelKey, lineUserId, pointType).first();
+  pushValue(ledger && ledger.balance);
+
+  return values.length ? Math.max(...values) : 0;
+}
+
 async function getDailyRewardDuplicateBalance(env, channelKey, lineUserId, pointType, rewardDate, fallbackBalance = null) {
   const values = [];
   const pushValue = (value) => {
@@ -4376,14 +4407,15 @@ async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
   const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 20);
   const liveRows = Array.isArray(snapshot.rows) ? snapshot.rows.length : 0;
   if (liveRows > 0 || Number(snapshot.balance || 0) !== 0) {
-    const masterMemberRef = await upsertLivePointAccountCache(env, channelKey, lineUserId, pointType, snapshot.balance);
+    const balance = await highestKnownPointBalance(env, channelKey, lineUserId, pointType, snapshot.balance);
+    const masterMemberRef = await upsertLivePointAccountCache(env, channelKey, lineUserId, pointType, balance);
     return decoratePointBalances([{
       account_key: `${channelKey}:${lineUserId}:${pointType}`,
       master_member_ref: masterMemberRef,
       channel_key: channelKey,
       line_user_id: lineUserId,
       point_type: pointType,
-      balance: snapshot.balance,
+      balance,
       updated_at: "mother-site-live",
       query_shop_id: snapshot.shop_id,
       live_rows: liveRows,
