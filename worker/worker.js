@@ -76,6 +76,7 @@ const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物
 const DEFAULT_AI_WEAR_SETTINGS = {
   title: "康立負離子眼鏡系列",
   publicPath: "/ai-wear",
+  purchaseLineUrl: "",
   liffId: DEFAULT_AI_WEAR_LIFF_ID,
   prompt: DEFAULT_AI_WEAR_PROMPT,
   imageModel: "image2",
@@ -8289,9 +8290,15 @@ function normalizeAiWearSettings(input, existing = {}) {
   const aiweAjaxUrl = normalizeAiWearImageApiUrl(source.aiweAjaxUrl || source.aiwe_ajax_url || source.ajaxUrl || source.ajax_url || current.aiweAjaxUrl || current.ajaxUrl || imageApiUrl);
   const aiweNonce = stringValue(source.aiweNonce || source.aiwe_nonce || source.nonce || current.aiweNonce || current.nonce).slice(0, 120);
   const aiwePostId = stringValue(source.aiwePostId || source.aiwe_post_id || source.postId || source.post_id || current.aiwePostId || current.postId).slice(0, 40);
+  const hasPurchaseLineUrlInput = Object.prototype.hasOwnProperty.call(source, "purchaseLineUrl") || Object.prototype.hasOwnProperty.call(source, "purchase_line_url") || Object.prototype.hasOwnProperty.call(source, "purchaseUrl") || Object.prototype.hasOwnProperty.call(source, "purchase_url");
+  const purchaseLineUrlSource = hasPurchaseLineUrlInput
+    ? (source.purchaseLineUrl ?? source.purchase_line_url ?? source.purchaseUrl ?? source.purchase_url ?? "")
+    : (current.purchaseLineUrl || DEFAULT_AI_WEAR_SETTINGS.purchaseLineUrl);
+  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(purchaseLineUrlSource, hasPurchaseLineUrlInput);
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
     publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
+    purchaseLineUrl,
     liffId: normalizeAiWearLiffId(source.liffId || source.liff_id || current.liffId || DEFAULT_AI_WEAR_SETTINGS.liffId),
     prompt: stringValue(source.prompt || current.prompt || DEFAULT_AI_WEAR_SETTINGS.prompt).slice(0, 4000),
     imageModel: stringValue(source.imageModel || source.model || current.imageModel || DEFAULT_AI_WEAR_SETTINGS.imageModel).slice(0, 60),
@@ -8370,6 +8377,15 @@ async function fetchAiWearMemberPoints(env, body) {
     pointType: settings.pointType,
     pointCost: Number(settings.pointCost || 0),
   };
+}
+function normalizeAiWearPurchaseLineUrl(value, strict = false) {
+  const text = stringValue(value).trim();
+  if (!text) return "";
+  if (!/^https:\/\/(lin\.ee|line\.me|liff\.line\.me)\//i.test(text)) {
+    if (strict) throw httpError("我想購買/試戴 LINE 網址格式錯誤，請填 https://lin.ee/... 或 https://line.me/...；不使用請留空。", 400, "ai_wear_invalid_purchase_line_url");
+    return "";
+  }
+  return text.slice(0, 500);
 }
 function normalizeAiWearImageApiUrl(value) {
   const text = stringValue(value).trim();
@@ -8746,6 +8762,13 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const browserUrl = `${publicBaseUrl(env)}/ai-wear`;
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
   const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
+  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(settings && settings.purchaseLineUrl);
+  const flexFooterContents = [
+    { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: lineAppUrl } },
+    { type: "button", style: "link", height: "sm", action: { type: "uri", label: "查看分享頁", uri: shareUrl } },
+    { type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "分享", uri: shareActionUrl } },
+  ];
+  if (purchaseLineUrl) flexFooterContents.push({ type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "我想購買/試戴", uri: purchaseLineUrl } });
   const flexPayload = {
     type: "flex",
     altText: `${title}：${description}`.slice(0, 400),
@@ -8757,11 +8780,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
         { type: "text", text: title, weight: "bold", size: "xl", wrap: true, color: "#101828" },
         { type: "text", text: description, size: "sm", wrap: true, color: "#526070" },
       ] },
-      footer: { type: "box", layout: "vertical", spacing: "sm", contents: [
-        { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: lineAppUrl } },
-        { type: "button", style: "link", height: "sm", action: { type: "uri", label: "查看分享頁", uri: shareUrl } },
-        { type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "分享", uri: shareActionUrl } },
-      ] },
+      footer: { type: "box", layout: "vertical", spacing: "sm", contents: flexFooterContents },
     },
   };
   const html = `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(shareUrl)}"><meta property="og:image" content="${escapeHtml(imageUrl)}"><meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}"><meta property="og:image:type" content="image/jpeg"><meta name="twitter:card" content="summary_large_image"><style>body{margin:0;font-family:Arial,'Noto Sans TC',sans-serif;background:#f4f7fb;color:#101828}.wrap{max-width:720px;margin:0 auto;padding:22px}.card{background:#fff;border:1px solid #d8e0eb;border-radius:18px;padding:18px;box-shadow:0 16px 42px rgba(16,24,40,.08)}img{display:block;width:100%;border-radius:14px;border:1px solid #e4e9f2}h1{font-size:24px;margin:14px 0 8px}p{color:#526070;line-height:1.6}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.btn{display:inline-block;background:#06c755;color:#fff;text-decoration:none;font-weight:900;border-radius:12px;padding:12px 16px}.btn.secondary{background:#fff;color:#101828;border:1px solid #cfd8e6}.hint{font-size:14px;color:#667085;margin-top:10px}.shareStatus{font-size:14px;color:#14833b;margin-top:10px;min-height:20px}@media(max-width:480px){.wrap{padding:12px}.card{padding:14px;border-radius:16px}h1{font-size:22px}}</style><script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script></head><body><main class="wrap"><section class="card"><img src="${escapeHtml(imageUrl)}" alt="AI 眼鏡試戴分享圖"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><p class="shareStatus" id="shareStatus"></p><div class="actions"><a class="btn" href="${escapeHtml(lineAppUrl)}">用 LINE 開啟試戴</a><a class="btn secondary" href="${escapeHtml(browserUrl)}">瀏覽器版</a></div><p class="hint">分享請直接使用 LINE 訊息卡片上的「分享」按鈕。</p></section></main><script>const LIFF_ID=${JSON.stringify(liffId)};const FLEX_MESSAGE=${JSON.stringify(flexPayload)};const LINE_SHARE_URL=${JSON.stringify(shareLineUrl)};function setShareStatus(text,isError){const el=document.getElementById("shareStatus");if(el){el.textContent=text||"";el.style.color=isError?"#b42318":"#14833b";}}async function autoLineShare(){if(!new URLSearchParams(location.search).has("lineShare"))return;setShareStatus("正在開啟 LINE 分享...",false);try{if(!window.liff||!liff.shareTargetPicker)throw new Error("LIFF unavailable");await liff.init({liffId:LIFF_ID});if(!liff.isLoggedIn()){liff.login({redirectUri:location.href});return;}await liff.shareTargetPicker([FLEX_MESSAGE]);setShareStatus("已開啟 LINE 分享。",false);}catch(err){console.warn("line share failed",err);setShareStatus("目前環境無法直接開啟 LINE 分享，請改用下方按鈕或複製連結。",true);}}autoLineShare();</script></body></html>`;

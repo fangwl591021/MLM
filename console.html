@@ -163,6 +163,7 @@
           <div class="aiWearForm">
             <label>AI SHOW ROOM 標題<input id="aiWearTitle" type="text" placeholder="康立負離子眼鏡系列" /></label>
             <label>本系統入口路徑<input id="aiWearPublicPath" type="text" placeholder="/ai-wear" /></label>
+            <label>我想購買/試戴 LINE 網址<input id="aiWearPurchaseLineUrl" type="url" placeholder="https://lin.ee/..." /></label>
             <label>image2 API Key<input id="aiWearApiKey" type="password" placeholder="已設定可留空；輸入新值會覆蓋" /></label>
             <label>模型名稱<input id="aiWearModel" type="text" placeholder="image2" /></label>
             <div class="aiWearNote aiWearWide">本系統產圖入口固定為 /api/ai-wear/generate；管理員只需設定 image2 API Key、模型名稱、提示詞與點數扣抵。</div>
@@ -1167,10 +1168,22 @@
       }
     }
 
+    function normalizeAiWearPurchaseLineUrlInput() {
+      const input = $("aiWearPurchaseLineUrl");
+      const value = input ? input.value.trim() : "";
+      if (!value) return "";
+      if (!/^https:\/\/(lin\.ee|line\.me|liff\.line\.me)\//i.test(value)) {
+        if (input) input.focus();
+        throw new Error("我想購買/試戴 LINE 網址格式錯誤，請填 https://lin.ee/... 或 https://line.me/...；不使用請留空。");
+      }
+      return value.slice(0, 500);
+    }
+
     function collectAiWearSettings() {
       return {
         title: ($("aiWearTitle") ? $("aiWearTitle").value.trim() : "") || "康立負離子眼鏡系列",
         publicPath: ($("aiWearPublicPath") ? $("aiWearPublicPath").value.trim() : "") || "/ai-wear",
+        purchaseLineUrl: normalizeAiWearPurchaseLineUrlInput(),
         image2ApiKey: ($("aiWearApiKey") ? $("aiWearApiKey").value.trim() : ""),
         imageModel: ($("aiWearModel") ? $("aiWearModel").value.trim() : "") || "image2",
         imageApiUrl: "",
@@ -1186,9 +1199,10 @@
     }
 
     function renderAiWearSettings(data) {
-      const settings = Object.assign({ title: "康立負離子眼鏡系列", publicPath: "/ai-wear", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", imageApiUrl: "", aiweAjaxUrl: "", aiweNonce: "", aiwePostId: "", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money" }, data || {});
+      const settings = Object.assign({ title: "康立負離子眼鏡系列", publicPath: "/ai-wear", purchaseLineUrl: "", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", imageApiUrl: "", aiweAjaxUrl: "", aiweNonce: "", aiwePostId: "", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money" }, data || {});
       if ($("aiWearTitle")) $("aiWearTitle").value = settings.title || "";
       if ($("aiWearPublicPath")) $("aiWearPublicPath").value = settings.publicPath || "/ai-wear";
+      if ($("aiWearPurchaseLineUrl")) $("aiWearPurchaseLineUrl").value = settings.purchaseLineUrl || "";
       if ($("aiWearPublicLink")) { const href = new URL(settings.publicPath || "/ai-wear", location.origin).href; $("aiWearPublicLink").href = href; $("aiWearPublicLink").textContent = href; }
       if ($("aiWearApiKey")) { $("aiWearApiKey").value = ""; $("aiWearApiKey").placeholder = settings.hasImage2ApiKey ? "已設定，可留空不變" : "尚未設定，請輸入 image2 API Key"; }
       if ($("aiWearModel")) $("aiWearModel").value = settings.imageModel || "image2";
