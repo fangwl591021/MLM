@@ -1934,6 +1934,7 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
       business_key: "smart-daily:" + channelKey + ":" + userId + ":" + rewardDate,
       shop_id: memberCheckinShopId(env),
       shop_remark: "每日打卡自動贈點；日期:" + rewardDate + "；關鍵字:" + rawKeyword,
+      initial_gift_money_account_fallback: true,
     }, "grant");
     const localBalance = Number(mutation && mutation.balance_after);
     const balance = Number.isFinite(localBalance)
@@ -2375,6 +2376,50 @@ async function hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId) {
   ).bind(channelKey, lineUserId).first();
   return Boolean(row && row.ok);
 }
+
+function isInitialGiftMoneyBalance(value) {
+  const balance = Number(value);
+  return Number.isFinite(balance) && balance === 5;
+}
+
+async function initialGiftMoneyDailyRewardFallbackAccount(env, channelKey, lineUserId, body = {}) {
+  if (!env.DB || channelKey !== POINT_OA1 || !lineUserId) return null;
+  const local = await env.DB.prepare(`
+    SELECT account_key, master_member_ref, channel_key, line_user_id, point_type, balance, updated_at
+    FROM point_accounts
+    WHERE line_user_id = ?
+      AND point_type = 'gift_money'
+      AND balance = 5
+    ORDER BY CASE channel_key WHEN ? THEN 0 ELSE 1 END, updated_at DESC
+    LIMIT 1
+  `).bind(lineUserId, channelKey).first();
+  if (local && isInitialGiftMoneyBalance(local.balance)) {
+    return {
+      source: "local_initial_gift_money_account",
+      account_key: stringValue(local.account_key),
+      master_member_ref: stringValue(local.master_member_ref),
+      channel_key: stringValue(local.channel_key),
+      line_user_id: stringValue(local.line_user_id),
+      balance: Number(local.balance),
+    };
+  }
+
+  const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 5, {
+    ...body,
+    global_points: true,
+    shop_id: 0,
+  }).catch(() => null);
+  if (snapshot && Array.isArray(snapshot.rows) && snapshot.rows.length && isInitialGiftMoneyBalance(snapshot.balance)) {
+    return {
+      source: "wetw_initial_gift_money_account",
+      channel_key: channelKey,
+      line_user_id: lineUserId,
+      balance: Number(snapshot.balance),
+      rows: snapshot.rows.length,
+    };
+  }
+  return null;
+}
 async function pointMutation(env, body, action) {
   const channelKey = stringValue(body.channel_key || body.channelKey);
   let lineUserId = stringValue(body.line_user_id || body.lineUserId || body.userId);
@@ -2395,7 +2440,11 @@ async function pointMutation(env, body, action) {
     const hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
     const hasLocalAccount = hasWetwRows ? true : await hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId);
     const hasResolvedMember = Boolean(resolvedIdentity && (resolvedIdentity.memberRef || resolvedIdentity.pointLineUserId));
-    if (!hasLocalAccount && !hasResolvedMember) {
+    const allowInitialFallback = body.initial_gift_money_account_fallback === true || body.initialGiftMoneyAccountFallback === true;
+    const initialFallback = (!hasLocalAccount && !hasResolvedMember && allowInitialFallback)
+      ? await initialGiftMoneyDailyRewardFallbackAccount(env, channelKey, lineUserId, body)
+      : null;
+    if (!hasLocalAccount && !hasResolvedMember && !initialFallback) {
       throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
     }
   }
