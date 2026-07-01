@@ -223,6 +223,18 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/ai-wear/referral" && request.method === "POST") {
+        const body = await safeJson(request).catch(() => ({}));
+        const data = await recordAiWearReferral(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/ai-wear/share-performance" && request.method === "POST") {
+        const body = await safeJson(request).catch(() => ({}));
+        const data = await listAiWearSharePerformance(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/ai-wear/preflight" && request.method === "POST") {
         const data = await preflightAiWearGenerate(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
@@ -5411,6 +5423,24 @@ function aiWearMemberSettingsResponse(row, lineUserId = "") {
   };
 }
 
+async function ensureAiWearCrmProfile(env, profile) {
+  await ensureCrmMemberAiWearFields(env);
+  const lineUserId = stringValue(profile && profile.userId);
+  if (!lineUserId) return "";
+  let memberRef = await resolveAiWearCrmMemberRef(env, lineUserId);
+  if (!memberRef) memberRef = `aiwear:${shortHash(lineUserId)}`;
+  const sourceJson = JSON.stringify({ LINE_user_id: lineUserId, LINE_display_name: stringValue(profile.displayName), pictureUrl: stringValue(profile.pictureUrl), source: "ai-wear" });
+  await env.DB.prepare(`
+    INSERT INTO crm_members (member_ref, name, source, source_json, created_at, updated_at)
+    VALUES (?, ?, 'ai-wear', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(member_ref) DO UPDATE SET
+      name = CASE WHEN crm_members.name IS NULL OR crm_members.name = '' THEN excluded.name ELSE crm_members.name END,
+      source_json = CASE WHEN crm_members.source_json IS NULL OR crm_members.source_json = '' THEN excluded.source_json ELSE crm_members.source_json END,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(memberRef, stringValue(profile.displayName), sourceJson).run();
+  return memberRef;
+}
+
 async function loadAiWearMemberSettings(env, lineUserId) {
   await ensureCrmMemberAiWearFields(env);
   const uid = stringValue(lineUserId).trim();
@@ -8543,6 +8573,20 @@ async function ensureAiWearSchema(env) {
     last_clicked_at INTEGER NOT NULL DEFAULT 0
   )`).run();
   await ensureColumn(env, "ai_wear_shares", "purchase_line_url", "TEXT NOT NULL DEFAULT ''");
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_referrals (
+    id TEXT PRIMARY KEY,
+    share_id TEXT NOT NULL DEFAULT '',
+    sharer_line_user_id TEXT NOT NULL DEFAULT '',
+    visitor_line_user_id TEXT NOT NULL DEFAULT '',
+    visitor_name TEXT NOT NULL DEFAULT '',
+    visitor_picture_url TEXT NOT NULL DEFAULT '',
+    play_count INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    last_seen_at INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(share_id, visitor_line_user_id)
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_referrals_sharer ON ai_wear_referrals (sharer_line_user_id, last_seen_at)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_referrals_share ON ai_wear_referrals (share_id, last_seen_at)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_results (
     id TEXT PRIMARY KEY,
     line_user_id TEXT NOT NULL DEFAULT '',
@@ -8825,6 +8869,65 @@ async function createAiWearShare(request, env) {
   return { id, shareUrl, imageUrl, purchaseLineUrl, caption, createdAt: now };
 }
 
+async function recordAiWearReferral(env, body) {
+  await ensureAiWearSchema(env);
+  const shareId = stringValue(body && (body.shareId || body.share_id || body.aiWearReferral || body.ai_wear_referral)).trim();
+  if (!shareId || shareId.includes("..") || shareId.includes("/")) throw httpError("分享來源不存在。", 404);
+  const settings = await loadAiWearSettingsRaw(env);
+  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
+  const visitorLineUserId = stringValue(profile && profile.userId);
+  if (!visitorLineUserId) throw httpError("請先用 LINE 登入後再記錄分享來源。", 401);
+  await ensureAiWearCrmProfile(env, profile);
+  const share = await env.DB.prepare("SELECT id, sharer_line_user_id FROM ai_wear_shares WHERE id = ? LIMIT 1").bind(shareId).first();
+  if (!share) throw httpError("分享來源不存在。", 404);
+  const sharerLineUserId = stringValue(share.sharer_line_user_id);
+  if (!sharerLineUserId || sharerLineUserId === visitorLineUserId) return { recorded: false, reason: "self_or_missing_sharer" };
+  const now = Date.now();
+  const id = `${shareId}:${shortHash(visitorLineUserId)}`;
+  await env.DB.prepare(`INSERT INTO ai_wear_referrals (id, share_id, sharer_line_user_id, visitor_line_user_id, visitor_name, visitor_picture_url, play_count, created_at, last_seen_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(share_id, visitor_line_user_id) DO UPDATE SET
+      visitor_name = CASE WHEN excluded.visitor_name != '' THEN excluded.visitor_name ELSE ai_wear_referrals.visitor_name END,
+      visitor_picture_url = CASE WHEN excluded.visitor_picture_url != '' THEN excluded.visitor_picture_url ELSE ai_wear_referrals.visitor_picture_url END,
+      play_count = ai_wear_referrals.play_count + 1,
+      last_seen_at = excluded.last_seen_at`).bind(id, shareId, sharerLineUserId, visitorLineUserId, stringValue(profile.displayName), stringValue(profile.pictureUrl), now, now).run();
+  return { recorded: true, shareId, visitorLineUserId };
+}
+
+async function listAiWearSharePerformance(env, body) {
+  await ensureAiWearSchema(env);
+  const settings = await loadAiWearSettingsRaw(env);
+  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
+  const lineUserId = stringValue(profile && profile.userId);
+  if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取分享成效。", 401);
+  const limit = clampNumber(body && body.limit || 50, 1, 200);
+  const summary = await env.DB.prepare(`SELECT COUNT(DISTINCT visitor_line_user_id) AS total_visitors, COALESCE(SUM(play_count), 0) AS total_plays FROM ai_wear_referrals WHERE sharer_line_user_id = ? AND visitor_line_user_id <> ?`).bind(lineUserId, lineUserId).first();
+  const rows = await env.DB.prepare(`
+    SELECT visitor_line_user_id,
+           MAX(visitor_name) AS visitor_name,
+           MAX(visitor_picture_url) AS visitor_picture_url,
+           MIN(created_at) AS first_seen_at,
+           MAX(last_seen_at) AS last_seen_at,
+           SUM(play_count) AS play_count,
+           COUNT(DISTINCT share_id) AS share_count
+    FROM ai_wear_referrals
+    WHERE sharer_line_user_id = ? AND visitor_line_user_id <> ?
+    GROUP BY visitor_line_user_id
+    ORDER BY last_seen_at DESC
+    LIMIT ?
+  `).bind(lineUserId, lineUserId, limit).all();
+  const items = (rows.results || []).map((row) => ({
+    lineUserId: stringValue(row.visitor_line_user_id),
+    name: stringValue(row.visitor_name) || "LINE 會員",
+    pictureUrl: stringValue(row.visitor_picture_url),
+    firstSeenAt: numberOrZero(row.first_seen_at),
+    lastSeenAt: numberOrZero(row.last_seen_at),
+    playCount: numberOrZero(row.play_count),
+    shareCount: numberOrZero(row.share_count),
+  }));
+  return { totalVisitors: numberOrZero(summary && summary.total_visitors), totalPlays: numberOrZero(summary && summary.total_plays), items };
+}
+
 async function serveAiWearShareImage(env, pathname, corsHeaders, method = "GET") {
   await ensureAiWearSchema(env);
   const id = aiWearAssetIdFromPath(pathname, AI_WEAR_SHARE_ASSET_PREFIX);
@@ -8867,7 +8970,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
   const settings = await getAiWearSettings(env);
   const liffId = normalizeAiWearLiffId(settings && settings.liffId);
-  const lineAppUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearTry=1`;
+  const lineAppUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearTry=1&aiWearReferral=${encodeURIComponent(id)}`;
   const browserUrl = `${publicBaseUrl(env)}/ai-wear`;
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
   const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
