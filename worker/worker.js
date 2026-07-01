@@ -1641,10 +1641,26 @@ async function mirrorPointMessageToMonitor(env, config, provider, event, userId)
   }
 }
 
+function smartDailyRewardKeyword(event) {
+  if (!event) return "";
+  if (event.type === "message" && event.message && event.message.type === "text") {
+    return stringValue(event.message.text);
+  }
+  if (event.type === "postback" && event.postback && event.postback.data) {
+    try {
+      const params = new URLSearchParams(stringValue(event.postback.data));
+      return stringValue(params.get("keyword") || params.get("text") || params.get("action"));
+    } catch (_err) {
+      return stringValue(event.postback.data);
+    }
+  }
+  return "";
+}
+
 function isSmartDailyRewardEvent(channelKey, event) {
-  if (channelKey !== POINT_OA1 || !event || event.type !== "message" || !event.message || event.message.type !== "text") return false;
-  const text = normalizeTextKeyword(event.message.text);
-  return ["簽到贈點", "簽到贈K點", "會員打卡", "每日簽到贈點"].map(normalizeTextKeyword).includes(text);
+  if (channelKey !== POINT_OA1 || !event) return false;
+  const text = normalizeTextKeyword(smartDailyRewardKeyword(event));
+  return ["簽到贈點", "簽到贈K點", "會員打卡", "每日簽到贈點", "打卡贈點"].map(normalizeTextKeyword).includes(text);
 }
 
 function isSmartPointQueryEvent(channelKey, event) {
@@ -1877,7 +1893,7 @@ function smartDailyRewardPoints(env) {
 }
 
 async function handleSmartDailyReward(env, channelKey, provider, event, userId) {
-  const rawKeyword = stringValue(event && event.message && event.message.text) || "會員打卡";
+  const rawKeyword = smartDailyRewardKeyword(event) || "會員打卡";
   const keyword = "簽到贈點";
   const rewardDate = taipeiDate();
   const pointType = "gift_money";
