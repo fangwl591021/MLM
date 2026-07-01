@@ -1906,6 +1906,9 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
   ).bind(userId, channelKey, pointType, rewardDate).first();
   if (existing) {
     const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, existing.balance_after).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
+    if (stringValue(existing.status) !== "claimed") {
+      return replySmartDailyReward(env, channelKey, provider, event, userId, { pending: true, points: Number(existing.points || points), balance_after: balance });
+    }
     await env.DB.prepare(
       "UPDATE daily_keyword_rewards " +
       "SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP " +
@@ -1965,13 +1968,16 @@ async function replySmartDailyReward(env, channelKey, provider, event, userId, r
   const points = formatPoint(result && result.points);
   const replyText = result && result.duplicate
     ? "您今天已經簽到過，目前點數餘額 " + balance + " K點。"
-    : "簽到成功，已贈送 " + points + " K點。點數餘額 " + balance + " K點。";
+    : result && result.pending
+      ? "簽到紀錄正在處理中，請稍後再試。目前點數餘額 " + balance + " K點。"
+      : "簽到成功，已贈送 " + points + " K點。點數餘額 " + balance + " K點。";
   const delivery = await replyLineMessage(provider, event && event.replyToken, replyText);
   await saveSmartAutoReplyMessage(env, provider, userId, replyText, delivery, {
     channelKey,
     points: result && result.points,
     balanceAfter: result && result.balance_after,
     duplicate: Boolean(result && result.duplicate),
+    pending: Boolean(result && result.pending),
   });
   return delivery;
 }
@@ -6552,7 +6558,9 @@ async function handleKeywordAutomation(env, floor, provider, event, userId, text
     } else {
       replyText = result.duplicate
       ? `您今天已經簽到過，目前累積 ${formatPoint(balance)} K點。`
-      : `簽到成功，已贈送 ${formatPoint(result.points)} K點。目前累積 ${formatPoint(balance)} K點。`;
+      : result.pending
+        ? `簽到紀錄正在處理中，請稍後再試。目前累積 ${formatPoint(balance)} K點。`
+        : `簽到成功，已贈送 ${formatPoint(result.points)} K點。目前累積 ${formatPoint(balance)} K點。`;
     }
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
@@ -6623,6 +6631,9 @@ async function applyDailyKeywordReward(env, rule, userId) {
 
   if (existingSameDay) {
     const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, existingSameDay.balance_after).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
+    if (stringValue(existingSameDay.status) !== "claimed") {
+      return { readonly: false, pending: true, points: Number(existingSameDay.points || points), balance_after: balance };
+    }
     await env.DB.prepare(`
       UPDATE daily_keyword_rewards
       SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
@@ -6637,8 +6648,17 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
 
   if (inserted && inserted.meta && inserted.meta.changes === 0) {
-    const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, null).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
-    return { readonly: false, duplicate: true, points, balance_after: balance };
+    const existing = await env.DB.prepare(`
+      SELECT status, points, balance_after
+      FROM daily_keyword_rewards
+      WHERE rule_id = ? AND line_user_id = ? AND reward_date = ?
+      LIMIT 1
+    `).bind(rule.id, userId, rewardDate).first();
+    const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, existing && existing.balance_after).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
+    if (existing && stringValue(existing.status) === "claimed") {
+      return { readonly: false, duplicate: true, points: Number(existing.points || points), balance_after: balance };
+    }
+    return { readonly: false, pending: true, points: Number(existing && existing.points || points), balance_after: balance };
   }
 
   try {
