@@ -1905,7 +1905,7 @@ async function handleSmartDailyReward(env, channelKey, provider, event, userId) 
     "ORDER BY id ASC LIMIT 1"
   ).bind(userId, channelKey, pointType, rewardDate).first();
   if (existing) {
-    const balance = await getLiveFirstPointAccountBalance(env, channelKey, userId, pointType).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
+    const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, existing.balance_after).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
     await env.DB.prepare(
       "UPDATE daily_keyword_rewards " +
       "SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP " +
@@ -3429,6 +3429,58 @@ async function getPointAccountBalance(env, channelKey, lineUserId, pointType) {
   return Number(row && row.balance || 0);
 }
 
+
+async function getDailyRewardDuplicateBalance(env, channelKey, lineUserId, pointType, rewardDate, fallbackBalance = null) {
+  const values = [];
+  const pushValue = (value) => {
+    const number = Number(value);
+    if (Number.isFinite(number)) values.push(number);
+  };
+  pushValue(fallbackBalance);
+  if (!env.DB || !channelKey || !lineUserId || !pointType || !rewardDate) return values.length ? Math.max(...values) : 0;
+
+  const reward = await env.DB.prepare(`
+    SELECT MAX(balance_after) AS balance
+    FROM daily_keyword_rewards
+    WHERE line_user_id = ?
+      AND channel_key = ?
+      AND point_type = ?
+      AND reward_date = ?
+      AND status != 'failed'
+  `).bind(lineUserId, channelKey, pointType, rewardDate).first();
+  pushValue(reward && reward.balance);
+
+  const ledger = await env.DB.prepare(`
+    SELECT MAX(balance_after) AS balance
+    FROM point_ledger
+    WHERE line_user_id = ?
+      AND channel_key = ?
+      AND point_type = ?
+      AND business_key = ?
+  `).bind(lineUserId, channelKey, pointType, `smart-daily:${channelKey}:${lineUserId}:${rewardDate}`).first();
+  pushValue(ledger && ledger.balance);
+
+  const local = await env.DB.prepare(`
+    SELECT account_key, balance
+    FROM point_accounts
+    WHERE channel_key = ?
+      AND line_user_id = ?
+      AND point_type = ?
+    LIMIT 1
+  `).bind(channelKey, lineUserId, pointType).first();
+  pushValue(local && local.balance);
+
+  const balance = values.length ? Math.max(...values) : 0;
+  const localBalance = Number(local && local.balance);
+  if (local && Number.isFinite(localBalance) && balance > localBalance) {
+    await env.DB.prepare(`
+      UPDATE point_accounts
+      SET balance = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE account_key = ?
+    `).bind(balance, local.account_key).run();
+  }
+  return balance;
+}
 async function getLiveFirstPointAccountBalance(env, channelKey, lineUserId, pointType) {
   try {
     const live = await livePointBalanceRow(env, channelKey, lineUserId, pointType);
@@ -6538,7 +6590,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(userId, channelKey, pointType, rewardDate).first();
 
   if (existingSameDay) {
-    const balance = await getLiveFirstPointAccountBalance(env, channelKey, userId, pointType).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
+    const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, existingSameDay.balance_after).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
     await env.DB.prepare(`
       UPDATE daily_keyword_rewards
       SET balance_after = ?, message = ?, updated_at = CURRENT_TIMESTAMP
@@ -6553,7 +6605,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
   `).bind(rule.id, keyword, userId, channelKey, pointType, points, rewardDate).run();
 
   if (inserted && inserted.meta && inserted.meta.changes === 0) {
-    const balance = await getLiveFirstPointAccountBalance(env, channelKey, userId, pointType).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
+    const balance = await getDailyRewardDuplicateBalance(env, channelKey, userId, pointType, rewardDate, null).catch(() => getPointAccountBalance(env, channelKey, userId, pointType)).catch(() => 0);
     return { readonly: false, duplicate: true, points, balance_after: balance };
   }
 
