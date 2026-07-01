@@ -897,7 +897,7 @@ function rewriteAiWearMobileShareHtml(html) {
     .replace("請在該筆紀錄下方選擇 FB、LINE、複製文案或下載 IG 圖。", "請在該筆紀錄下方選擇 FB、LINE、複製文案、下載 IG 圖或手機分享。");
 }
 async function fetchFrontendHtmlSource(fileName) {
-  if (fileName === "console.html") {
+  if (fileName === "console.html" || fileName === "ai-wear.html") {
     const apiResponse = await fetch(`https://api.github.com/repos/fangwl591021/MLM/contents/${fileName}?ref=main`, {
       headers: { "User-Agent": "mlm-worker", "Accept": "application/vnd.github+json" },
       cf: { cacheEverything: false, cacheTtl: 0 },
