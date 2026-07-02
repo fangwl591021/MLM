@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
  * Core rule:
@@ -37,6 +37,7 @@ const POINT_SOURCE_META = {
 };
 const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/insert-user-point";
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
+const DEFAULT_WETW_LINE_MEMBER_URL = "https://aiwe.cc/index.php/wp-json/wetw/v1/check-or-create-line-user";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
 const FRONTEND_BUILD_ID = "checkin-template-designer-20260627-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
@@ -87,6 +88,13 @@ const DEFAULT_AI_WEAR_SETTINGS = {
   pointCost: 0,
   pointChannelKey: POINT_OA1,
   pointType: "gift_money",
+  costPerGeneration: 0,
+  costCurrency: "TWD",
+  usdToTwdRate: 32,
+  costControlEnabled: false,
+  dailyCostLimitTwd: 0,
+  monthlyCostLimitTwd: 0,
+  perUserDailyLimit: 0,
 };
 
 const CHECKIN_LOCATION_META = {
@@ -761,6 +769,12 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/ai-wear-cost-summary" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        const data = await getAiWearCostSummary(env, url.searchParams);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/ai-wear-results" && request.method === "POST") {
         const data = await saveAiWearResult(request, env);
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
@@ -1353,7 +1367,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path === "/api/ai-wear-share-card" || path.startsWith("/ai-wear/share/")) return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
-  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results") return true;
+  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results" || path === "/api/ai-wear-cost-summary") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
   if (path === "/admin/points/stats" || path === "/admin/points/stats-data") return false;
   if (path.startsWith("/admin/points/")) return true;
@@ -2463,18 +2477,24 @@ async function pointMutation(env, body, action) {
     if (sourceLineUserId) lineUserId = sourceLineUserId;
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
-    const exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => null);
-    const hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
-    const hasLocalAccount = hasWetwRows ? true : await hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId);
+    let exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => null);
+    let hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
     const hasResolvedMember = Boolean(resolvedIdentity && (resolvedIdentity.memberRef || resolvedIdentity.pointLineUserId));
     const allowInitialFallback = body.initial_gift_money_account_fallback === true || body.initialGiftMoneyAccountFallback === true;
-    const initialFallback = (!hasLocalAccount && !hasResolvedMember && allowInitialFallback)
+    let memberEnsured = null;
+    if (!hasWetwRows && !hasResolvedMember && allowInitialFallback) {
+      memberEnsured = await ensureWetwLineMember(env, channelKey, lineUserId, body);
+      exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => exactSnapshot);
+      hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
+    }
+    const hasLocalAccount = hasWetwRows ? true : await hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId);
+    const initialFallback = (!hasLocalAccount && !hasResolvedMember && !memberEnsured && allowInitialFallback)
       ? await initialGiftMoneyDailyRewardFallbackAccount(env, channelKey, lineUserId, body)
       : null;
-    const crmLinkedMemberRef = (!hasLocalAccount && !hasResolvedMember && allowInitialFallback)
+    const crmLinkedMemberRef = (!hasLocalAccount && !hasResolvedMember && !memberEnsured && allowInitialFallback)
       ? await resolveMasterMemberRefForPointLineUser(env, channelKey, lineUserId).catch(() => "")
       : "";
-    if (!hasLocalAccount && !hasResolvedMember && !initialFallback && !crmLinkedMemberRef) {
+    if (!hasLocalAccount && !hasResolvedMember && !memberEnsured && !initialFallback && !crmLinkedMemberRef) {
       throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
     }
   }
@@ -5072,6 +5092,47 @@ function pointApiShopId(env, channelKey, override) {
   return wetwShopId(env);
 }
 
+function wetwLineMemberApiKey(env) {
+  return stringValue(env.WETW_LINE_MEMBER_API_KEY || env.WETW_MEMBER_API_KEY || env.POINT_API_KEY);
+}
+
+function wetwLineMemberShopId(env, override) {
+  const explicit = Number(override || 0);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const configured = Number(env.WETW_LINE_MEMBER_SHOP_ID || env.WETW_MEMBER_SHOP_ID || 0);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return 78;
+}
+
+async function ensureWetwLineMember(env, channelKey, lineUserId, body = {}) {
+  const uid = stringValue(lineUserId);
+  if (!uid) return null;
+  const apiKey = wetwLineMemberApiKey(env);
+  if (!apiKey) throw httpError("WETW_LINE_MEMBER_API_KEY is not configured", 500, "missing_wetw_line_member_api_key");
+  const url = stringValue(env.WETW_LINE_MEMBER_API_URL) || DEFAULT_WETW_LINE_MEMBER_URL;
+  const shopId = wetwLineMemberShopId(env, body.member_shop_id || body.memberShopId);
+  const payload = {
+    api_key: apiKey,
+    shop_id: shopId,
+    LINE_user_id: uid,
+    LINE_display_name: stringValue(body.LINE_display_name || body.line_display_name || body.displayName || body.display_name || body.user_name || body.userName || body.name).slice(0, 120),
+    LINE_status_message: stringValue(body.LINE_status_message || body.line_status_message || body.statusMessage || body.status_message).slice(0, 300),
+    LINE_picture_url: stringValue(body.LINE_picture_url || body.line_picture_url || body.pictureUrl || body.picture_url).slice(0, 500),
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  const code = stringValue(data && data.code);
+  const okCode = code === "already_member" || code === "register_success";
+  if (!response.ok || data.success === false || !okCode) {
+    const message = stringValue(data && data.message);
+    throw httpError(`WETW member ensure failed: ${response.status}${code ? ` ${code}` : ""}${message ? ` - ${message}` : ""}`, response.ok ? 502 : response.status);
+  }
+  return { code, action: stringValue(data && data.data && data.data.action), shop_id: shopId, channel_key: channelKey };
+}
 function pointStatsDateFromDays(days) {
   const start = new Date(Date.now() - (days - 1) * 86400000);
   start.setUTCHours(0, 0, 0, 0);
@@ -7974,7 +8035,7 @@ async function getAiWearPublicData(env) {
   const settings = await loadAiWearSettingsRaw(env);
   const gallery = await listAiWearReferences(env);
   return {
-    settings: sanitizeAiWearSettingsForClient(settings),
+    settings: sanitizeAiWearSettingsForPublic(settings),
     gallery: gallery.items || [],
   };
 }
@@ -8425,6 +8486,20 @@ async function saveAiWearSettings(env, input) {
   return sanitizeAiWearSettingsForClient(data);
 }
 
+function normalizeAiWearCostCurrency(value) {
+  const text = stringValue(value).trim().toUpperCase();
+  return text === "USD" ? "USD" : "TWD";
+}
+
+function normalizeAiWearMoney(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return Math.max(0, Number(fallback) || 0);
+  return Math.max(0, Math.round(n * 10000) / 10000);
+}
+
+function normalizeAiWearLimit(value, fallback = 0) {
+  return Math.max(0, Math.floor(Number(value ?? fallback) || 0));
+}
 function normalizeAiWearSettings(input, existing = {}) {
   const source = input && typeof input === "object" ? input : {};
   const current = existing && typeof existing === "object" ? existing : {};
@@ -8439,6 +8514,12 @@ function normalizeAiWearSettings(input, existing = {}) {
   const aiweAjaxUrl = normalizeAiWearImageApiUrl(source.aiweAjaxUrl || source.aiwe_ajax_url || source.ajaxUrl || source.ajax_url || current.aiweAjaxUrl || current.ajaxUrl || imageApiUrl);
   const aiweNonce = stringValue(source.aiweNonce || source.aiwe_nonce || source.nonce || current.aiweNonce || current.nonce).slice(0, 120);
   const aiwePostId = stringValue(source.aiwePostId || source.aiwe_post_id || source.postId || source.post_id || current.aiwePostId || current.postId).slice(0, 40);
+  const costCurrency = normalizeAiWearCostCurrency(source.costCurrency || source.cost_currency || current.costCurrency || DEFAULT_AI_WEAR_SETTINGS.costCurrency);
+  const costPerGeneration = normalizeAiWearMoney(source.costPerGeneration ?? source.cost_per_generation ?? current.costPerGeneration ?? DEFAULT_AI_WEAR_SETTINGS.costPerGeneration);
+  const usdToTwdRate = normalizeAiWearMoney(source.usdToTwdRate ?? source.usd_to_twd_rate ?? current.usdToTwdRate ?? DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate, DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate) || DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate;
+  const dailyCostLimitTwd = normalizeAiWearLimit(source.dailyCostLimitTwd ?? source.daily_cost_limit_twd ?? current.dailyCostLimitTwd ?? DEFAULT_AI_WEAR_SETTINGS.dailyCostLimitTwd);
+  const monthlyCostLimitTwd = normalizeAiWearLimit(source.monthlyCostLimitTwd ?? source.monthly_cost_limit_twd ?? current.monthlyCostLimitTwd ?? DEFAULT_AI_WEAR_SETTINGS.monthlyCostLimitTwd);
+  const perUserDailyLimit = normalizeAiWearLimit(source.perUserDailyLimit ?? source.per_user_daily_limit ?? current.perUserDailyLimit ?? DEFAULT_AI_WEAR_SETTINGS.perUserDailyLimit);
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
     publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
@@ -8454,6 +8535,13 @@ function normalizeAiWearSettings(input, existing = {}) {
     pointCost,
     pointChannelKey: channelKey,
     pointType,
+    costPerGeneration,
+    costCurrency,
+    usdToTwdRate,
+    costControlEnabled: source.costControlEnabled === true || source.cost_control_enabled === true,
+    dailyCostLimitTwd,
+    monthlyCostLimitTwd,
+    perUserDailyLimit,
   };
 }
 
@@ -8545,6 +8633,17 @@ function normalizeAiWearImageApiUrl(value) {
   if (!/^https:\/\//i.test(text)) return "";
   return text.slice(0, 500);
 }
+function sanitizeAiWearSettingsForPublic(settings) {
+  const data = sanitizeAiWearSettingsForClient(settings);
+  delete data.costPerGeneration;
+  delete data.costCurrency;
+  delete data.usdToTwdRate;
+  delete data.costControlEnabled;
+  delete data.dailyCostLimitTwd;
+  delete data.monthlyCostLimitTwd;
+  delete data.perUserDailyLimit;
+  return data;
+}
 function sanitizeAiWearSettingsForClient(settings) {
   const data = { ...settings };
   data.hasImage2ApiKey = Boolean(data.image2ApiKey);
@@ -8614,6 +8713,29 @@ async function ensureAiWearSchema(env) {
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_referrals_sharer ON ai_wear_referrals (sharer_line_user_id, last_seen_at)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_referrals_share ON ai_wear_referrals (share_id, last_seen_at)`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_cost_events (
+    id TEXT PRIMARY KEY,
+    result_id TEXT NOT NULL DEFAULT '',
+    line_user_id TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    model_id TEXT NOT NULL DEFAULT '',
+    model_title TEXT NOT NULL DEFAULT '',
+    ai_model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'completed',
+    point_cost INTEGER NOT NULL DEFAULT 0,
+    cost_currency TEXT NOT NULL DEFAULT 'TWD',
+    unit_cost REAL NOT NULL DEFAULT 0,
+    usd_to_twd_rate REAL NOT NULL DEFAULT 0,
+    estimated_cost_twd REAL NOT NULL DEFAULT 0,
+    request_id TEXT NOT NULL DEFAULT '',
+    settings_snapshot TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(result_id)
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_cost_events_created ON ai_wear_cost_events (created_at)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_cost_events_member ON ai_wear_cost_events (line_user_id, created_at)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_cost_events_model ON ai_wear_cost_events (model_id, created_at)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_results (
     id TEXT PRIMARY KEY,
     line_user_id TEXT NOT NULL DEFAULT '',
@@ -8736,7 +8858,7 @@ function aiWearReferenceToClient(row, env) {
     fileName: stringValue(row.file_name),
     mimeType: stringValue(row.mime_type),
     size: numberOrZero(row.size),
-    url: `${publicBaseUrl(env)}${AI_WEAR_REFERENCE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}`,
+    url: `${publicBaseUrl(env)}${AI_WEAR_REFERENCE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}?v=${numberOrZero(row.updated_at) || numberOrZero(row.created_at)}`,
     createdAt: numberOrZero(row.created_at),
     updatedAt: numberOrZero(row.updated_at),
   };
@@ -8744,7 +8866,7 @@ function aiWearReferenceToClient(row, env) {
 
 async function serveAiWearReferenceImage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
-  const id = aiWearAssetIdFromPath(pathname, AI_WEAR_REFERENCE_ASSET_PREFIX);
+  const id = aiWearStoredAssetIdFromPath(pathname, AI_WEAR_REFERENCE_ASSET_PREFIX);
   if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
   const row = await env.DB.prepare("SELECT mime_type, base64, updated_at FROM ai_wear_references WHERE id = ? AND active = 1").bind(id).first();
   if (!row || !row.base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
@@ -8850,6 +8972,19 @@ async function saveAiWearResult(request, env) {
       id,
     ).run();
   }
+
+  await recordAiWearCostEvent(env, settings, {
+    resultId: id,
+    lineUserId,
+    displayName,
+    modelId,
+    modelTitle: stringValue(model && model.title || body.modelTitle || body.model_title).slice(0, 120),
+    provider: stringValue(body.aiProvider || body.ai_provider || "image2"),
+    status: "completed",
+    pointCost: deductedPointCost || initialPointCost,
+    requestId: stringValue(body.requestId || body.request_id),
+    createdAt: now,
+  });
 
   return { id, createdAt: now, resultUrl, deductedPointCost };
 }
@@ -9058,6 +9193,126 @@ async function listAiWearResults(env, searchParams) {
   return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
 }
 
+function estimateAiWearGenerationCost(settings) {
+  const currency = normalizeAiWearCostCurrency(settings && settings.costCurrency);
+  const unitCost = normalizeAiWearMoney(settings && settings.costPerGeneration);
+  const rate = normalizeAiWearMoney(settings && settings.usdToTwdRate, DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate) || DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate;
+  const twd = currency === "USD" ? unitCost * rate : unitCost;
+  return {
+    currency,
+    unitCost,
+    usdToTwdRate: rate,
+    estimatedCostTwd: Math.round(Math.max(0, twd) * 10000) / 10000,
+  };
+}
+
+async function recordAiWearCostEvent(env, settings, input) {
+  const resultId = stringValue(input && input.resultId);
+  if (!resultId) return null;
+  const estimate = estimateAiWearGenerationCost(settings);
+  const now = Number(input && input.createdAt) || Date.now();
+  const snapshot = JSON.stringify({
+    costPerGeneration: estimate.unitCost,
+    costCurrency: estimate.currency,
+    usdToTwdRate: estimate.usdToTwdRate,
+    costControlEnabled: Boolean(settings && settings.costControlEnabled),
+    dailyCostLimitTwd: normalizeAiWearLimit(settings && settings.dailyCostLimitTwd),
+    monthlyCostLimitTwd: normalizeAiWearLimit(settings && settings.monthlyCostLimitTwd),
+    perUserDailyLimit: normalizeAiWearLimit(settings && settings.perUserDailyLimit),
+  });
+  await env.DB.prepare(`INSERT INTO ai_wear_cost_events (
+    id, result_id, line_user_id, display_name, model_id, model_title, ai_model, provider, status,
+    point_cost, cost_currency, unit_cost, usd_to_twd_rate, estimated_cost_twd, request_id, settings_snapshot, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(result_id) DO UPDATE SET
+    line_user_id = excluded.line_user_id,
+    display_name = excluded.display_name,
+    model_id = excluded.model_id,
+    model_title = excluded.model_title,
+    ai_model = excluded.ai_model,
+    provider = excluded.provider,
+    status = excluded.status,
+    point_cost = excluded.point_cost,
+    cost_currency = excluded.cost_currency,
+    unit_cost = excluded.unit_cost,
+    usd_to_twd_rate = excluded.usd_to_twd_rate,
+    estimated_cost_twd = excluded.estimated_cost_twd,
+    request_id = excluded.request_id,
+    settings_snapshot = excluded.settings_snapshot,
+    created_at = excluded.created_at`).bind(
+    `cost-${resultId}`,
+    resultId,
+    stringValue(input && input.lineUserId),
+    stringValue(input && input.displayName).slice(0, 120),
+    stringValue(input && input.modelId),
+    stringValue(input && input.modelTitle).slice(0, 120),
+    stringValue((settings && settings.imageModel) || "image2").slice(0, 80),
+    stringValue(input && input.provider || "image2").slice(0, 80),
+    stringValue(input && input.status || "completed").slice(0, 40),
+    Math.max(0, Math.floor(Number(input && input.pointCost) || 0)),
+    estimate.currency,
+    estimate.unitCost,
+    estimate.usdToTwdRate,
+    estimate.estimatedCostTwd,
+    stringValue(input && input.requestId).slice(0, 160),
+    snapshot,
+    now,
+  ).run();
+  return estimate;
+}
+
+function aiWearStartOfTaipeiDay(time = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(time));
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return Date.parse(`${map.year}-${map.month}-${map.day}T00:00:00+08:00`);
+}
+
+function aiWearStartOfTaipeiMonth(time = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit" }).formatToParts(new Date(time));
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return Date.parse(`${map.year}-${map.month}-01T00:00:00+08:00`);
+}
+
+function aiWearCostSummaryRow(row) {
+  return {
+    count: numberOrZero(row && row.count),
+    successCount: numberOrZero(row && row.success_count),
+    totalCostTwd: normalizeAiWearMoney(row && row.total_cost_twd),
+    totalPointCost: numberOrZero(row && row.total_point_cost),
+  };
+}
+
+async function getAiWearCostSummary(env, searchParams) {
+  await ensureAiWearSchema(env);
+  const now = Date.now();
+  const todayStart = aiWearStartOfTaipeiDay(now);
+  const monthStart = aiWearStartOfTaipeiMonth(now);
+  const limit = clampNumber(searchParams && searchParams.get("limit") || 20, 1, 100);
+  const settings = await loadAiWearSettingsRaw(env);
+  const [today, month, byMember, byModel, recent] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS success_count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost FROM ai_wear_cost_events WHERE created_at >= ?`).bind(todayStart).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS success_count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost FROM ai_wear_cost_events WHERE created_at >= ?`).bind(monthStart).first(),
+    env.DB.prepare(`SELECT line_user_id, display_name, COUNT(*) AS count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost, MAX(created_at) AS last_at FROM ai_wear_cost_events WHERE created_at >= ? GROUP BY line_user_id, display_name ORDER BY total_cost_twd DESC, count DESC LIMIT ?`).bind(monthStart, limit).all(),
+    env.DB.prepare(`SELECT model_id, model_title, ai_model, COUNT(*) AS count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost FROM ai_wear_cost_events WHERE created_at >= ? GROUP BY model_id, model_title, ai_model ORDER BY total_cost_twd DESC, count DESC LIMIT ?`).bind(monthStart, limit).all(),
+    env.DB.prepare(`SELECT result_id, line_user_id, display_name, model_title, ai_model, provider, point_cost, estimated_cost_twd, status, created_at FROM ai_wear_cost_events ORDER BY created_at DESC LIMIT ?`).bind(limit).all(),
+  ]);
+  return {
+    settings: {
+      costPerGeneration: Number(settings.costPerGeneration || 0),
+      costCurrency: normalizeAiWearCostCurrency(settings.costCurrency),
+      usdToTwdRate: Number(settings.usdToTwdRate || DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate),
+      costControlEnabled: settings.costControlEnabled === true,
+      dailyCostLimitTwd: numberOrZero(settings.dailyCostLimitTwd),
+      monthlyCostLimitTwd: numberOrZero(settings.monthlyCostLimitTwd),
+      perUserDailyLimit: numberOrZero(settings.perUserDailyLimit),
+    },
+    today: aiWearCostSummaryRow(today),
+    month: aiWearCostSummaryRow(month),
+    byMember: (byMember.results || []).map((row) => ({ lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), count: numberOrZero(row.count), totalCostTwd: normalizeAiWearMoney(row.total_cost_twd), totalPointCost: numberOrZero(row.total_point_cost), lastAt: numberOrZero(row.last_at) })),
+    byModel: (byModel.results || []).map((row) => ({ modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), aiModel: stringValue(row.ai_model), count: numberOrZero(row.count), totalCostTwd: normalizeAiWearMoney(row.total_cost_twd), totalPointCost: numberOrZero(row.total_point_cost) })),
+    recent: (recent.results || []).map((row) => ({ resultId: stringValue(row.result_id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelTitle: stringValue(row.model_title), aiModel: stringValue(row.ai_model), provider: stringValue(row.provider), pointCost: numberOrZero(row.point_cost), estimatedCostTwd: normalizeAiWearMoney(row.estimated_cost_twd), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })),
+  };
+}
 async function serveAiWearResultImage(env, pathname, corsHeaders, method = "GET") {
   await ensureAiWearSchema(env);
   const id = aiWearAssetIdFromPath(pathname, AI_WEAR_RESULT_ASSET_PREFIX);
