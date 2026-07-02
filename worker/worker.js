@@ -8505,6 +8505,13 @@ async function fetchAiWearMemberPoints(env, body) {
     memberSettings,
   };
 }
+function normalizeAiWearShareFormat(value) {
+  return stringValue(value) === "format2" ? "format2" : "format1";
+}
+function aiWearShareFlexAspectRatio(format) {
+  return normalizeAiWearShareFormat(format) === "format2" ? "3:4" : "1.91:1";
+}
+
 function normalizeAiWearPurchaseLineUrl(value, strict = false) {
   const text = stringValue(value).trim();
   if (!text) return "";
@@ -8567,12 +8574,14 @@ async function ensureAiWearSchema(env) {
     caption TEXT NOT NULL DEFAULT '',
     image_url TEXT NOT NULL DEFAULT '',
     image_mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    share_format TEXT NOT NULL DEFAULT 'format1',
     purchase_line_url TEXT NOT NULL DEFAULT '',
     clicks INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT 0,
     last_clicked_at INTEGER NOT NULL DEFAULT 0
   )`).run();
   await ensureColumn(env, "ai_wear_shares", "purchase_line_url", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_shares", "share_format", "TEXT NOT NULL DEFAULT 'format1'");
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_referrals (
     id TEXT PRIMARY KEY,
     share_id TEXT NOT NULL DEFAULT '',
@@ -8855,7 +8864,8 @@ async function createAiWearShare(request, env) {
   const submittedCaption = normalizeAiWearShareCaption(form.get("caption") || "");
   const caption = submittedCaption || memberSettings.shareCaption || defaultAiWearShareCaption();
   const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(memberSettings.purchaseLineUrl || form.get("purchaseLineUrl") || form.get("purchase_line_url"));
-  await env.DB.prepare(`INSERT INTO ai_wear_shares (id, result_id, sharer_line_user_id, sharer_name, caption, image_url, image_mime_type, purchase_line_url, clicks, created_at, last_clicked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`).bind(
+  const shareFormat = normalizeAiWearShareFormat(form.get("shareFormat") || form.get("share_format"));
+  await env.DB.prepare(`INSERT INTO ai_wear_shares (id, result_id, sharer_line_user_id, sharer_name, caption, image_url, image_mime_type, share_format, purchase_line_url, clicks, created_at, last_clicked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`).bind(
     id,
     stringValue(form.get("resultId") || form.get("result_id")).slice(0, 120),
     lineUserId,
@@ -8863,10 +8873,11 @@ async function createAiWearShare(request, env) {
     caption,
     imageUrl,
     mimeType,
+    shareFormat,
     purchaseLineUrl,
     now,
   ).run();
-  return { id, shareUrl, imageUrl, purchaseLineUrl, caption, createdAt: now };
+  return { id, shareUrl, imageUrl, shareFormat, purchaseLineUrl, caption, createdAt: now };
 }
 
 async function recordAiWearReferral(env, body) {
@@ -8946,21 +8957,22 @@ async function getAiWearShareCard(env, searchParams) {
   await ensureAiWearSchema(env);
   const id = stringValue(searchParams && searchParams.get("id")).trim();
   if (!id || id.includes("..") || id.includes("/")) throw httpError("分享資料不存在。", 404);
-  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url, share_format FROM ai_wear_shares WHERE id = ?").bind(id).first();
   if (!row) throw httpError("分享資料不存在。", 404);
   const rawImageUrl = stringValue(row.image_url);
   const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
   const caption = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
-  return { id, title, caption, shareUrl, imageUrl, purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row.purchase_line_url) };
+  const shareFormat = normalizeAiWearShareFormat(row.share_format);
+  return { id, title, caption, shareUrl, imageUrl, shareFormat, flexAspectRatio: aiWearShareFlexAspectRatio(shareFormat), purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row.purchase_line_url) };
 }
 
 async function serveAiWearSharePage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
   const id = decodeURIComponent(String(pathname || "").replace(/^\/ai-wear\/share\//, ""));
   if (!id || id.includes("..") || id.includes("/")) return new Response("Not found", { status: 404, headers: corsHeaders });
-  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url, share_format, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
   if (!row) return new Response("Not found", { status: 404, headers: corsHeaders });
   await env.DB.prepare("UPDATE ai_wear_shares SET clicks = clicks + 1, last_clicked_at = ? WHERE id = ?").bind(Date.now(), id).run();
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
@@ -8974,20 +8986,21 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const browserUrl = `${publicBaseUrl(env)}/ai-wear`;
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
   const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
-  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl(row.purchase_line_url);
+  const shareFormat = normalizeAiWearShareFormat(row.share_format);
+  const flexAspectRatio = aiWearShareFlexAspectRatio(shareFormat);
+  const greenFlexButton = (label, uri) => ({ type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label, uri } });
   const flexFooterContents = [
-    { type: "button", style: "primary", color: "#06C755", height: "sm", action: { type: "uri", label: "我也要試戴", uri: lineAppUrl } },
-    { type: "button", style: "link", height: "sm", action: { type: "uri", label: "查看分享頁", uri: shareUrl } },
-    { type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "分享", uri: shareActionUrl } },
+    greenFlexButton("我也要試戴", lineAppUrl),
+    greenFlexButton("查看分享頁", shareUrl),
+    greenFlexButton("分享", shareActionUrl),
   ];
-  if (purchaseLineUrl) flexFooterContents.push({ type: "button", style: "secondary", height: "sm", action: { type: "uri", label: "我想購買/試戴", uri: purchaseLineUrl } });
   const flexPayload = {
     type: "flex",
     altText: `${title}：${description}`.slice(0, 400),
     contents: {
       type: "bubble",
       size: "mega",
-      hero: { type: "image", url: imageUrl, size: "full", aspectRatio: "1.91:1", aspectMode: "cover", action: { type: "uri", uri: shareUrl } },
+      hero: { type: "image", url: imageUrl, size: "full", aspectRatio: flexAspectRatio, aspectMode: "cover", action: { type: "uri", uri: shareUrl } },
       body: { type: "box", layout: "vertical", spacing: "md", contents: [
         { type: "text", text: title, weight: "bold", size: "xl", wrap: true, color: "#101828" },
         { type: "text", text: description, size: "sm", wrap: true, color: "#526070" },
