@@ -2825,6 +2825,7 @@ function chooseMutationBalanceAfter(delta, queriedBalance, expectedBalance, loca
   const change = Number(delta || 0);
   const localExpected = Number.isFinite(localBefore) ? localBefore + change : null;
   const hasLocalExpected = Number.isFinite(localExpected);
+  if (hasQueried) return queried;
   if (!hasQueried) {
     if (change > 0 && hasExpected && hasLocalExpected) return Math.max(expected, localExpected);
     if (hasExpected) return expected;
@@ -3497,6 +3498,16 @@ async function getDailyRewardDuplicateBalance(env, channelKey, lineUserId, point
     const number = Number(value);
     if (Number.isFinite(number)) values.push(number);
   };
+  const live = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 10, {
+    shop_id: memberCheckinShopId(env),
+  }).catch(() => null);
+  const liveBalance = Number(live && live.balance);
+  if (Number.isFinite(liveBalance)) {
+    if (env.DB) {
+      await upsertLivePointAccountCache(env, channelKey, lineUserId, pointType, liveBalance).catch(() => "");
+    }
+    return liveBalance;
+  }
   pushValue(fallbackBalance);
   if (!env.DB || !channelKey || !lineUserId || !pointType || !rewardDate) return values.length ? Math.max(...values) : 0;
 
@@ -4437,7 +4448,7 @@ async function livePointBalanceRow(env, channelKey, lineUserId, pointType) {
   const snapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 20);
   const liveRows = Array.isArray(snapshot.rows) ? snapshot.rows.length : 0;
   if (liveRows > 0 || Number(snapshot.balance || 0) !== 0) {
-    const balance = await highestKnownPointBalance(env, channelKey, lineUserId, pointType, snapshot.balance);
+    const balance = Number(snapshot.balance || 0);
     const masterMemberRef = await upsertLivePointAccountCache(env, channelKey, lineUserId, pointType, balance);
     return decoratePointBalances([{
       account_key: `${channelKey}:${lineUserId}:${pointType}`,
