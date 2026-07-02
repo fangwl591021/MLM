@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
  * Core rule:
@@ -169,6 +169,9 @@ export default {
 
       if ((url.pathname === "/ai-wear" || url.pathname === "/ai-wear.html") && (request.method === "GET" || request.method === "HEAD")) {
         return serveFrontendHtml("ai-wear.html", corsHeaders);
+      }
+      if (url.pathname.startsWith("/ai-wear/share/") && url.pathname.endsWith("/preview") && (request.method === "GET" || request.method === "HEAD")) {
+        return serveAiWearSharePreviewPage(env, url.pathname, corsHeaders);
       }
       if (url.pathname.startsWith("/ai-wear/share/") && (request.method === "GET" || request.method === "HEAD")) {
         return serveAiWearSharePage(env, url.pathname, corsHeaders);
@@ -8855,6 +8858,7 @@ async function createAiWearShare(request, env) {
   });
   const imageUrl = `${publicBaseUrl(env)}${AI_WEAR_SHARE_ASSET_PREFIX}${encodeURIComponent(id)}.${aiWearMimeExtension(mimeType)}`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  const previewUrl = `${shareUrl}/preview`;
   const settings = await loadAiWearSettingsRaw(env);
   const profile = await verifyAiWearLineProfileFromForm(env, settings, form).catch(() => null);
   const verifiedLineUserId = stringValue(profile && profile.userId);
@@ -8877,7 +8881,7 @@ async function createAiWearShare(request, env) {
     purchaseLineUrl,
     now,
   ).run();
-  return { id, shareUrl, imageUrl, shareFormat, purchaseLineUrl, caption, createdAt: now };
+  return { id, shareUrl, previewUrl, imageUrl, shareFormat, purchaseLineUrl, caption, createdAt: now };
 }
 
 async function recordAiWearReferral(env, body) {
@@ -8962,10 +8966,30 @@ async function getAiWearShareCard(env, searchParams) {
   const rawImageUrl = stringValue(row.image_url);
   const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  const previewUrl = `${shareUrl}/preview`;
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
   const caption = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
   const shareFormat = normalizeAiWearShareFormat(row.share_format);
-  return { id, title, caption, shareUrl, imageUrl, shareFormat, flexAspectRatio: aiWearShareFlexAspectRatio(shareFormat), purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row.purchase_line_url) };
+  return { id, title, caption, shareUrl, previewUrl, imageUrl, shareFormat, flexAspectRatio: aiWearShareFlexAspectRatio(shareFormat), purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row.purchase_line_url) };
+}
+
+async function serveAiWearSharePreviewPage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = decodeURIComponent(String(pathname || "").replace(/^\/ai-wear\/share\//, "").replace(/\/preview$/, ""));
+  if (!id || id.includes("..") || id.includes("/")) return new Response("Not found", { status: 404, headers: corsHeaders });
+  const row = await env.DB.prepare(`SELECT s.id, s.sharer_name, s.caption, s.image_url, s.result_id, r.result_image_url, CASE WHEN r.result_base64 != '' THEN 1 ELSE 0 END AS has_result_blob FROM ai_wear_shares s LEFT JOIN ai_wear_results r ON r.id = s.result_id WHERE s.id = ?`).bind(id).first();
+  if (!row) return new Response("Not found", { status: 404, headers: corsHeaders });
+  const rawShareImageUrl = stringValue(row.image_url);
+  const shareImageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawShareImageUrl) ? rawShareImageUrl : `${rawShareImageUrl}.jpg`;
+  const resultId = stringValue(row.result_id);
+  const rawResultImageUrl = stringValue(row.result_image_url);
+  const resultImageUrl = row.has_result_blob && resultId ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(resultId)}` : rawResultImageUrl;
+  const previewImageUrl = resultImageUrl || shareImageUrl;
+  const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴結果` : "AI 眼鏡試戴結果";
+  const description = stringValue(row.caption || "查看 AI 眼鏡試戴放大結果。");
+  const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  const html = `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><style>html,body{margin:0;min-height:100%;background:#05070c;color:#fff;font-family:Arial,'Noto Sans TC',sans-serif}.viewer{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto}.bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:rgba(5,7,12,.86);backdrop-filter:blur(10px)}.title{font-weight:900;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{border:1px solid rgba(255,255,255,.28);border-radius:999px;color:#fff;text-decoration:none;padding:8px 12px;font-weight:900;background:rgba(255,255,255,.08)}.stage{display:grid;place-items:center;overflow:auto}.stage img{display:block;width:100%;height:auto;max-width:1280px;object-fit:contain}.hint{padding:10px 12px;color:#cbd5e1;font-size:13px;text-align:center;background:rgba(5,7,12,.72)}@media(min-width:760px){.stage img{width:auto;max-height:calc(100vh - 92px)}}</style></head><body><main class="viewer"><div class="bar"><span class="title">${escapeHtml(title)}</span><a class="btn" href="${escapeHtml(shareUrl)}">返回分享頁</a></div><div class="stage"><img src="${escapeHtml(previewImageUrl)}" alt="AI 眼鏡試戴放大結果"></div><div class="hint">可用雙指縮放查看眼鏡細節</div></main></body></html>`;
+  return new Response(html, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60" } });
 }
 
 async function serveAiWearSharePage(env, pathname, corsHeaders) {
@@ -8980,6 +9004,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const rawImageUrl = stringValue(row.image_url);
   const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
   const shareUrl = `${publicBaseUrl(env)}/ai-wear/share/${encodeURIComponent(id)}`;
+  const previewUrl = `${shareUrl}/preview`;
   const settings = await getAiWearSettings(env);
   const liffId = normalizeAiWearLiffId(settings && settings.liffId);
   const lineAppUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearTry=1&aiWearReferral=${encodeURIComponent(id)}`;
@@ -9000,7 +9025,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
     contents: {
       type: "bubble",
       size: "mega",
-      hero: { type: "image", url: imageUrl, size: "full", aspectRatio: flexAspectRatio, aspectMode: "cover", action: { type: "uri", uri: shareUrl } },
+      hero: { type: "image", url: imageUrl, size: "full", aspectRatio: flexAspectRatio, aspectMode: "cover", action: { type: "uri", uri: previewUrl } },
       body: { type: "box", layout: "vertical", spacing: "md", contents: [
         { type: "text", text: title, weight: "bold", size: "xl", wrap: true, color: "#101828" },
         { type: "text", text: description, size: "sm", wrap: true, color: "#526070" },
