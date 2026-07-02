@@ -2471,7 +2471,10 @@ async function pointMutation(env, body, action) {
     const initialFallback = (!hasLocalAccount && !hasResolvedMember && allowInitialFallback)
       ? await initialGiftMoneyDailyRewardFallbackAccount(env, channelKey, lineUserId, body)
       : null;
-    if (!hasLocalAccount && !hasResolvedMember && !initialFallback) {
+    const crmLinkedMemberRef = (!hasLocalAccount && !hasResolvedMember && allowInitialFallback)
+      ? await resolveMasterMemberRefForPointLineUser(env, channelKey, lineUserId).catch(() => "")
+      : "";
+    if (!hasLocalAccount && !hasResolvedMember && !initialFallback && !crmLinkedMemberRef) {
       throw httpError(`此聊天室 UID 不是${pointSourceMeta(channelKey)?.label || channelKey} 的母站 UID，請先綁定後再贈扣。`, 400);
     }
   }
@@ -6805,6 +6808,7 @@ async function applyDailyKeywordReward(env, rule, userId) {
       points,
       operator_name: "關鍵字自動贈點",
       note: `${keyword} 每日打卡贈點`,
+      initial_gift_money_account_fallback: true,
     }, "grant");
     const localBalance = Number(mutation && mutation.balance_after);
     const balance = Number.isFinite(localBalance)
