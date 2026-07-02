@@ -8084,7 +8084,13 @@ async function validateAiWearSelfieForTryOn(env, settings, selfie) {
     throw httpError("自拍照合格檢查失敗，請稍後再試；系統尚未產生圖片，也不會扣點。", 502, "ai_wear_selfie_validation_failed");
   }
   const faceCount = Number(payload.face_count || payload.faceCount || 0);
-  const invalid = payload.qualified !== true || payload.is_real_person_photo === false || payload.face_clear === false || payload.eye_area_visible === false || (faceCount && faceCount !== 1);
+  const confidence = Math.max(0, Math.min(1, Number(payload.confidence || 0)));
+  const highConfidence = confidence >= 0.82;
+  const clearlyNotPerson = highConfidence && payload.is_real_person_photo === false;
+  const clearlyPoster = highConfidence && payload.is_poster_or_ad === true && payload.is_real_person_photo !== true;
+  const clearlyUnusableFace = highConfidence && (payload.face_clear === false || payload.eye_area_visible === false);
+  const clearlyWrongPeopleCount = highConfidence && faceCount > 1;
+  const invalid = clearlyNotPerson || clearlyPoster || clearlyUnusableFace || clearlyWrongPeopleCount;
   if (invalid) {
     const reason = stringValue(payload.reason || "照片不符合真人自拍照條件").slice(0, 120);
     throw httpError(`${reason}，請重新上傳真人自拍照。`, 400, "ai_wear_invalid_selfie");
