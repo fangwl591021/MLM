@@ -8050,52 +8050,7 @@ async function validateAiWearSelfieForTryOn(env, settings, selfie) {
   const ratio = dimensions.width / dimensions.height;
   if (ratio < 0.38 || ratio > 2.65) throw httpError("照片比例不適合 AI 試戴，請重新上傳正面或半身真人自拍照。", 400, "ai_wear_invalid_selfie");
 
-  const key = stringValue((settings && settings.image2ApiKey) || env.OPENAI_API_KEY).trim();
-  if (!/^sk-(proj-)?[A-Za-z0-9_-]+/.test(key)) return { ok: true, skipped: "non_openai_key" };
-
-  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
-  const model = env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-5-mini";
-  const imageDataUrl = `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`;
-  const prompt = [
-    "你是 AI 眼鏡試戴的自拍照合格檢查器。只輸出 JSON，不要說明。",
-    "qualified=true 的條件：圖片必須是真人照片，且主要內容是一位顧客本人；臉部清楚可見；眼睛、鼻樑與眼鏡配戴位置可判斷。",
-    "允許真實生活背景：戶外風景、店面、室內、招牌、海報牆、產品、手持物、制服、文字背景都可以，只要照片主體是可試戴眼鏡的真人。",
-    "qualified=false 只用在：畫面主體不是顧客本人照片，而是廣告海報、DM、名片、截圖、商品圖、插畫、證件拼貼、多人合照，或人物臉部太小/太糊/眼鼻區不可判斷。",
-    "is_poster_or_ad=true 只代表整張圖主要是版面設計或宣傳物；不要因為真實自拍背景有文字、招牌、牆上海報或產品就標成 true。",
-    "輸出格式：{\"qualified\":boolean,\"reason\":\"繁體中文短原因\",\"face_count\":number,\"is_real_person_photo\":boolean,\"is_poster_or_ad\":boolean,\"face_clear\":boolean,\"eye_area_visible\":boolean,\"confidence\":number}"
-  ].join("\n");
-  let payload;
-  try {
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model,
-        input: [{ role: "user", content: [{ type: "input_text", text: prompt }, { type: "input_image", image_url: imageDataUrl }] }],
-        text: { format: { type: "json_object" } },
-        max_output_tokens: 600,
-      }),
-    });
-    const bodyText = await response.text();
-    if (!response.ok) throw new Error(`OpenAI HTTP ${response.status}: ${bodyText.slice(0, 500)}`);
-    payload = parseStrictJsonObject(extractOpenAIText(JSON.parse(bodyText)));
-  } catch (err) {
-    console.warn("AI wear selfie validation failed", err && err.message ? err.message : err);
-    throw httpError("自拍照合格檢查失敗，請稍後再試；系統尚未產生圖片，也不會扣點。", 502, "ai_wear_selfie_validation_failed");
-  }
-  const faceCount = Number(payload.face_count || payload.faceCount || 0);
-  const confidence = Math.max(0, Math.min(1, Number(payload.confidence || 0)));
-  const highConfidence = confidence >= 0.82;
-  const clearlyNotPerson = highConfidence && payload.is_real_person_photo === false;
-  const clearlyPoster = highConfidence && payload.is_poster_or_ad === true && payload.is_real_person_photo !== true;
-  const clearlyUnusableFace = highConfidence && (payload.face_clear === false || payload.eye_area_visible === false);
-  const clearlyWrongPeopleCount = highConfidence && faceCount > 1;
-  const invalid = clearlyNotPerson || clearlyPoster || clearlyUnusableFace || clearlyWrongPeopleCount;
-  if (invalid) {
-    const reason = stringValue(payload.reason || "照片不符合真人自拍照條件").slice(0, 120);
-    throw httpError(`${reason}，請重新上傳真人自拍照。`, 400, "ai_wear_invalid_selfie");
-  }
-  return { ok: true, validation: payload };
+  return { ok: true, skipped: "vision_gate_disabled", dimensions };
 }
 async function preflightAiWearGenerate(request, env) {
   await ensureAiWearSchema(env);
