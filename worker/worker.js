@@ -8174,6 +8174,8 @@ async function generateAiWearImage(request, env) {
     createdAt: now,
     resultUrl: finalUrl,
     inlineDataUrl,
+    requestId: stringValue(generated.requestId).slice(0, 160),
+    usage: generated.usage ? (generated.usage.raw || generated.usage) : null,
     persistedImage: Boolean(storedResultBase64 || generated.url),
     modelId,
     modelTitle: stringValue(reference.title),
@@ -8880,16 +8882,18 @@ async function saveAiWearResult(request, env) {
     if (balance < configuredPointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${configuredPointCost} 點。`, 402);
   }
 
-  const id = stringValue(body.__storedId) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const id = stringValue(body.__storedId || body.storedId || body.generatedId || body.generated_id) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const modelId = stringValue(body.modelId || body.model_id);
   const existingResult = await env.DB.prepare("SELECT openai_usage_json, openai_request_id FROM ai_wear_results WHERE id = ?").bind(id).first().catch(() => null);
-  const openAiUsage = normalizeAiWearUsage(body.openaiUsage || body.openai_usage || body.usage || (existingResult && existingResult.openai_usage_json));
+  const directUsage = normalizeAiWearUsage(body.openaiUsage || body.openai_usage || body.usage || (existingResult && existingResult.openai_usage_json));
+  const recentRawUsage = directUsage ? null : await findRecentAiWearRawUsage(env, { lineUserId, modelId, createdAt: now });
+  const openAiUsage = directUsage || normalizeAiWearUsage(recentRawUsage && recentRawUsage.openai_usage_json);
   const openAiUsageJson = openAiUsage ? JSON.stringify(openAiUsage.raw || openAiUsage) : stringValue(existingResult && existingResult.openai_usage_json);
-  const openAiRequestId = stringValue(body.requestId || body.request_id || (existingResult && existingResult.openai_request_id)).slice(0, 160);
+  const openAiRequestId = stringValue(body.requestId || body.request_id || (existingResult && existingResult.openai_request_id) || (recentRawUsage && recentRawUsage.openai_request_id)).slice(0, 160);
   if (fileBuffer) {
     const stored = await storeAiWearGeneratedResult(env, id, { base64: arrayBufferToBase64(fileBuffer), mimeType: resultMimeType });
     resultUrl = stored.url;
   }
-  const modelId = stringValue(body.modelId || body.model_id);
   const model = modelId ? await env.DB.prepare("SELECT title FROM ai_wear_references WHERE id = ?").bind(modelId).first() : null;
   if (!resultUrl) resultUrl = stringValue(body.resultImageUrl || body.result_image_url).slice(0, 500);
   if (!resultUrl) throw httpError("AI 穿戴結果圖片尚未保存，未扣會員 K 點。", 400, "ai_wear_missing_result_image");
@@ -9169,6 +9173,19 @@ async function listAiWearResults(env, searchParams) {
   return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
 }
 
+async function findRecentAiWearRawUsage(env, input = {}) {
+  const lineUserId = stringValue(input.lineUserId);
+  const modelId = stringValue(input.modelId);
+  const createdAt = Number(input.createdAt) || Date.now();
+  if (!lineUserId || !modelId) return null;
+  return env.DB.prepare(`SELECT openai_usage_json, openai_request_id FROM ai_wear_results
+    WHERE line_user_id = ? AND model_id = ? AND status = 'generated_raw'
+      AND openai_usage_json <> '' AND created_at BETWEEN ? AND ?
+    ORDER BY created_at DESC LIMIT 1`)
+    .bind(lineUserId, modelId, createdAt - 10 * 60 * 1000, createdAt + 60 * 1000)
+    .first()
+    .catch(() => null);
+}
 function normalizeAiWearUsage(raw) {
   if (!raw) return null;
   if (typeof raw === "string") {
