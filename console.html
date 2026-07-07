@@ -1359,7 +1359,7 @@
       const averageCost = Number(month.count || 0) > 0 ? Number(month.totalCostTwd || 0) / Number(month.count || 1) : 0;
       const memberRows = byMember.length ? byMember.map((item, index) => `<tr><td>${esc(index + 1)}</td><td><strong>${esc(item.displayName || "未命名會員")}</strong><div class="aiCostMeta">${esc(item.lineUserId || "")}</div></td><td>${esc(item.count || 0)}</td><td>${esc(item.totalPointCost || 0)}</td><td>${esc(moneyTwd(item.totalCostTwd))}</td><td>${esc(fmt(item.lastAt))}</td></tr>`).join("") : `<tr><td colspan="6">尚無會員生成資料。</td></tr>`;
       const modelRows = byModel.length ? byModel.map((item, index) => `<tr><td>${esc(index + 1)}</td><td><strong>${esc(item.modelTitle || item.modelId || "未命名款式")}</strong><div class="aiCostMeta">${esc(item.aiModel || "")}</div></td><td>${esc(item.count || 0)}</td><td>${esc(item.totalPointCost || 0)}</td><td>${esc(moneyTwd(item.totalCostTwd))}</td></tr>`).join("") : `<tr><td colspan="5">尚無模型成本資料。</td></tr>`;
-      const recentRows = recent.length ? recent.map((item) => `<tr><td>${esc(fmt(item.createdAt))}</td><td><strong>${esc(item.displayName || "未命名會員")}</strong><div class="aiCostMeta">${esc(item.lineUserId || "")}</div></td><td>${esc(item.modelTitle || "未選款式")}</td><td>${esc(item.aiModel || item.provider || "")}</td><td>${esc(item.pointCost || 0)}</td><td>${esc(moneyTwd(item.estimatedCostTwd))}</td><td>${esc(item.status || "completed")}</td></tr>`).join("") : `<tr><td colspan="7">尚無最近生成紀錄。</td></tr>`;
+      const recentRows = recent.length ? recent.map((item) => `<tr><td>${esc(fmt(item.createdAt))}</td><td><strong>${esc(item.displayName || "未命名會員")}</strong><div class="aiCostMeta">${esc(item.lineUserId || "")}</div></td><td>${esc(item.modelTitle || "未選款式")}</td><td>${esc(item.aiModel || item.provider || "")}</td><td>${esc(item.pointCost || 0)}</td><td>${esc(moneyTwd(item.estimatedCostTwd))}</td><td>${esc(item.costSource === "openai_usage" ? "真實" : "估算")}</td><td>${esc(item.status || "completed")}</td></tr>`).join("") : `<tr><td colspan="8">尚無最近生成紀錄。</td></tr>`;
       target.className = "";
       target.innerHTML = `
         <div class="aiCostKpis">
@@ -1373,7 +1373,7 @@
           <section class="aiCostSection"><h4>每人本月費用</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>#</th><th>會員</th><th>生成數</th><th>扣點</th><th>費用</th><th>最近</th></tr></thead><tbody>${memberRows}</tbody></table></div></section>
           <section class="aiCostSection"><h4>每模型本月費用</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>#</th><th>模型 / 款式</th><th>生成數</th><th>扣點</th><th>費用</th></tr></thead><tbody>${modelRows}</tbody></table></div></section>
         </div>
-        <section class="aiCostSection aiCostRecent"><h4>最近生成明細</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>時間</th><th>會員</th><th>款式</th><th>模型</th><th>扣點</th><th>費用</th><th>狀態</th></tr></thead><tbody>${recentRows}</tbody></table></div></section>`;
+        <section class="aiCostSection aiCostRecent"><h4>最近生成明細</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>時間</th><th>會員</th><th>款式</th><th>模型</th><th>扣點</th><th>費用</th><th>來源</th><th>狀態</th></tr></thead><tbody>${recentRows}</tbody></table></div></section>`;
     }
     async function loadAiWearCostSummary() {
       const summaryTarget = $("aiWearCostSummary");

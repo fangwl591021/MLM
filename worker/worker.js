@@ -8149,7 +8149,7 @@ async function generateAiWearImage(request, env) {
   const resultUrl = storedResult.url;
   const inlineDataUrl = "";
   // Final billing happens in saveAiWearResult after the browser-side original-photo composite is stored.
-  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id,
     lineUserId,
     displayName,
@@ -8165,6 +8165,8 @@ async function generateAiWearImage(request, env) {
     settings.pointType,
     "generated_raw",
     now,
+    generated.usage ? JSON.stringify(generated.usage.raw || generated.usage) : "",
+    stringValue(generated.requestId).slice(0, 160),
   ).run();
   const finalUrl = resultUrl || inlineDataUrl;
   return {
@@ -8393,10 +8395,11 @@ async function parseAiWearImageResponse(response) {
     throw err;
   }
   const item = body && Array.isArray(body.data) ? body.data[0] : body && body.data && body.data.result ? body.data.result : body && body.result ? body.result : body;
+  const debug = aiWearResponseDebug(response, body || {});
   const base64 = stringValue(item && (item.b64_json || item.base64 || item.image_base64 || item.result_base64));
   const url = stringValue(item && (item.url || item.image_url || item.result_url || item.output_url));
   if (!base64 && !url) throw httpError("AI image2 未回傳圖片。", 502);
-  return { base64, url, mimeType: stringValue(item && item.mime_type) || "image/jpeg" };
+  return { base64, url, mimeType: stringValue(item && item.mime_type) || "image/jpeg", requestId: debug.requestId, usage: normalizeAiWearUsage((body && body.usage) || (item && item.usage)) };
 }
 async function diagnoseAiWearOpenAi(env) {
   const settings = await loadAiWearSettingsRaw(env);
@@ -8714,6 +8717,11 @@ async function ensureAiWearSchema(env) {
     status TEXT NOT NULL DEFAULT 'completed',
     created_at INTEGER NOT NULL DEFAULT 0
   )`).run();
+  await ensureColumn(env, "ai_wear_results", "openai_usage_json", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_results", "openai_request_id", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_cost_events", "usage_json", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_cost_events", "actual_cost_usd", "REAL NOT NULL DEFAULT 0");
+  await ensureColumn(env, "ai_wear_cost_events", "cost_source", "TEXT NOT NULL DEFAULT 'estimate'");
 }
 
 function aiWearAssetIdFromPath(pathname, prefix) {
@@ -8873,6 +8881,10 @@ async function saveAiWearResult(request, env) {
   }
 
   const id = stringValue(body.__storedId) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const existingResult = await env.DB.prepare("SELECT openai_usage_json, openai_request_id FROM ai_wear_results WHERE id = ?").bind(id).first().catch(() => null);
+  const openAiUsage = normalizeAiWearUsage(body.openaiUsage || body.openai_usage || body.usage || (existingResult && existingResult.openai_usage_json));
+  const openAiUsageJson = openAiUsage ? JSON.stringify(openAiUsage.raw || openAiUsage) : stringValue(existingResult && existingResult.openai_usage_json);
+  const openAiRequestId = stringValue(body.requestId || body.request_id || (existingResult && existingResult.openai_request_id)).slice(0, 160);
   if (fileBuffer) {
     const stored = await storeAiWearGeneratedResult(env, id, { base64: arrayBufferToBase64(fileBuffer), mimeType: resultMimeType });
     resultUrl = stored.url;
@@ -8887,7 +8899,7 @@ async function saveAiWearResult(request, env) {
   const pointChannelKey = shouldDeductPoints ? settings.pointChannelKey : stringValue(body.pointChannelKey || body.point_channel_key);
   const pointType = shouldDeductPoints ? settings.pointType : normalizePointType(body.pointType || body.point_type || "gift_money");
 
-  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id,
     lineUserId,
     displayName,
@@ -8903,6 +8915,8 @@ async function saveAiWearResult(request, env) {
     pointType,
     initialStatus,
     now,
+    openAiUsageJson,
+    openAiRequestId,
   ).run();
 
   let deductedPointCost = 0;
@@ -8943,7 +8957,8 @@ async function saveAiWearResult(request, env) {
     provider: stringValue(body.aiProvider || body.ai_provider || "image2"),
     status: "completed",
     pointCost: deductedPointCost || initialPointCost,
-    requestId: stringValue(body.requestId || body.request_id),
+    requestId: openAiRequestId,
+    openAiUsage,
     createdAt: now,
   });
 
@@ -9154,7 +9169,65 @@ async function listAiWearResults(env, searchParams) {
   return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
 }
 
-function estimateAiWearGenerationCost(settings) {
+function normalizeAiWearUsage(raw) {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try { return normalizeAiWearUsage(JSON.parse(raw)); } catch (_err) { return null; }
+  }
+  if (typeof raw !== "object") return null;
+  const usage = raw.usage && typeof raw.usage === "object" ? raw.usage : raw;
+  const inputDetails = usage.input_tokens_details && typeof usage.input_tokens_details === "object" ? usage.input_tokens_details : {};
+  const outputDetails = usage.output_tokens_details && typeof usage.output_tokens_details === "object" ? usage.output_tokens_details : {};
+  return {
+    inputTokens: numberOrZero(usage.input_tokens),
+    outputTokens: numberOrZero(usage.output_tokens),
+    totalTokens: numberOrZero(usage.total_tokens),
+    inputTextTokens: numberOrZero(inputDetails.text_tokens ?? usage.input_text_tokens ?? usage.text_input_tokens),
+    inputImageTokens: numberOrZero(inputDetails.image_tokens ?? usage.input_image_tokens ?? usage.image_input_tokens),
+    outputTextTokens: numberOrZero(outputDetails.text_tokens ?? usage.output_text_tokens ?? usage.text_output_tokens),
+    outputImageTokens: numberOrZero(outputDetails.image_tokens ?? usage.output_image_tokens ?? usage.image_output_tokens ?? usage.output_tokens),
+    raw: usage,
+  };
+}
+
+function normalizeAiWearOpenAiImageModel(model) {
+  const value = stringValue(model || "image2").trim().toLowerCase();
+  if (!value || value === "image2" || value === "gpt-image-2") return "gpt-image-2";
+  if (value === "image1" || value === "gpt-image-1") return "gpt-image-1";
+  return value;
+}
+
+function aiWearOpenAiImageTokenRates(model) {
+  const normalized = normalizeAiWearOpenAiImageModel(model);
+  if (normalized === "gpt-image-2") return { model: normalized, textInputUsdPerM: 5, imageInputUsdPerM: 8, imageOutputUsdPerM: 30, textOutputUsdPerM: 0 };
+  return null;
+}
+
+function calculateAiWearOpenAiUsageCost(settings, rawUsage, model) {
+  const usage = normalizeAiWearUsage(rawUsage);
+  const rates = aiWearOpenAiImageTokenRates(model || (settings && settings.imageModel));
+  if (!usage || !rates) return null;
+  const inputText = usage.inputTextTokens;
+  const inputImage = usage.inputImageTokens;
+  const outputImage = usage.outputImageTokens;
+  const outputText = usage.outputTextTokens;
+  if (inputText <= 0 && inputImage <= 0 && outputImage <= 0 && outputText <= 0) return null;
+  const usd = (inputText * rates.textInputUsdPerM + inputImage * rates.imageInputUsdPerM + outputImage * rates.imageOutputUsdPerM + outputText * rates.textOutputUsdPerM) / 1000000;
+  const rate = normalizeAiWearMoney(settings && settings.usdToTwdRate, DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate) || DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate;
+  return {
+    currency: "USD",
+    unitCost: Math.round(Math.max(0, usd) * 100000000) / 100000000,
+    usdToTwdRate: rate,
+    estimatedCostTwd: Math.round(Math.max(0, usd * rate) * 10000) / 10000,
+    costSource: "openai_usage",
+    usage,
+    rates,
+  };
+}
+
+function estimateAiWearGenerationCost(settings, rawUsage = null, model = "") {
+  const actual = calculateAiWearOpenAiUsageCost(settings, rawUsage, model || (settings && settings.imageModel));
+  if (actual) return actual;
   const currency = normalizeAiWearCostCurrency(settings && settings.costCurrency);
   const unitCost = normalizeAiWearMoney(settings && settings.costPerGeneration);
   const rate = normalizeAiWearMoney(settings && settings.usdToTwdRate, DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate) || DEFAULT_AI_WEAR_SETTINGS.usdToTwdRate;
@@ -9164,13 +9237,16 @@ function estimateAiWearGenerationCost(settings) {
     unitCost,
     usdToTwdRate: rate,
     estimatedCostTwd: Math.round(Math.max(0, twd) * 10000) / 10000,
+    costSource: "estimate",
+    usage: null,
+    rates: null,
   };
 }
 
 async function recordAiWearCostEvent(env, settings, input) {
   const resultId = stringValue(input && input.resultId);
   if (!resultId) return null;
-  const estimate = estimateAiWearGenerationCost(settings);
+  const estimate = estimateAiWearGenerationCost(settings, input && input.openAiUsage, (input && input.aiModel) || (settings && settings.imageModel));
   const now = Number(input && input.createdAt) || Date.now();
   const snapshot = JSON.stringify({
     costPerGeneration: estimate.unitCost,
@@ -9180,11 +9256,15 @@ async function recordAiWearCostEvent(env, settings, input) {
     dailyCostLimitTwd: normalizeAiWearLimit(settings && settings.dailyCostLimitTwd),
     monthlyCostLimitTwd: normalizeAiWearLimit(settings && settings.monthlyCostLimitTwd),
     perUserDailyLimit: normalizeAiWearLimit(settings && settings.perUserDailyLimit),
+    costSource: estimate.costSource,
+    usage: estimate.usage ? estimate.usage.raw : null,
+    rates: estimate.rates || null,
   });
   await env.DB.prepare(`INSERT INTO ai_wear_cost_events (
     id, result_id, line_user_id, display_name, model_id, model_title, ai_model, provider, status,
-    point_cost, cost_currency, unit_cost, usd_to_twd_rate, estimated_cost_twd, request_id, settings_snapshot, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    point_cost, cost_currency, unit_cost, usd_to_twd_rate, estimated_cost_twd, request_id, settings_snapshot, created_at,
+    usage_json, actual_cost_usd, cost_source
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(result_id) DO UPDATE SET
     line_user_id = excluded.line_user_id,
     display_name = excluded.display_name,
@@ -9200,7 +9280,10 @@ async function recordAiWearCostEvent(env, settings, input) {
     estimated_cost_twd = excluded.estimated_cost_twd,
     request_id = excluded.request_id,
     settings_snapshot = excluded.settings_snapshot,
-    created_at = excluded.created_at`).bind(
+    created_at = excluded.created_at,
+    usage_json = excluded.usage_json,
+    actual_cost_usd = excluded.actual_cost_usd,
+    cost_source = excluded.cost_source`).bind(
     `cost-${resultId}`,
     resultId,
     stringValue(input && input.lineUserId),
@@ -9218,6 +9301,9 @@ async function recordAiWearCostEvent(env, settings, input) {
     stringValue(input && input.requestId).slice(0, 160),
     snapshot,
     now,
+    estimate.usage ? JSON.stringify(estimate.usage.raw || estimate.usage) : "",
+    estimate.costSource === "openai_usage" ? estimate.unitCost : 0,
+    estimate.costSource,
   ).run();
   return estimate;
 }
@@ -9255,7 +9341,7 @@ async function getAiWearCostSummary(env, searchParams) {
     env.DB.prepare(`SELECT COUNT(*) AS count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS success_count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost FROM ai_wear_cost_events WHERE created_at >= ?`).bind(monthStart).first(),
     env.DB.prepare(`SELECT line_user_id, display_name, COUNT(*) AS count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost, MAX(created_at) AS last_at FROM ai_wear_cost_events WHERE created_at >= ? GROUP BY line_user_id, display_name ORDER BY total_cost_twd DESC, count DESC LIMIT ?`).bind(monthStart, limit).all(),
     env.DB.prepare(`SELECT model_id, model_title, ai_model, COUNT(*) AS count, COALESCE(SUM(estimated_cost_twd),0) AS total_cost_twd, COALESCE(SUM(point_cost),0) AS total_point_cost FROM ai_wear_cost_events WHERE created_at >= ? GROUP BY model_id, model_title, ai_model ORDER BY total_cost_twd DESC, count DESC LIMIT ?`).bind(monthStart, limit).all(),
-    env.DB.prepare(`SELECT result_id, line_user_id, display_name, model_title, ai_model, provider, point_cost, estimated_cost_twd, status, created_at FROM ai_wear_cost_events ORDER BY created_at DESC LIMIT ?`).bind(limit).all(),
+    env.DB.prepare(`SELECT result_id, line_user_id, display_name, model_title, ai_model, provider, point_cost, estimated_cost_twd, actual_cost_usd, cost_source, status, created_at FROM ai_wear_cost_events ORDER BY created_at DESC LIMIT ?`).bind(limit).all(),
   ]);
   return {
     settings: {
@@ -9271,7 +9357,7 @@ async function getAiWearCostSummary(env, searchParams) {
     month: aiWearCostSummaryRow(month),
     byMember: (byMember.results || []).map((row) => ({ lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), count: numberOrZero(row.count), totalCostTwd: normalizeAiWearMoney(row.total_cost_twd), totalPointCost: numberOrZero(row.total_point_cost), lastAt: numberOrZero(row.last_at) })),
     byModel: (byModel.results || []).map((row) => ({ modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), aiModel: stringValue(row.ai_model), count: numberOrZero(row.count), totalCostTwd: normalizeAiWearMoney(row.total_cost_twd), totalPointCost: numberOrZero(row.total_point_cost) })),
-    recent: (recent.results || []).map((row) => ({ resultId: stringValue(row.result_id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelTitle: stringValue(row.model_title), aiModel: stringValue(row.ai_model), provider: stringValue(row.provider), pointCost: numberOrZero(row.point_cost), estimatedCostTwd: normalizeAiWearMoney(row.estimated_cost_twd), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })),
+    recent: (recent.results || []).map((row) => ({ resultId: stringValue(row.result_id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelTitle: stringValue(row.model_title), aiModel: stringValue(row.ai_model), provider: stringValue(row.provider), pointCost: numberOrZero(row.point_cost), estimatedCostTwd: normalizeAiWearMoney(row.estimated_cost_twd), actualCostUsd: normalizeAiWearMoney(row.actual_cost_usd), costSource: stringValue(row.cost_source || "estimate"), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })),
   };
 }
 async function serveAiWearResultImage(env, pathname, corsHeaders, method = "GET") {
