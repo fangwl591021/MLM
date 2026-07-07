@@ -28,7 +28,7 @@
   </style>
   <style>
     .aiWearCard{display:grid;gap:16px}.aiWearLinkBox{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #d9f3e2;background:#f7fffb;border-radius:14px;padding:14px}.aiWearLinkBox a{color:#315b9c;word-break:break-all}.aiWearForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.aiWearForm label{display:grid;gap:7px;color:#344054;font-size:13px;font-weight:850}.aiWearForm input,.aiWearForm select,.aiWearForm textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff}.aiWearForm textarea{min-height:230px;resize:vertical;line-height:1.55}.aiWearWide{grid-column:1/-1}.aiWearNote{border:1px solid #edf1f5;border-radius:14px;background:#fbfdff;padding:12px;color:#667085;line-height:1.6}.aiWearStatus{font-size:18px;font-weight:900;color:#067a35;margin-top:12px}body.console-ai-wear-page .side{display:none}body.console-ai-wear-page .shell{display:block}body.console-ai-wear-page main{min-height:100vh;max-width:1180px;margin:0 auto;padding:24px}body.console-ai-wear-page main>:not(#authGate):not(.top):not(#aiWearPanel):not(#errorBox):not(#error){display:none!important}body.console-ai-wear-page #aiWearPanel{margin-top:0}body:not(.console-ai-wear-page) #aiWearPanel{display:none!important}.aiWearLibrary{display:grid;grid-template-columns:1fr 1fr;gap:14px}.aiWearUpload{display:grid;gap:10px;border:1px dashed #bfd0e6;border-radius:14px;background:#fbfdff;padding:12px}.aiWearUpload input{width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 10px;background:#fff}.aiWearModelGrid,.aiWearResultGrid{display:grid;gap:10px}.aiWearModelItem,.aiWearResultItem{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:12px;align-items:center;border:1px solid #edf1f5;border-radius:14px;background:#fff;padding:10px}.aiWearModelItem img,.aiWearResultItem img{width:84px;height:84px;object-fit:contain;border-radius:10px;background:#f8fafc;border:1px solid #edf1f5}.aiWearResultItem img{object-fit:cover}.aiWearItemMeta{color:#667085;font-size:12px;line-height:1.45;word-break:break-all}@media(max-width:980px){.aiWearLibrary{grid-template-columns:1fr}}@media(max-width:760px){.aiWearLinkBox,.aiWearForm{grid-template-columns:1fr}.aiWearLinkBox .secondaryButton{width:max-content}}
-  </style></head>
+      body.console-ai-wear-cost-page .side{display:none}body.console-ai-wear-cost-page .shell{display:block}body.console-ai-wear-cost-page main{min-height:100vh;max-width:1360px;margin:0 auto;padding:24px}body.console-ai-wear-cost-page main>:not(#authGate):not(.top):not(#aiWearCostPanel):not(#errorBox):not(#error){display:none!important}body.console-ai-wear-cost-page #aiWearCostPanel{margin-top:0}body:not(.console-ai-wear-cost-page) #aiWearCostPanel{display:none!important}.aiCostKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.aiCostKpi{border:1px solid #edf1f5;border-radius:16px;background:#fff;padding:16px}.aiCostKpi span{display:block;color:#667085;font-size:13px;font-weight:800}.aiCostKpi strong{display:block;margin-top:8px;font-size:28px;color:#101828}.aiCostKpi small{display:block;margin-top:6px;color:#667085}.aiCostGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.aiCostTableWrap{overflow:auto;border:1px solid #edf1f5;border-radius:14px;background:#fff}.aiCostTable{width:100%;border-collapse:collapse;min-width:620px}.aiCostTable th,.aiCostTable td{padding:11px 12px;border-bottom:1px solid #edf1f5;text-align:left;vertical-align:top}.aiCostTable th{background:#f8fafc;color:#667085;font-size:12px}.aiCostTable td:last-child,.aiCostTable th:last-child{text-align:right}.aiCostMeta{color:#667085;font-size:12px;line-height:1.45}.aiCostSection{display:grid;gap:10px}.aiCostSection h4{margin:0;font-size:16px}.aiCostRecent{margin-top:14px}.aiCostEmpty{padding:16px;color:#667085;background:#fbfdff;border:1px solid #edf1f5;border-radius:14px}@media(max-width:980px){.aiCostKpis,.aiCostGrid{grid-template-columns:1fr 1fr}}@media(max-width:640px){.aiCostKpis,.aiCostGrid{grid-template-columns:1fr}}  </style></head>
 <body class="auth-locked">
   <div class="shell">
     <aside class="side">
@@ -41,7 +41,7 @@
         <a href="/console/calendar">行事曆 <span>已接入</span></a>
         <a href="/admin/crm">CRM / 點數 <span>已接入</span></a>
         <a href="/admin/points/stats">點數統計 <span>日報表</span></a>
-        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a><a href="/console/ai-wear">AI穿戴設定 <span>image2</span></a>
+        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a><a href="/console/ai-wear">AI穿戴設定 <span>image2</span></a><a href="/console/ai-wear-cost">AI生成費用 <span>報表</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
       <section class="settings" id="settingsBox">
@@ -108,6 +108,7 @@
           <a class="card module" id="events" href="/console/events"><strong>活動報名</strong><p class="muted">今日報名</p><div class="metric" id="eventRegistrations">0</div></a>
           <a class="card module" href="/console/events"><strong>活動簽到</strong><p class="muted">今日簽到</p><div class="metric" id="eventCheckins">0</div></a>
           <a class="card module" href="/console/ai-wear"><strong>AI穿戴設定</strong><p class="muted">眼鏡試戴 / image2</p><div class="aiWearStatus" id="aiWearModuleStatus">未同步</div></a>
+          <a class="card module" href="/console/ai-wear-cost"><strong>AI生成費用</strong><p class="muted">生成數 / 費用表</p><div class="metric" id="aiWearCostModuleStatus">0</div></a>
         </div>
       </section>
 
@@ -171,8 +172,20 @@
             <label>扣點平台<select id="aiWearPointChannel"><option value="oa1">康立智能 · 1086</option><option value="oa2">康立全球 · 1584</option></select></label>
             <label>扣點類型<select id="aiWearPointType"><option value="gift_money">K點 / 購物金</option><option value="system_point">系統點數</option></select></label>
             <label class="templateSwitch aiWearWide"><input id="aiWearDeductEnabled" type="checkbox" /> 啟用會員生成前點數扣抵</label>
+            <div class="aiWearNote aiWearWide"><strong>成本監控</strong><br>只記錄與顯示費用，不影響客戶生成；管控開關預設關閉，目前僅保存設定。</div>
+            <label>每次生成成本<input id="aiWearCostPerGeneration" type="number" min="0" step="0.0001" /></label>
+            <label>成本幣別<select id="aiWearCostCurrency"><option value="TWD">TWD 台幣</option><option value="USD">USD 美金</option></select></label>
+            <label>USD 匯率<input id="aiWearUsdToTwdRate" type="number" min="0" step="0.0001" /></label>
+            <label>每日成本上限 TWD<input id="aiWearDailyCostLimit" type="number" min="0" step="1" /></label>
+            <label>每月成本上限 TWD<input id="aiWearMonthlyCostLimit" type="number" min="0" step="1" /></label>
+            <label>每人每日次數上限<input id="aiWearPerUserDailyLimit" type="number" min="0" step="1" /></label>
+            <label class="templateSwitch aiWearWide"><input id="aiWearCostControlEnabled" type="checkbox" /> 啟用成本管控（預設關閉；目前只保存設定）</label>
           </div>
           <div class="sectionActions"><button id="aiWearSave" class="importButton" type="button">儲存設定</button><button id="aiWearResetPrompt" class="secondaryButton" type="button">恢復預設提示詞</button><span id="aiWearStatusText" class="templateInlineStatus" aria-live="polite"></span></div>
+          <section class="templateBlock aiWearWide">
+            <div class="templateBlockHead"><strong>AI 成本監控</strong><span class="muted">每日 / 本月 / 每人 / 每模型</span></div>
+            <div id="aiWearCostSummary" class="aiWearNote">成本統計讀取中...</div>
+          </section>
           <div class="aiWearLibrary">
             <section class="templateBlock">
               <div class="templateBlockHead"><strong>參考眼鏡圖庫</strong><span class="muted">上傳眼鏡款式來源</span></div>
@@ -189,6 +202,12 @@
               <div id="aiWearResults" class="aiWearResultGrid"></div>
             </section>
           </div>
+        </article>
+      </section>
+      <section class="section" id="aiWearCostPanel">
+        <div class="sectionHead"><h3>AI生成費用表</h3><div class="sectionActions"><span class="muted">image2 生成數 / 預估費用</span><a class="openLink" href="/console/ai-wear">AI穿戴設定</a><a class="openLink" href="/console">返回主控台</a></div></div>
+        <article class="card aiCostSection">
+          <div id="aiWearCostReport" class="aiCostEmpty">費用資料讀取中...</div>
         </article>
       </section>
       <section class="section" id="calendarPanel">
@@ -311,6 +330,7 @@
       if (path === "/console/calendar" || path === "/calendar") return "calendar";
       if (path === "/console/events") return "events";
       if (path === "/console/ai-wear") return "ai-wear";
+      if (path === "/console/ai-wear-cost") return "ai-wear-cost";
       return "main";
     }
 
@@ -321,6 +341,7 @@
         events: { title: "活動報名簽到", subtitle: "課程報名、掃碼出席名單與人次統計。", doc: "KLINK 活動報名簽到" },
         template: { title: "簽到贈點活動模板", subtitle: "LINE Flex 多頁活動卡。", doc: "KLINK 簽到模板" },
         "ai-wear": { title: "AI穿戴設定", subtitle: "AI SHOW ROOM、image2 API Key、提示詞與點數扣抵。", doc: "KLINK AI穿戴設定" },
+        "ai-wear-cost": { title: "AI生成費用", subtitle: "生成數、每日費用、本月費用、每人與每模型統計。", doc: "KLINK AI生成費用" },
       };
       const page = pages[consolePage] || pages.main;
       document.title = page.doc;
@@ -394,8 +415,13 @@
           return;
         }
         if (consolePage === "ai-wear") {
-          await Promise.all([loadAiWearSettings(), loadAiWearGallery(), loadAiWearResults()]);
+          await Promise.all([loadAiWearSettings(), loadAiWearGallery(), loadAiWearResults(), loadAiWearCostSummary()]);
           setStatus("AI穿戴設定已同步", false);
+          return;
+        }
+        if (consolePage === "ai-wear-cost") {
+          await loadAiWearCostSummary();
+          setStatus("AI生成費用已同步", false);
           return;
         }
         const res = await fetch(`${cleanBase(apiBase.value)}/api/console/summary`, {
@@ -404,7 +430,7 @@
         const json = await res.json();
         if (!res.ok || json.status !== "success") throw new Error(json.message || "同步失敗");
         render(json.data);
-        await Promise.all([loadCalendarMonth(), loadCheckinTemplate(), loadAiWearSettings(), loadAiWearGallery(), loadAiWearResults()]);
+        await Promise.all([loadCalendarMonth(), loadCheckinTemplate(), loadAiWearSettings(), loadAiWearGallery(), loadAiWearResults(), loadAiWearCostSummary()]);
         setStatus("已同步", false);
       } catch (err) {
         if (handleAuthExpired(err)) return;
@@ -1158,6 +1184,7 @@
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.status !== "success") throw new Error(json.message || "AI穿戴設定儲存失敗");
         renderAiWearSettings(json.data || payload);
+        await loadAiWearCostSummary();
         setAiWearStatus("已儲存 AI穿戴設定。", true);
       } catch (err) {
         if (handleAuthExpired(err)) return;
@@ -1182,11 +1209,18 @@
         pointCost: Math.max(0, Math.floor(Number($("aiWearPointCost") && $("aiWearPointCost").value || 0) || 0)),
         pointChannelKey: ($("aiWearPointChannel") ? $("aiWearPointChannel").value : "oa1") || "oa1",
         pointType: ($("aiWearPointType") ? $("aiWearPointType").value : "gift_money") || "gift_money",
+        costPerGeneration: Math.max(0, Number($("aiWearCostPerGeneration") && $("aiWearCostPerGeneration").value || 0) || 0),
+        costCurrency: ($("aiWearCostCurrency") ? $("aiWearCostCurrency").value : "TWD") || "TWD",
+        usdToTwdRate: Math.max(0, Number($("aiWearUsdToTwdRate") && $("aiWearUsdToTwdRate").value || 32) || 32),
+        costControlEnabled: Boolean($("aiWearCostControlEnabled") && $("aiWearCostControlEnabled").checked),
+        dailyCostLimitTwd: Math.max(0, Math.floor(Number($("aiWearDailyCostLimit") && $("aiWearDailyCostLimit").value || 0) || 0)),
+        monthlyCostLimitTwd: Math.max(0, Math.floor(Number($("aiWearMonthlyCostLimit") && $("aiWearMonthlyCostLimit").value || 0) || 0)),
+        perUserDailyLimit: Math.max(0, Math.floor(Number($("aiWearPerUserDailyLimit") && $("aiWearPerUserDailyLimit").value || 0) || 0)),
       };
     }
 
     function renderAiWearSettings(data) {
-      const settings = Object.assign({ title: "康立負離子眼鏡系列", publicPath: "/ai-wear", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", imageApiUrl: "", aiweAjaxUrl: "", aiweNonce: "", aiwePostId: "", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money" }, data || {});
+      const settings = Object.assign({ title: "康立負離子眼鏡系列", publicPath: "/ai-wear", prompt: DEFAULT_AI_WEAR_PROMPT, imageModel: "image2", imageApiUrl: "", aiweAjaxUrl: "", aiweNonce: "", aiwePostId: "", pointDeductionEnabled: false, pointCost: 0, pointChannelKey: "oa1", pointType: "gift_money", costPerGeneration: 0, costCurrency: "TWD", usdToTwdRate: 32, costControlEnabled: false, dailyCostLimitTwd: 0, monthlyCostLimitTwd: 0, perUserDailyLimit: 0 }, data || {});
       if ($("aiWearTitle")) $("aiWearTitle").value = settings.title || "";
       if ($("aiWearPublicPath")) $("aiWearPublicPath").value = settings.publicPath || "/ai-wear";
       if ($("aiWearPublicLink")) { const href = new URL(settings.publicPath || "/ai-wear", location.origin).href; $("aiWearPublicLink").href = href; $("aiWearPublicLink").textContent = href; }
@@ -1199,6 +1233,13 @@
       if ($("aiWearPointCost")) $("aiWearPointCost").value = Number(settings.pointCost || 0);
       if ($("aiWearPointChannel")) $("aiWearPointChannel").value = settings.pointChannelKey || "oa1";
       if ($("aiWearPointType")) $("aiWearPointType").value = settings.pointType || "gift_money";
+      if ($("aiWearCostPerGeneration")) $("aiWearCostPerGeneration").value = Number(settings.costPerGeneration || 0);
+      if ($("aiWearCostCurrency")) $("aiWearCostCurrency").value = settings.costCurrency || "TWD";
+      if ($("aiWearUsdToTwdRate")) $("aiWearUsdToTwdRate").value = Number(settings.usdToTwdRate || 32);
+      if ($("aiWearCostControlEnabled")) $("aiWearCostControlEnabled").checked = settings.costControlEnabled === true;
+      if ($("aiWearDailyCostLimit")) $("aiWearDailyCostLimit").value = Number(settings.dailyCostLimitTwd || 0);
+      if ($("aiWearMonthlyCostLimit")) $("aiWearMonthlyCostLimit").value = Number(settings.monthlyCostLimitTwd || 0);
+      if ($("aiWearPerUserDailyLimit")) $("aiWearPerUserDailyLimit").value = Number(settings.perUserDailyLimit || 0);
       if ($("aiWearModuleStatus")) $("aiWearModuleStatus").textContent = settings.hasImage2ApiKey ? "已設定" : "待設定";
     }
 
@@ -1277,6 +1318,81 @@
       }
     }
 
+    function moneyTwd(value) {
+      return `NT$${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 4 })}`;
+    }
+
+    function renderAiWearCostSummary(data) {
+      const target = $("aiWearCostSummary");
+      if (!target) return;
+      const today = data.today || {};
+      const month = data.month || {};
+      const settings = data.settings || {};
+      const byMember = Array.isArray(data.byMember) ? data.byMember.slice(0, 5) : [];
+      const byModel = Array.isArray(data.byModel) ? data.byModel.slice(0, 5) : [];
+      const memberHtml = byMember.length ? byMember.map((item) => `<div>${esc(item.displayName || item.lineUserId || "會員")}：${esc(item.count || 0)} 次 / ${esc(moneyTwd(item.totalCostTwd))}</div>`).join("") : "<div>尚無會員成本資料。</div>";
+      const modelHtml = byModel.length ? byModel.map((item) => `<div>${esc(item.modelTitle || item.modelId || item.aiModel || "模型")}：${esc(item.count || 0)} 次 / ${esc(moneyTwd(item.totalCostTwd))}</div>`).join("") : "<div>尚無模型成本資料。</div>";
+      target.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">
+          <div><strong>今日</strong><br>${esc(today.count || 0)} 次 / ${esc(moneyTwd(today.totalCostTwd))}</div>
+          <div><strong>本月</strong><br>${esc(month.count || 0)} 次 / ${esc(moneyTwd(month.totalCostTwd))}</div>
+          <div><strong>扣點</strong><br>今日 ${esc(today.totalPointCost || 0)} / 本月 ${esc(month.totalPointCost || 0)}</div>
+          <div><strong>單價</strong><br>${esc(settings.costCurrency || "TWD")} ${esc(settings.costPerGeneration || 0)} / 匯率 ${esc(settings.usdToTwdRate || 32)}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+          <div><strong>每人本月</strong>${memberHtml}</div>
+          <div><strong>每模型本月</strong>${modelHtml}</div>
+        </div>`;
+    }
+
+    function renderAiWearCostReport(data) {
+      const target = $("aiWearCostReport");
+      const moduleStatus = $("aiWearCostModuleStatus");
+      const today = data.today || {};
+      const month = data.month || {};
+      if (moduleStatus) moduleStatus.textContent = Number(today.count || 0).toLocaleString("zh-TW");
+      if (!target) return;
+      const settings = data.settings || {};
+      const byMember = Array.isArray(data.byMember) ? data.byMember : [];
+      const byModel = Array.isArray(data.byModel) ? data.byModel : [];
+      const recent = Array.isArray(data.recent) ? data.recent : [];
+      const averageCost = Number(month.count || 0) > 0 ? Number(month.totalCostTwd || 0) / Number(month.count || 1) : 0;
+      const memberRows = byMember.length ? byMember.map((item, index) => `<tr><td>${esc(index + 1)}</td><td><strong>${esc(item.displayName || "未命名會員")}</strong><div class="aiCostMeta">${esc(item.lineUserId || "")}</div></td><td>${esc(item.count || 0)}</td><td>${esc(item.totalPointCost || 0)}</td><td>${esc(moneyTwd(item.totalCostTwd))}</td><td>${esc(fmt(item.lastAt))}</td></tr>`).join("") : `<tr><td colspan="6">尚無會員生成資料。</td></tr>`;
+      const modelRows = byModel.length ? byModel.map((item, index) => `<tr><td>${esc(index + 1)}</td><td><strong>${esc(item.modelTitle || item.modelId || "未命名款式")}</strong><div class="aiCostMeta">${esc(item.aiModel || "")}</div></td><td>${esc(item.count || 0)}</td><td>${esc(item.totalPointCost || 0)}</td><td>${esc(moneyTwd(item.totalCostTwd))}</td></tr>`).join("") : `<tr><td colspan="5">尚無模型成本資料。</td></tr>`;
+      const recentRows = recent.length ? recent.map((item) => `<tr><td>${esc(fmt(item.createdAt))}</td><td><strong>${esc(item.displayName || "未命名會員")}</strong><div class="aiCostMeta">${esc(item.lineUserId || "")}</div></td><td>${esc(item.modelTitle || "未選款式")}</td><td>${esc(item.aiModel || item.provider || "")}</td><td>${esc(item.pointCost || 0)}</td><td>${esc(moneyTwd(item.estimatedCostTwd))}</td><td>${esc(item.status || "completed")}</td></tr>`).join("") : `<tr><td colspan="7">尚無最近生成紀錄。</td></tr>`;
+      target.className = "";
+      target.innerHTML = `
+        <div class="aiCostKpis">
+          <div class="aiCostKpi"><span>今日生成數</span><strong>${esc(today.count || 0)}</strong><small>成功 ${esc(today.successCount || 0)} 次</small></div>
+          <div class="aiCostKpi"><span>今日費用</span><strong>${esc(moneyTwd(today.totalCostTwd))}</strong><small>扣點 ${esc(today.totalPointCost || 0)} 點</small></div>
+          <div class="aiCostKpi"><span>本月生成數</span><strong>${esc(month.count || 0)}</strong><small>成功 ${esc(month.successCount || 0)} 次</small></div>
+          <div class="aiCostKpi"><span>本月費用</span><strong>${esc(moneyTwd(month.totalCostTwd))}</strong><small>平均 ${esc(moneyTwd(averageCost))} / 次</small></div>
+        </div>
+        <div class="aiWearNote">目前單價：${esc(settings.costCurrency || "TWD")} ${esc(settings.costPerGeneration || 0)}；USD 匯率：${esc(settings.usdToTwdRate || 32)}；管控開關：${settings.costControlEnabled ? "已啟用" : "關閉"}。此表只統計成功保存後的 AI 生成事件。</div>
+        <div class="aiCostGrid">
+          <section class="aiCostSection"><h4>每人本月費用</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>#</th><th>會員</th><th>生成數</th><th>扣點</th><th>費用</th><th>最近</th></tr></thead><tbody>${memberRows}</tbody></table></div></section>
+          <section class="aiCostSection"><h4>每模型本月費用</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>#</th><th>模型 / 款式</th><th>生成數</th><th>扣點</th><th>費用</th></tr></thead><tbody>${modelRows}</tbody></table></div></section>
+        </div>
+        <section class="aiCostSection aiCostRecent"><h4>最近生成明細</h4><div class="aiCostTableWrap"><table class="aiCostTable"><thead><tr><th>時間</th><th>會員</th><th>款式</th><th>模型</th><th>扣點</th><th>費用</th><th>狀態</th></tr></thead><tbody>${recentRows}</tbody></table></div></section>`;
+    }
+    async function loadAiWearCostSummary() {
+      const summaryTarget = $("aiWearCostSummary");
+      const reportTarget = $("aiWearCostReport");
+      const target = summaryTarget || reportTarget;
+      if (!target || !hasConsoleAuth()) return;
+      try {
+        const res = await fetch(cleanBase(apiBase.value) + "/api/ai-wear-cost-summary?limit=50", { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== "success") throw new Error(json.message || "AI 成本統計載入失敗");
+        const data = json.data || {};
+        renderAiWearCostSummary(data);
+        renderAiWearCostReport(data);
+      } catch (err) {
+        const html = `<div class="eventRow muted">${esc(err.message || String(err))}</div>`;
+        if (summaryTarget) summaryTarget.innerHTML = html;
+        if (reportTarget) reportTarget.innerHTML = html;
+      }
+    }
     async function loadCheckinTemplate() {
       const preview = $("templatePreview");
       if (!preview || !hasConsoleAuth()) return;
