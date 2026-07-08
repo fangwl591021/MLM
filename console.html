@@ -910,14 +910,14 @@
       const startsAt = Number(event && event.startsAt || 0);
       const checkinStartsAt = Number(event && event.checkinStartsAt || 0);
       if (!startsAt) return checkinStartsAt || 0;
-      return checkinStartsAt && checkinStartsAt < startsAt ? checkinStartsAt : startsAt - 60 * 60 * 1000;
+      return checkinStartsAt && checkinStartsAt < startsAt ? checkinStartsAt : startsAt - 90 * 60 * 1000;
     }
     function syncCalendarCheckinStartDefault(force) {
       const eventDate = $("calendarEventDate").value;
       const startsAt = dateTimeFromParts(eventDate, $("calendarStartsAt").value);
       if (!startsAt) return;
       const current = dateTimeFromParts(eventDate, $("calendarRegistrationStartsAt").value);
-      if (force || !current || current >= startsAt) $("calendarRegistrationStartsAt").value = toTimeOnly(startsAt - 60 * 60 * 1000);
+      if (force || !current || current >= startsAt) $("calendarRegistrationStartsAt").value = toTimeOnly(startsAt - 90 * 60 * 1000);
     }
 
     function clearCalendarEditor() {
@@ -951,7 +951,7 @@
         location: $("calendarLocation").value.trim(),
         startsAt: dateTimeFromParts(eventDate, $("calendarStartsAt").value),
         endsAt: dateTimeFromParts(eventDate, $("calendarEndsAt").value),
-        checkinStartsAt: dateTimeFromParts(eventDate, $("calendarRegistrationStartsAt").value) || (dateTimeFromParts(eventDate, $("calendarStartsAt").value) - 60 * 60 * 1000),
+        checkinStartsAt: dateTimeFromParts(eventDate, $("calendarRegistrationStartsAt").value) || (dateTimeFromParts(eventDate, $("calendarStartsAt").value) - 90 * 60 * 1000),
         checkinEndsAt: dateTimeFromParts(eventDate, $("calendarRegistrationEndsAt").value),
         description: $("calendarDescription").value.trim(),
       };

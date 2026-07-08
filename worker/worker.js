@@ -54,7 +54,7 @@ const DEFAULT_PUBLIC_BASE_URL = "https://mlm.fangwl591021.workers.dev";
 
 const DEFAULT_REWARD_GEOFENCE_METERS = 50;
 const DEFAULT_REWARD_CALENDAR_POINTS = 10;
-const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 60;
+const DEFAULT_REWARD_CHECKIN_EARLY_MINUTES = 90;
 const AI_WEAR_SETTINGS_META_KEY = "ai_wear_settings";
 const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
 const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
@@ -1308,7 +1308,7 @@ async function saveCalendarEvent(env, body) {
   if (endsAt <= startsAt) throw httpError("活動結束時間必須晚於開始時間", 400);
   let checkinStartsAt = numberOrZero(body.checkinStartsAt || body.checkin_starts_at);
   const checkinEndsAt = numberOrZero(body.checkinEndsAt || body.checkin_ends_at);
-  if (!checkinStartsAt || checkinStartsAt >= startsAt) checkinStartsAt = startsAt - 60 * 60 * 1000;
+  if (!checkinStartsAt || checkinStartsAt >= startsAt) checkinStartsAt = startsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000;
   if (!checkinStartsAt || !checkinEndsAt) throw httpError("報名開始與結束時間必填", 400);
   if (checkinEndsAt <= checkinStartsAt) throw httpError("報名結束時間必須晚於報名開始時間", 400);
   const id = normalizeCalendarEventId(body.id) || `cal_manual_${shortHash(`${title}|${startsAt}|${stringValue(body.location)}`)}`;
@@ -3823,7 +3823,7 @@ async function importCalendarImageToD1(env, request) {
       if (endsAt <= startsAt) endsAt += 86400000;
       const id = `cal_${event.sourceHash || shortHash(`${event.date}|${event.startTime}|${event.endTime}|${event.summary}|${event.location}`)}`;
       const existing = await env.DB.prepare("SELECT id FROM calendar_events WHERE id = ?").bind(id).first();
-      const checkinStartsAt = startsAt - 60 * 60 * 1000;
+      const checkinStartsAt = startsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000;
       const checkinEndsAt = endsAt;
       await env.DB.prepare(`
         INSERT INTO calendar_events (id, floor_id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, owner_user_id, visibility, created_at, updated_at)
