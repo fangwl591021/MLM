@@ -4185,7 +4185,9 @@ function rewardCheckinEarlyMinutes(env) {
 
 function calendarEventCheckinWindow(env, event) {
   const eventStartsAt = Number(event && event.startsAt || 0);
-  const startsAt = Number(event && event.checkinStartsAt || 0) || (eventStartsAt ? eventStartsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000 : 0);
+  const configuredStartsAt = Number(event && event.checkinStartsAt || 0);
+  const fallbackStartsAt = eventStartsAt ? eventStartsAt - rewardCheckinEarlyMinutes(env) * 60 * 1000 : 0;
+  const startsAt = configuredStartsAt && (!eventStartsAt || configuredStartsAt < eventStartsAt) ? configuredStartsAt : fallbackStartsAt;
   const endsAt = Number(event && event.checkinEndsAt || 0) || Number(event && event.endsAt || 0);
   return { startsAt, endsAt };
 }
