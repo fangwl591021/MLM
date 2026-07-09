@@ -933,10 +933,14 @@
       $("calendarEventDate").value = toDateOnly(event.startsAt);
       $("calendarStartsAt").value = toTimeOnly(event.startsAt);
       $("calendarEndsAt").value = toTimeOnly(event.endsAt);
-      $("calendarRegistrationStartsAt").value = toTimeOnly(defaultCheckinStartsAt(event));
+      const storedCheckinStartsAt = Number(event && event.checkinStartsAt || 0);
+      const eventStartsAt = Number(event && event.startsAt || 0);
+      const effectiveCheckinStartsAt = defaultCheckinStartsAt(event);
+      $("calendarRegistrationStartsAt").value = toTimeOnly(effectiveCheckinStartsAt);
       $("calendarRegistrationEndsAt").value = toTimeOnly(event.checkinEndsAt || event.endsAt);
       $("calendarDescription").value = event.description || "";
-      setCalendarEditStatus("已載入活動，可調整後儲存。", true);
+      const inferredCheckinStart = eventStartsAt && (!storedCheckinStartsAt || storedCheckinStartsAt >= eventStartsAt);
+      setCalendarEditStatus(inferredCheckinStart ? "已載入活動；報到開始為系統預設有效時間，建議儲存一次寫入資料庫。" : "已載入活動，可調整後儲存。", true);
       location.hash = "calendarPanel";
       const editor = document.querySelector(".calendarEditor");
       if (editor && editor.scrollIntoView) editor.scrollIntoView({ behavior: "smooth", block: "start" });
