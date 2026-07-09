@@ -9519,11 +9519,17 @@ function buildCheckinTemplateFlex(template) {
     altText: data.altText || "簽到贈點活動",
     contents: {
       type: "carousel",
-      contents: data.pages.map(buildCheckinTemplateBubble),
+      contents: rotateCheckinTemplatePages(data.pages).map(buildCheckinTemplateBubble),
     },
   };
 }
 
+function rotateCheckinTemplatePages(pages) {
+  const list = Array.isArray(pages) ? pages.slice(0, 12) : [];
+  if (list.length <= 1) return list;
+  const offset = Math.floor(Math.random() * list.length);
+  return list.slice(offset).concat(list.slice(0, offset));
+}
 function buildCheckinTemplateBubble(page) {
   const image = {
     type: "image",
