@@ -8876,18 +8876,20 @@ async function saveAiWearResult(request, env) {
   let lineUserId = stringValue(body.lineUserId || body.line_user_id);
   let displayName = stringValue(body.displayName || body.display_name).slice(0, 120);
 
+  const id = stringValue(body.__storedId || body.storedId || body.generatedId || body.generated_id) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const modelId = stringValue(body.modelId || body.model_id);
+  const existingResult = await env.DB.prepare("SELECT openai_usage_json, openai_request_id, point_cost, status FROM ai_wear_results WHERE id = ?").bind(id).first().catch(() => null);
+  const existingDeducted = shouldDeductPoints && existingResult && stringValue(existingResult.status) === "completed" && Number(existingResult.point_cost || 0) > 0;
   if (shouldDeductPoints) {
     verifiedProfile = await verifyAiWearLineProfileFromToken(env, settings, body.idToken || body.id_token || body.lineIdToken || body.line_id_token);
     lineUserId = stringValue(verifiedProfile && verifiedProfile.userId);
     displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || displayName).slice(0, 120);
     if (!lineUserId) throw httpError("請先用 LINE 登入後再保存 AI 穿戴結果，系統需要確認會員 UID 才能扣點。", 401);
-    const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
-    if (balance < configuredPointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${configuredPointCost} 點。`, 402);
+    if (!existingDeducted) {
+      const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+      if (balance < configuredPointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${configuredPointCost} 點。`, 402);
+    }
   }
-
-  const id = stringValue(body.__storedId || body.storedId || body.generatedId || body.generated_id) || `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
-  const modelId = stringValue(body.modelId || body.model_id);
-  const existingResult = await env.DB.prepare("SELECT openai_usage_json, openai_request_id FROM ai_wear_results WHERE id = ?").bind(id).first().catch(() => null);
   const directUsage = normalizeAiWearUsage(body.openaiUsage || body.openai_usage || body.usage || (existingResult && existingResult.openai_usage_json));
   const recentRawUsage = directUsage ? null : await findRecentAiWearRawUsage(env, { lineUserId, modelId, createdAt: now });
   const openAiUsage = directUsage || normalizeAiWearUsage(recentRawUsage && recentRawUsage.openai_usage_json);
@@ -8901,12 +8903,29 @@ async function saveAiWearResult(request, env) {
   if (!resultUrl) resultUrl = stringValue(body.resultImageUrl || body.result_image_url).slice(0, 500);
   if (!resultUrl) throw httpError("AI 穿戴結果圖片尚未保存，未扣會員 K 點。", 400, "ai_wear_missing_result_image");
 
-  const initialPointCost = shouldDeductPoints ? 0 : Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0));
-  const initialStatus = shouldDeductPoints ? "pending_point_deduction" : stringValue(body.status || "completed").slice(0, 40);
+  const initialPointCost = existingDeducted ? Math.max(0, Math.floor(Number(existingResult.point_cost || 0) || 0)) : (shouldDeductPoints ? 0 : Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0)));
+  const initialStatus = existingDeducted ? "completed" : (shouldDeductPoints ? "pending_point_deduction" : stringValue(body.status || "completed").slice(0, 40));
   const pointChannelKey = shouldDeductPoints ? settings.pointChannelKey : stringValue(body.pointChannelKey || body.point_channel_key);
   const pointType = shouldDeductPoints ? settings.pointType : normalizePointType(body.pointType || body.point_type || "gift_money");
 
-  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      line_user_id = excluded.line_user_id,
+      display_name = excluded.display_name,
+      model_id = excluded.model_id,
+      model_title = excluded.model_title,
+      person_image_url = excluded.person_image_url,
+      result_image_url = excluded.result_image_url,
+      result_mime_type = excluded.result_mime_type,
+      result_base64 = excluded.result_base64,
+      prompt = CASE WHEN excluded.prompt != '' THEN excluded.prompt ELSE ai_wear_results.prompt END,
+      point_cost = excluded.point_cost,
+      point_channel_key = excluded.point_channel_key,
+      point_type = excluded.point_type,
+      status = excluded.status,
+      openai_usage_json = CASE WHEN excluded.openai_usage_json != '' THEN excluded.openai_usage_json ELSE ai_wear_results.openai_usage_json END,
+      openai_request_id = CASE WHEN excluded.openai_request_id != '' THEN excluded.openai_request_id ELSE ai_wear_results.openai_request_id END`).bind(
     id,
     lineUserId,
     displayName,
@@ -8927,7 +8946,7 @@ async function saveAiWearResult(request, env) {
   ).run();
 
   let deductedPointCost = 0;
-  if (shouldDeductPoints) {
+  if (shouldDeductPoints && !existingDeducted) {
     await applyWetwPointMutation(env, {
       channelKey: settings.pointChannelKey,
       lineUserId,
