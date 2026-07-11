@@ -9,6 +9,7 @@ import { registerAiWearGalleryShadowRoute } from './modules/ai-wear/ai-wear-gall
 import { registerAiWearResultsShadowRoute } from './modules/ai-wear/ai-wear-results.routes.js';
 import { registerAiWearCostSummaryShadowRoute } from './modules/ai-wear/ai-wear-cost-summary.routes.js';
 import { registerAiWearSettingsShadowRoute } from './modules/ai-wear/ai-wear-settings.routes.js';
+import { registerAiWearShareCardShadowRoute } from './modules/ai-wear/ai-wear-share-card.routes.js';
 import { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 import { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
 import { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
@@ -26,6 +27,7 @@ registerAiWearGalleryShadowRoute(router, { legacyFetch });
 registerAiWearResultsShadowRoute(router, { legacyFetch });
 registerAiWearCostSummaryShadowRoute(router, { legacyFetch });
 registerAiWearSettingsShadowRoute(router, { legacyFetch });
+registerAiWearShareCardShadowRoute(router, { legacyFetch });
 registerCheckinTemplateShadowRoute(router, { legacyFetch });
 registerReplyLearningShadowRoute(router, { legacyFetch });
 registerFloorWhitelistShadowRoute(router, { legacyFetch });
@@ -42,6 +44,7 @@ export { registerAiWearGalleryShadowRoute } from './modules/ai-wear/ai-wear-gall
 export { registerAiWearResultsShadowRoute } from './modules/ai-wear/ai-wear-results.routes.js';
 export { registerAiWearCostSummaryShadowRoute } from './modules/ai-wear/ai-wear-cost-summary.routes.js';
 export { registerAiWearSettingsShadowRoute } from './modules/ai-wear/ai-wear-settings.routes.js';
+export { registerAiWearShareCardShadowRoute } from './modules/ai-wear/ai-wear-share-card.routes.js';
 export { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 export { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
 export { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
