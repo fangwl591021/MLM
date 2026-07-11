@@ -23,16 +23,18 @@ function makeApp({ legacyResponse = new Response('legacy', { status: 200 }), leg
   return { app, getLegacyCalls: () => legacyCalls, logs };
 }
 
+const healthyEnv = {
+  DB: {},
+  AI_WEAR_BUCKET: {},
+  GAS_URL: 'https://gas.example.test',
+  LINE_CHANNEL_SECRET: 'configured',
+  LINE_CHANNEL_ACCESS_TOKEN: 'configured',
+  OPENAI_API_KEY: 'configured',
+};
+
 test('GET /health-modular uses modular router and does not invoke legacy worker', async () => {
   const { app, getLegacyCalls } = makeApp();
-  const response = await app.fetch(new Request('https://example.test/health-modular'), {
-    DB: {},
-    AI_WEAR_BUCKET: {},
-    GAS_URL: 'https://gas.example.test',
-    LINE_CHANNEL_SECRET: 'configured',
-    LINE_CHANNEL_ACCESS_TOKEN: 'configured',
-    OPENAI_API_KEY: 'configured',
-  }, {});
+  const response = await app.fetch(new Request('https://example.test/health-modular'), healthyEnv, {});
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-mlm-router'), 'modular');
@@ -52,6 +54,33 @@ test('GET /health-modular uses modular router and does not invoke legacy worker'
     LINE_CHANNEL_ACCESS_TOKEN: true,
     OPENAI_API_KEY: true,
   });
+});
+
+test('GET /health stays on legacy when modular feature flag is disabled', async () => {
+  const legacyResponse = Response.json({ status: 'legacy-health' });
+  const { app, getLegacyCalls } = makeApp({ legacyResponse });
+  const response = await app.fetch(new Request('https://example.test/health'), {
+    ...healthyEnv,
+    MODULAR_HEALTH_ENABLED: 'false',
+  }, {});
+
+  assert.equal(response.headers.get('x-mlm-router'), 'legacy');
+  assert.equal(getLegacyCalls(), 1);
+  assert.deepEqual(await response.json(), { status: 'legacy-health' });
+});
+
+test('GET /health is handled by modular router only when feature flag is true', async () => {
+  const { app, getLegacyCalls } = makeApp();
+  const response = await app.fetch(new Request('https://example.test/health'), {
+    ...healthyEnv,
+    MODULAR_HEALTH_ENABLED: 'true',
+  }, {});
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-mlm-router'), 'modular');
+  assert.equal(getLegacyCalls(), 0);
+  const body = await response.json();
+  assert.equal(body.mode, 'feature-flag');
 });
 
 test('GET /calendar-modular returns the expected redirect', async () => {
@@ -114,6 +143,14 @@ test('router list exposes route metadata for documentation and auditing', () => 
       path: '/health-modular',
       risk: 'low',
       write: false,
+    },
+    {
+      method: 'GET',
+      id: 'SYSTEM-HEALTH-CANARY-001',
+      path: '/health',
+      risk: 'low',
+      write: false,
+      featureFlag: 'MODULAR_HEALTH_ENABLED',
     },
     {
       method: 'GET',
