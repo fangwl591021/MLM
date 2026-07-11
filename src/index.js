@@ -11,6 +11,7 @@ import { registerAiWearCostSummaryShadowRoute } from './modules/ai-wear/ai-wear-
 import { registerAiWearSettingsShadowRoute } from './modules/ai-wear/ai-wear-settings.routes.js';
 import { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 import { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
+import { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -27,6 +28,7 @@ registerAiWearCostSummaryShadowRoute(router, { legacyFetch });
 registerAiWearSettingsShadowRoute(router, { legacyFetch });
 registerCheckinTemplateShadowRoute(router, { legacyFetch });
 registerReplyLearningShadowRoute(router, { legacyFetch });
+registerFloorWhitelistShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -42,5 +44,6 @@ export { registerAiWearCostSummaryShadowRoute } from './modules/ai-wear/ai-wear-
 export { registerAiWearSettingsShadowRoute } from './modules/ai-wear/ai-wear-settings.routes.js';
 export { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 export { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
+export { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
 
 export default createApp({ router, legacyFetch });
