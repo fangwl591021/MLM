@@ -20,6 +20,7 @@ import { registerPointObservationsShadowRoute } from './modules/points/point-obs
 import { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
 import { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 import { registerCrmMemberSearchShadowRoute } from './modules/crm/crm-member-search.routes.js';
+import { registerLineOaThreadShadowRoute } from './modules/line-oa/line-oa-thread.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -45,6 +46,7 @@ registerPointObservationsShadowRoute(router, { legacyFetch });
 registerPointMemberLinksShadowRoute(router, { legacyFetch });
 registerCrmMembersShadowRoute(router, { legacyFetch });
 registerCrmMemberSearchShadowRoute(router, { legacyFetch });
+registerLineOaThreadShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -69,5 +71,6 @@ export { registerPointObservationsShadowRoute } from './modules/points/point-obs
 export { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
 export { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 export { registerCrmMemberSearchShadowRoute } from './modules/crm/crm-member-search.routes.js';
+export { registerLineOaThreadShadowRoute } from './modules/line-oa/line-oa-thread.routes.js';
 
 export default createApp({ router, legacyFetch });
