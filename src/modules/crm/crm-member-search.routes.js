@@ -1,28 +1,10 @@
 import { runShadowReadAfterLegacy } from '../../shadow/shadow-compare.js';
-
-function stringValue(value) {
-  return value == null ? '' : String(value);
-}
-
-function clamp(value, min, max, fallback) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(number)));
-}
-
-function parseJsonObject(value) {
-  try {
-    const parsed = JSON.parse(stringValue(value) || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function crmLineUserId(member) {
-  const raw = parseJsonObject(member && member.source_json);
-  return stringValue(raw.LINE_user_id || raw.user_login || raw.line_user_id || raw.lineUserId);
-}
+import {
+  buildCorsHeaders,
+  clampInteger,
+  mapCrmMemberSearchCandidate,
+  stringValue,
+} from './crm-read-core.js';
 
 export async function searchCrmMemberCandidatesCandidate(env, url) {
   if (!env.DB || typeof env.DB.prepare !== 'function') throw new Error('DB is not configured');
@@ -30,7 +12,7 @@ export async function searchCrmMemberCandidatesCandidate(env, url) {
   if (!q) return [];
   const lowered = q.toLowerCase();
   const like = `%${lowered}%`;
-  const limit = clamp(url.searchParams.get('limit') || 20, 1, 100, 20);
+  const limit = clampInteger(url.searchParams.get('limit') || 20, 1, 100, 20);
   const rows = await env.DB.prepare(`
     SELECT member_ref, name, phone, email, level, source, source_json, updated_at
     FROM crm_members
@@ -50,32 +32,9 @@ export async function searchCrmMemberCandidatesCandidate(env, url) {
     LIMIT ?
   `).bind(like, like, like, like, like, lowered, lowered, lowered, like, limit).all();
 
-  return (rows.results || []).map((member) => {
-    const raw = parseJsonObject(member.source_json);
-    return {
-      member_ref: stringValue(member.member_ref),
-      name: stringValue(member.name || raw.display_name || raw.LINE_display_name),
-      phone: stringValue(member.phone || raw.phone),
-      line_user_id: crmLineUserId(member),
-      line_display_name: stringValue(raw.LINE_display_name || raw.display_name),
-      shop_id: stringValue(raw.shop_id || member.level),
-      source: stringValue(member.source),
-      updated_at: stringValue(member.updated_at),
-    };
-  }).filter((member) => member.member_ref);
-}
-
-function buildCorsHeaders(request, env) {
-  const requestOrigin = request.headers.get('Origin') || '';
-  const allowedOrigin = env.ALLOWED_ORIGIN || '';
-  const origin = allowedOrigin && requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin || '*';
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Line-Id-Token, X-Operator-Id, X-Operator-Name, X-User-Id, X-Admin-User, X-Admin-Name',
-    'Access-Control-Max-Age': '86400',
-    'Content-Type': 'application/json; charset=utf-8',
-  };
+  return (rows.results || [])
+    .map(mapCrmMemberSearchCandidate)
+    .filter((member) => member.member_ref);
 }
 
 export async function crmMemberSearchCandidateResponse(request, env) {
