@@ -84,13 +84,11 @@ test('legacy-compatible health payload preserves the production API contract', (
 test('GET /health-modular uses modular router and exposes legacy checks plus diagnostics', async () => {
   const { app, getLegacyCalls } = makeApp();
   const response = await app.fetch(new Request('https://example.test/health-modular'), healthyEnv, {});
-
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-mlm-router'), 'modular');
   assert.equal(response.headers.get('x-mlm-request-id'), 'req-test-001');
   assert.match(response.headers.get('server-timing'), /^app;dur=\d+$/);
   assert.equal(getLegacyCalls(), 0);
-
   const body = await response.json();
   assert.equal(body.status, 'ok');
   assert.equal(body.service, 'line-oa-ai-suggestion-worker');
@@ -107,7 +105,6 @@ test('GET /health stays on legacy when modular feature flag is disabled', async 
     ...healthyEnv,
     MODULAR_HEALTH_ENABLED: 'false',
   }, {});
-
   assert.equal(response.headers.get('x-mlm-router'), 'legacy');
   assert.equal(getLegacyCalls(), 1);
   assert.deepEqual(await response.json(), { status: 'legacy-health' });
@@ -119,7 +116,6 @@ test('GET /health is legacy-contract compatible when feature flag is true', asyn
     ...healthyEnv,
     MODULAR_HEALTH_ENABLED: 'true',
   }, {});
-
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-mlm-router'), 'modular');
   assert.equal(getLegacyCalls(), 0);
@@ -133,7 +129,29 @@ test('GET /health is legacy-contract compatible when feature flag is true', asyn
 test('GET /calendar-modular returns the expected redirect', async () => {
   const { app, getLegacyCalls } = makeApp();
   const response = await app.fetch(new Request('https://example.test/calendar-modular'), {}, {});
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), 'https://example.test/console/calendar');
+  assert.equal(response.headers.get('x-mlm-router'), 'modular');
+  assert.equal(getLegacyCalls(), 0);
+});
 
+test('GET /calendar stays on legacy when modular calendar flag is disabled', async () => {
+  const legacyResponse = Response.redirect('https://example.test/console/calendar', 302);
+  const { app, getLegacyCalls } = makeApp({ legacyResponse });
+  const response = await app.fetch(new Request('https://example.test/calendar'), {
+    MODULAR_CALENDAR_ENABLED: 'false',
+  }, {});
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), 'https://example.test/console/calendar');
+  assert.equal(response.headers.get('x-mlm-router'), 'legacy');
+  assert.equal(getLegacyCalls(), 1);
+});
+
+test('GET /calendar preserves the legacy redirect contract when flag is true', async () => {
+  const { app, getLegacyCalls } = makeApp();
+  const response = await app.fetch(new Request('https://example.test/calendar?source=test'), {
+    MODULAR_CALENDAR_ENABLED: 'true',
+  }, {});
   assert.equal(response.status, 302);
   assert.equal(response.headers.get('location'), 'https://example.test/console/calendar');
   assert.equal(response.headers.get('x-mlm-router'), 'modular');
@@ -147,7 +165,6 @@ test('unknown route falls back to legacy worker without changing response body o
   });
   const { app, getLegacyCalls } = makeApp({ legacyResponse });
   const response = await app.fetch(new Request('https://example.test/api/existing-route'), {}, {});
-
   assert.equal(response.status, 207);
   assert.equal(response.headers.get('x-mlm-router'), 'legacy');
   assert.equal(response.headers.get('x-legacy-header'), 'preserved');
@@ -158,7 +175,6 @@ test('unknown route falls back to legacy worker without changing response body o
 test('POST to a modular GET-only path falls back to legacy worker', async () => {
   const { app, getLegacyCalls } = makeApp();
   const response = await app.fetch(new Request('https://example.test/health-modular', { method: 'POST' }), {}, {});
-
   assert.equal(response.headers.get('x-mlm-router'), 'legacy');
   assert.equal(getLegacyCalls(), 1);
 });
@@ -166,7 +182,6 @@ test('POST to a modular GET-only path falls back to legacy worker', async () => 
 test('legacy error is converted into a stable 500 response and logged', async () => {
   const { app, logs } = makeApp({ legacyError: new Error('legacy failed') });
   const response = await app.fetch(new Request('https://example.test/api/failure'), {}, {});
-
   assert.equal(response.status, 500);
   assert.equal(response.headers.get('x-mlm-request-id'), 'req-test-001');
   const body = await response.json();
@@ -184,27 +199,9 @@ test('router list exposes route metadata for documentation and auditing', () => 
   const router = createRouter();
   registerSystemRoutes(router);
   assert.deepEqual(router.list(), [
-    {
-      method: 'GET',
-      id: 'SYSTEM-HEALTH-MODULAR-001',
-      path: '/health-modular',
-      risk: 'low',
-      write: false,
-    },
-    {
-      method: 'GET',
-      id: 'SYSTEM-HEALTH-CANARY-001',
-      path: '/health',
-      risk: 'low',
-      write: false,
-      featureFlag: 'MODULAR_HEALTH_ENABLED',
-    },
-    {
-      method: 'GET',
-      id: 'SYSTEM-CALENDAR-REDIRECT-001',
-      path: '/calendar-modular',
-      risk: 'low',
-      write: false,
-    },
+    { method: 'GET', id: 'SYSTEM-HEALTH-MODULAR-001', path: '/health-modular', risk: 'low', write: false },
+    { method: 'GET', id: 'SYSTEM-HEALTH-CANARY-001', path: '/health', risk: 'low', write: false, featureFlag: 'MODULAR_HEALTH_ENABLED' },
+    { method: 'GET', id: 'SYSTEM-CALENDAR-MODULAR-001', path: '/calendar-modular', risk: 'low', write: false },
+    { method: 'GET', id: 'SYSTEM-CALENDAR-CANARY-001', path: '/calendar', risk: 'low', write: false, featureFlag: 'MODULAR_CALENDAR_ENABLED' },
   ]);
 });
