@@ -42,6 +42,7 @@ jobs:
           node --check src/modules/ai-wear/ai-wear-results.routes.js
           node --check src/modules/ai-wear/ai-wear-cost-summary.routes.js
           node --check src/modules/ai-wear/ai-wear-settings.routes.js
+          node --check src/modules/ai-wear/ai-wear-share-card.routes.js
           node --check src/modules/checkin/checkin-template.routes.js
           node --check src/modules/reply-learning/reply-learning.routes.js
           node --check src/modules/access/floor-whitelist.routes.js
@@ -58,13 +59,14 @@ jobs:
           node --check tests/ai-wear-results-shadow.test.mjs
           node --check tests/ai-wear-cost-summary-shadow.test.mjs
           node --check tests/ai-wear-settings-shadow.test.mjs
+          node --check tests/ai-wear-share-card-shadow.test.mjs
           node --check tests/checkin-template-shadow.test.mjs
           node --check tests/reply-learning-shadow.test.mjs
           node --check tests/floor-whitelist-shadow.test.mjs
           node --check tools/staging-preflight.mjs
 
       - name: Run read-only modular regression tests
-        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs tests/knowledge-read-shadow.test.mjs tests/ai-wear-public-shadow.test.mjs tests/ai-wear-gallery-shadow.test.mjs tests/ai-wear-results-shadow.test.mjs tests/ai-wear-cost-summary-shadow.test.mjs tests/ai-wear-settings-shadow.test.mjs tests/checkin-template-shadow.test.mjs tests/reply-learning-shadow.test.mjs tests/floor-whitelist-shadow.test.mjs
+        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs tests/knowledge-read-shadow.test.mjs tests/ai-wear-public-shadow.test.mjs tests/ai-wear-gallery-shadow.test.mjs tests/ai-wear-results-shadow.test.mjs tests/ai-wear-cost-summary-shadow.test.mjs tests/ai-wear-settings-shadow.test.mjs tests/ai-wear-share-card-shadow.test.mjs tests/checkin-template-shadow.test.mjs tests/reply-learning-shadow.test.mjs tests/floor-whitelist-shadow.test.mjs
 
       - name: Run staging safety preflight
         run: node tools/staging-preflight.mjs wrangler.staging.toml
