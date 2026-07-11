@@ -15,7 +15,10 @@ function stringValue(value) {
 }
 
 export function normalizeRewardCampaign(value) {
-  const text = stringValue(value || 'smart_202605').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  const text = stringValue(value || 'smart_202605')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 60);
   return text || 'smart_202605';
 }
 
@@ -28,7 +31,7 @@ export function rewardConfigCandidate(url, env = {}) {
   const campaign = normalizeRewardCampaign(url.searchParams.get('campaign') || 'smart_202605');
   const calendarMode = campaign === CALENDAR_AUTO || campaign.startsWith(NFC_TEST_PREFIX);
   const points = calendarMode
-    ? positiveInteger(env.REWARD_CALENDAR_POINTS, DEFAULT_CALENDAR_POINTS)
+    ? positiveInteger(env.REWARD_CALENDAR_DEFAULT_POINTS, DEFAULT_CALENDAR_POINTS)
     : positiveInteger(CAMPAIGN_POINTS[campaign], DEFAULT_REWARD_POINTS);
   return {
     success: true,
