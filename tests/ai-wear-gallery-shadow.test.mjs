@@ -27,7 +27,7 @@ test('gallery candidate is pure select and preserves ordering and mapping', asyn
   assert.equal(DB.calls.length, 1);
   assert.match(DB.calls[0], /^SELECT /);
   assert.match(DB.calls[0], /WHERE active = 1 ORDER BY updated_at DESC LIMIT 200/);
-  assert.doesNotMatch(DB.calls[0], /CREATE|ALTER|INSERT|UPDATE|DELETE/i);
+  assert.doesNotMatch(DB.calls[0], /\b(CREATE|ALTER|INSERT|UPDATE|DELETE)\b/i);
   assert.deepEqual(data, { items: [{
     id: 'frame 1.jpg', title: '款式一', series: '第一系列', fileName: 'frame.jpg',
     mimeType: 'image/jpeg', size: 123,
