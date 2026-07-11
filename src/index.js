@@ -23,6 +23,7 @@ import { registerPointStatsDataShadowRoute } from './modules/points/point-stats-
 import { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 import { registerCrmMemberSearchShadowRoute } from './modules/crm/crm-member-search.routes.js';
 import { registerLineOaThreadShadowRoute } from './modules/line-oa/line-oa-thread.routes.js';
+import { registerLineOaThreadsShadowRoute } from './modules/line-oa/line-oa-threads.routes.js';
 import { registerSmartMonitorDataShadowRoute } from './modules/monitor/smart-monitor-data.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
@@ -52,6 +53,7 @@ registerPointStatsDataShadowRoute(router, { legacyFetch });
 registerCrmMembersShadowRoute(router, { legacyFetch });
 registerCrmMemberSearchShadowRoute(router, { legacyFetch });
 registerLineOaThreadShadowRoute(router, { legacyFetch });
+registerLineOaThreadsShadowRoute(router, { legacyFetch });
 registerSmartMonitorDataShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
@@ -80,6 +82,7 @@ export { registerPointStatsDataShadowRoute } from './modules/points/point-stats-
 export { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 export { registerCrmMemberSearchShadowRoute } from './modules/crm/crm-member-search.routes.js';
 export { registerLineOaThreadShadowRoute } from './modules/line-oa/line-oa-thread.routes.js';
+export { registerLineOaThreadsShadowRoute } from './modules/line-oa/line-oa-threads.routes.js';
 export { registerSmartMonitorDataShadowRoute } from './modules/monitor/smart-monitor-data.routes.js';
 
 export default createApp({ router, legacyFetch });
