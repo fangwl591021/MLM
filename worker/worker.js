@@ -39,7 +39,7 @@ const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const DEFAULT_WETW_LINE_MEMBER_URL = "https://aiwe.cc/index.php/wp-json/wetw/v1/check-or-create-line-user";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
-const FRONTEND_BUILD_ID = "checkin-template-designer-20260627-1";
+const FRONTEND_BUILD_ID = "checkin-template-rotation-20260711-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
 const POINTS_LIFF_ID = "2007221311-c9SEkcRL";
@@ -7992,10 +7992,12 @@ async function storeAiWearGeneratedResult(env, id, generated) {
   throw httpError("AI image2 未回傳圖片。", 502, "ai_wear_empty_image");
 }
 const CHECKIN_TEMPLATE_META_KEY = "checkin_reward_template";
+const CHECKIN_TEMPLATE_ROTATION_STATE_KEY = "checkin_reward_template_rotation_state";
 const DEFAULT_CHECKIN_TEMPLATE = {
   active: true,
   keywords: ["簽到贈點活動"],
   altText: "簽到贈點活動",
+  rotationMode: "random",
   pages: [
     {
       imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
@@ -9446,8 +9448,14 @@ function normalizeCheckinTemplate(input) {
     active: source.active !== false,
     keywords: uniqueSuggestions(keywords.map((item) => stringValue(item).trim()).filter(Boolean)).slice(0, 12),
     altText: stringValue(source.altText || source.alt_text || "簽到贈點活動").slice(0, 400),
+    rotationMode: normalizeCheckinTemplateRotationMode(source.rotationMode || source.rotation_mode || source.pageRotationMode || source.page_rotation_mode),
     pages: normalizedPages.length ? normalizedPages : DEFAULT_CHECKIN_TEMPLATE.pages.map(normalizeCheckinTemplatePage),
   };
+}
+
+function normalizeCheckinTemplateRotationMode(value) {
+  const mode = stringValue(value || "random").trim().toLowerCase();
+  return mode === "sequential" ? "sequential" : "random";
 }
 
 function normalizeCheckinTemplatePage(page) {
@@ -9515,7 +9523,7 @@ async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, te
   if (floor !== FLOOR_MAIN && floor !== FLOOR_SMART) return false;
   const template = await getCheckinTemplate(env);
   if (!isCheckinTemplateTrigger(template, text)) return false;
-  const flex = buildCheckinTemplateFlex(template);
+  const flex = await buildCheckinTemplateFlex(env, template);
   const delivery = await replyOrPushLineMessages(provider, event.replyToken, userId, [flex]);
   if (delivery && delivery.ok) {
     await saveAdminMessage(env, {
@@ -9533,21 +9541,39 @@ async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, te
   return true;
 }
 
-function buildCheckinTemplateFlex(template) {
+async function buildCheckinTemplateFlex(env, template) {
   const data = normalizeCheckinTemplate(template);
+  const pages = await rotateCheckinTemplatePages(env, data.pages, data.rotationMode);
   return {
     type: "flex",
     altText: data.altText || "簽到贈點活動",
     contents: {
       type: "carousel",
-      contents: rotateCheckinTemplatePages(data.pages).map(buildCheckinTemplateBubble),
+      contents: pages.map(buildCheckinTemplateBubble),
     },
   };
 }
 
-function rotateCheckinTemplatePages(pages) {
+async function rotateCheckinTemplatePages(env, pages, rotationMode) {
   const list = Array.isArray(pages) ? pages.slice(0, 12) : [];
   if (list.length <= 1) return list;
+  if (normalizeCheckinTemplateRotationMode(rotationMode) === "sequential") {
+    let offset = 0;
+    try {
+      await ensureAppMetaSchema(env);
+      const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(CHECKIN_TEMPLATE_ROTATION_STATE_KEY).first();
+      const state = row && row.value ? JSON.parse(row.value) : {};
+      offset = Math.max(0, Math.floor(Number(state.offset || 0) || 0)) % list.length;
+      const nextOffset = (offset + 1) % list.length;
+      const now = Date.now();
+      await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .bind(CHECKIN_TEMPLATE_ROTATION_STATE_KEY, JSON.stringify({ offset: nextOffset, pageCount: list.length }), now)
+        .run();
+    } catch (_err) {
+      offset = 0;
+    }
+    return list.slice(offset).concat(list.slice(0, offset));
+  }
   const offset = Math.floor(Math.random() * list.length);
   return list.slice(offset).concat(list.slice(0, offset));
 }

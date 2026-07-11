@@ -135,6 +135,7 @@
                 <div class="templateTriggerCompact">
                   <label>觸發關鍵字<textarea id="templateKeywords" placeholder="每行一個，例如：簽到贈點活動"></textarea></label>
                   <label>替代文字<input id="templateAltText" type="text" placeholder="簽到贈點活動" /></label>
+                  <label>發送輪動<select id="templateRotationMode"><option value="random">隨機輪動</option><option value="sequential">順序輪動</option></select></label>
                   <label class="templateSwitch"><input id="templateActive" type="checkbox" checked /> 啟用關鍵字觸發</label>
                 </div>
               </div>
@@ -1080,7 +1081,7 @@
         pages.addEventListener("input", refreshTemplatePreview);
         pages.addEventListener("change", handleTemplateChange);
       }
-      ["templateKeywords", "templateAltText", "templateActive"].forEach((id) => {
+      ["templateKeywords", "templateAltText", "templateRotationMode", "templateActive"].forEach((id) => {
         const el = $(id);
         if (!el || el.dataset.templateBound === "1") return;
         el.dataset.templateBound = "1";
@@ -1094,6 +1095,7 @@
         active: true,
         keywords: ["\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5"],
         altText: "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5",
+        rotationMode: "random",
         pages: [
           {
             imageUrl: "https://k-link.cc/wp-content/uploads/2026/06/e9249f41c67958a396c3dddc07081d3d.jpg",
@@ -1136,6 +1138,10 @@
     function normalizeTemplateAspectMode(value) {
       const mode = String(value || "cover").trim().toLowerCase();
       return TEMPLATE_ASPECT_MODES.includes(mode) ? mode : "cover";
+    }
+
+    function normalizeTemplateRotationMode(value) {
+      return String(value || "random").trim().toLowerCase() === "sequential" ? "sequential" : "random";
     }
 
     function renderTemplateOptions(options, current, normalizer) {
@@ -1444,6 +1450,7 @@
       if ($("templateActive")) $("templateActive").checked = normalized.active !== false;
       if ($("templateKeywords")) $("templateKeywords").value = normalized.keywords.join("\n");
       if ($("templateAltText")) $("templateAltText").value = normalized.altText || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5";
+      if ($("templateRotationMode")) $("templateRotationMode").value = normalized.rotationMode || "random";
       const target = $("templatePages");
       if (target) {
         target.innerHTML = normalized.pages.map((page, pageIndex) => renderTemplatePage(page, pageIndex)).join("");
@@ -1458,6 +1465,7 @@
         active: template.active !== false,
         keywords: Array.isArray(template.keywords) && template.keywords.length ? template.keywords.map((item) => String(item || "").trim()).filter(Boolean) : base.keywords,
         altText: String(template.altText || base.altText || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5"),
+        rotationMode: normalizeTemplateRotationMode(template.rotationMode || template.rotation_mode || base.rotationMode),
         pages: pages.slice(0, 12).map((page) => ({
           imageUrl: String(page.imageUrl || page.image_url || ""),
           imageLink: String(page.imageLink || page.image_link || ""),
@@ -1600,6 +1608,7 @@
         active: $("templateActive") ? $("templateActive").checked : true,
         keywords,
         altText: ($("templateAltText") ? $("templateAltText").value.trim() : "") || "\u7c3d\u5230\u8d08\u9ede\u6d3b\u52d5",
+        rotationMode: normalizeTemplateRotationMode($("templateRotationMode") ? $("templateRotationMode").value : "random"),
         pages,
       };
     }
