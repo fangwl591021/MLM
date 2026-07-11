@@ -30,7 +30,7 @@ export async function fetchFloorWhitelistCandidate(env) {
     FROM floor_access_whitelist
     ORDER BY floor_id ASC, operator_id ASC
   `).all();
-  const floors = { [FLOOR_MAIN]: [], [FLOOR_ADMIN]: [], [FLOOR_SMART]: [], adminAll: [] };
+  const floors = { [FLOOR_MAIN]: [], [FLOOR_ADMIN]: [], adminAll: [] };
   for (const row of rows.results || []) {
     const floorId = row.floor_id === FLOOR_SUPER_ADMIN
       ? FLOOR_SUPER_ADMIN
