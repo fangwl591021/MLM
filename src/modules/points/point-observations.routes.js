@@ -1,23 +1,10 @@
 import { runShadowReadAfterLegacy } from '../../shadow/shadow-compare.js';
-
-function stringValue(value) { return value == null ? '' : String(value); }
-function clamp(value, fallback = 50) { const n = Number(value); return Math.max(1, Math.min(200, Number.isFinite(n) ? n : fallback)); }
-function cors(request, env) {
-  const requestOrigin = request.headers.get('Origin') || '';
-  const allowed = env.ALLOWED_ORIGIN || '';
-  return {
-    'Access-Control-Allow-Origin': allowed && requestOrigin === allowed ? allowed : allowed || '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token, X-Dashboard-Token',
-    'Access-Control-Max-Age': '86400',
-    'Content-Type': 'application/json; charset=utf-8',
-  };
-}
+import { pointCorsHeaders, pointLimit, pointString } from './point-read-core.js';
 
 export async function listPointObservationsCandidate(env, url) {
   if (!env.DB || typeof env.DB.prepare !== 'function') throw new Error('DB is not configured');
-  const channelKey = stringValue(url.searchParams.get('channel_key'));
-  const limit = clamp(url.searchParams.get('limit') || 50);
+  const channelKey = pointString(url.searchParams.get('channel_key'));
+  const limit = pointLimit(url.searchParams.get('limit') || 50);
   if (channelKey) {
     const rows = await env.DB.prepare(`
       SELECT channel_key, line_user_id, first_seen_at, last_seen_at, event_count
@@ -39,7 +26,10 @@ export async function listPointObservationsCandidate(env, url) {
 
 export async function pointObservationsCandidateResponse(request, env) {
   const observations = await listPointObservationsCandidate(env, new URL(request.url));
-  return new Response(JSON.stringify({ success: true, status: 'success', observations }), { status: 200, headers: cors(request, env) });
+  return new Response(JSON.stringify({ success: true, status: 'success', observations }), {
+    status: 200,
+    headers: pointCorsHeaders(request, env, { adminTokenHeaders: true }),
+  });
 }
 
 export function registerPointObservationsShadowRoute(router, { legacyFetch, logger = console } = {}) {
