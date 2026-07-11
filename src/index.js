@@ -19,6 +19,7 @@ import { registerRewardConfigShadowRoute } from './modules/reward/reward-config.
 import { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 import { registerPointObservationsShadowRoute } from './modules/points/point-observations.routes.js';
 import { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
+import { registerPointStatsDataShadowRoute } from './modules/points/point-stats-data.routes.js';
 import { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 import { registerCrmMemberSearchShadowRoute } from './modules/crm/crm-member-search.routes.js';
 import { registerLineOaThreadShadowRoute } from './modules/line-oa/line-oa-thread.routes.js';
@@ -46,6 +47,7 @@ registerRewardConfigShadowRoute(router, { legacyFetch });
 registerRewardCalendarEventsShadowRoute(router, { legacyFetch });
 registerPointObservationsShadowRoute(router, { legacyFetch });
 registerPointMemberLinksShadowRoute(router, { legacyFetch });
+registerPointStatsDataShadowRoute(router, { legacyFetch });
 registerCrmMembersShadowRoute(router, { legacyFetch });
 registerCrmMemberSearchShadowRoute(router, { legacyFetch });
 registerLineOaThreadShadowRoute(router, { legacyFetch });
@@ -72,6 +74,7 @@ export { registerRewardConfigShadowRoute } from './modules/reward/reward-config.
 export { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 export { registerPointObservationsShadowRoute } from './modules/points/point-observations.routes.js';
 export { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
+export { registerPointStatsDataShadowRoute } from './modules/points/point-stats-data.routes.js';
 export { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 export { registerCrmMemberSearchShadowRoute } from './modules/crm/crm-member-search.routes.js';
 export { registerLineOaThreadShadowRoute } from './modules/line-oa/line-oa-thread.routes.js';
