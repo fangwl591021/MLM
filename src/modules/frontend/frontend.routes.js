@@ -56,11 +56,13 @@ export async function serveKnowledgeBaseHtml(request, env, { fetchImpl = fetch, 
   });
 }
 
-export function registerFrontendRoutes(router) {
+export function registerFrontendRoutes(router, dependencies = {}) {
+  const fetchImpl = dependencies.fetchImpl || fetch;
+  const now = dependencies.now || Date.now;
   router.get((url, _request, env) => {
     if (url.pathname !== '/knowledge-base' && url.pathname !== '/knowledge-base.html') return false;
     return env.MODULAR_KNOWLEDGE_BASE_ENABLED === 'true';
-  }, (request, env) => serveKnowledgeBaseHtml(request, env), {
+  }, (request, env) => serveKnowledgeBaseHtml(request, env, { fetchImpl, now }), {
     id: 'FRONTEND-KNOWLEDGE-BASE-CANARY-001',
     path: '/knowledge-base|/knowledge-base.html',
     risk: 'low',
