@@ -1,0 +1,19 @@
+name = "mlm-modular-staging"
+main = "src/index.js"
+compatibility_date = "2026-05-06"
+
+# 此檔僅供 staging 使用，不取代正式 wrangler.toml。
+# 部署前請建立獨立的測試 D1、R2 與 Secrets，禁止指向正式點數或正式 LINE OA。
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mlm_staging"
+database_id = "REPLACE_WITH_STAGING_D1_ID"
+
+[[r2_buckets]]
+binding = "AI_WEAR_BUCKET"
+bucket_name = "k-linksaas-images-staging"
+
+[vars]
+MLM_ENV = "staging"
+ALLOWED_ORIGIN = ""
