@@ -27,9 +27,9 @@ export function registerSystemRoutes(router) {
 
   // Canary takeover for the real /health path. It is intentionally disabled
   // unless MODULAR_HEALTH_ENABLED is the literal string "true".
-  router.get((url, request) => {
+  router.get((url, _request, env) => {
     if (url.pathname !== '/health') return false;
-    return request.__mlmEnv?.MODULAR_HEALTH_ENABLED === 'true';
+    return env.MODULAR_HEALTH_ENABLED === 'true';
   }, async (_request, env) => {
     return Response.json(buildHealthPayload(env, 'feature-flag'));
   }, {
