@@ -1,15 +1,13 @@
 import { runShadowReadAfterLegacy } from '../../shadow/shadow-compare.js';
 
-const FLOORS = new Set(['main', 'admin', 'smart', 'admin_all']);
+const FLOOR_MAIN = 'main';
+const FLOOR_ADMIN = 'admin';
+const FLOOR_SMART = 'smart';
+const FLOOR_SUPER_ADMIN = 'admin_all';
+const FLOOR_IDS = new Set([FLOOR_MAIN, FLOOR_ADMIN, FLOOR_SMART]);
 
 function stringValue(value) {
   return value == null ? '' : String(value);
-}
-
-function resolveFloor(request) {
-  const url = new URL(request.url);
-  const requested = stringValue(url.searchParams.get('floor') || request.headers.get('X-Floor-Id'));
-  return FLOORS.has(requested) ? requested : 'main';
 }
 
 function buildCorsHeaders(request, env) {
@@ -25,28 +23,32 @@ function buildCorsHeaders(request, env) {
   };
 }
 
-function parseEntries(value) {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_) {
-    return [];
-  }
-}
-
 export async function fetchFloorWhitelistCandidate(env) {
-  if (!env.DB || typeof env.DB.prepare !== 'function') throw new Error('DB is not configured');
-  const rows = await env.DB.prepare('SELECT floor_id, entries, updated_at FROM floor_whitelist ORDER BY floor_id ASC').all();
-  return (rows.results || []).map((row) => ({
-    floor: stringValue(row.floor_id),
-    entries: parseEntries(row.entries),
-    updatedAt: Number(row.updated_at || 0),
-  }));
+  if (!env.DB || typeof env.DB.prepare !== 'function') return { floors: {} };
+  const rows = await env.DB.prepare(`
+    SELECT floor_id, operator_id, operator_name, active, updated_at
+    FROM floor_access_whitelist
+    ORDER BY floor_id ASC, operator_id ASC
+  `).all();
+  const floors = { [FLOOR_MAIN]: [], [FLOOR_ADMIN]: [], [FLOOR_SMART]: [], adminAll: [] };
+  for (const row of rows.results || []) {
+    const floorId = row.floor_id === FLOOR_SUPER_ADMIN
+      ? FLOOR_SUPER_ADMIN
+      : (FLOOR_IDS.has(row.floor_id) ? row.floor_id : FLOOR_MAIN);
+    const listKey = floorId === FLOOR_SUPER_ADMIN ? 'adminAll' : floorId;
+    floors[listKey].push({
+      floorId,
+      operatorId: stringValue(row.operator_id),
+      operatorName: stringValue(row.operator_name),
+      active: Number(row.active || 0) === 1,
+      updatedAt: row.updated_at,
+    });
+  }
+  return { floors };
 }
 
 export async function floorWhitelistCandidateResponse(request, env) {
-  const data = await fetchFloorWhitelistCandidate(env, resolveFloor(request));
+  const data = await fetchFloorWhitelistCandidate(env);
   return new Response(JSON.stringify({ status: 'success', data }), {
     status: 200,
     headers: buildCorsHeaders(request, env),
