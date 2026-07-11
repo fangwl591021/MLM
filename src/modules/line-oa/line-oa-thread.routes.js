@@ -1,6 +1,7 @@
 import { runShadowReadAfterLegacy } from '../../shadow/shadow-compare.js';
 
 const FLOOR_MAIN = 'main';
+const FLOOR_IDS = new Set(['main', 'admin', 'smart']);
 const ADMIN_ROLE = 'admin';
 const USER_ROLE = 'user';
 const STATUS_PENDING = '待回覆';
@@ -10,6 +11,12 @@ const PENDING_DISPLAY_NAME = '名稱待同步';
 
 function stringValue(value) {
   return String(value === undefined || value === null ? '' : value).trim();
+}
+
+function resolveFloor(request) {
+  const url = new URL(request.url);
+  const raw = stringValue(url.searchParams.get('floor') || request.headers.get('x-floor-id') || FLOOR_MAIN).toLowerCase();
+  return FLOOR_IDS.has(raw) ? raw : FLOOR_MAIN;
 }
 
 function threadIdFor(floor, userId) {
@@ -176,7 +183,7 @@ function buildCorsHeaders(request, env) {
 
 export async function lineOaThreadCandidateResponse(request, env) {
   const url = new URL(request.url);
-  const floor = stringValue(url.searchParams.get('floor')) || FLOOR_MAIN;
+  const floor = resolveFloor(request);
   const id = stringValue(url.searchParams.get('id'));
   const data = await fetchLineOaThreadCandidate(env, floor, id);
   return new Response(JSON.stringify({ success: true, status: 'success', data }), {
