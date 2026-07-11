@@ -43,7 +43,7 @@ test('smart monitor candidate composes point stats, checkins and chat monitor wi
   assert.equal(data.days, 7);
   assert.equal(data.source.label, '康立智能');
   assert.deepEqual(data.checkinSummary, { date: '2026-07-11', users: 2, messages: 3, rewarded: 1, missing: 1, points: 10 });
-  assert.equal(data.checkins[1].user_name, 'U99999999...999999');
+  assert.equal(data.checkins[1].user_name, 'U999999999...999999');
   assert.equal(data.chatMonitor.total, 5);
   assert.equal(data.chatMonitor.today_user_messages, 4);
   assert.equal(data.chatMonitor.today_admin_replies, 2);
