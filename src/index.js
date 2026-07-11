@@ -8,6 +8,7 @@ import { registerAiWearPublicShadowRoute } from './modules/ai-wear/ai-wear-publi
 import { registerAiWearGalleryShadowRoute } from './modules/ai-wear/ai-wear-gallery.routes.js';
 import { registerAiWearResultsShadowRoute } from './modules/ai-wear/ai-wear-results.routes.js';
 import { registerAiWearCostSummaryShadowRoute } from './modules/ai-wear/ai-wear-cost-summary.routes.js';
+import { registerAiWearSettingsShadowRoute } from './modules/ai-wear/ai-wear-settings.routes.js';
 import { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
@@ -22,6 +23,7 @@ registerAiWearPublicShadowRoute(router, { legacyFetch });
 registerAiWearGalleryShadowRoute(router, { legacyFetch });
 registerAiWearResultsShadowRoute(router, { legacyFetch });
 registerAiWearCostSummaryShadowRoute(router, { legacyFetch });
+registerAiWearSettingsShadowRoute(router, { legacyFetch });
 registerCheckinTemplateShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
@@ -35,6 +37,7 @@ export { registerAiWearPublicShadowRoute } from './modules/ai-wear/ai-wear-publi
 export { registerAiWearGalleryShadowRoute } from './modules/ai-wear/ai-wear-gallery.routes.js';
 export { registerAiWearResultsShadowRoute } from './modules/ai-wear/ai-wear-results.routes.js';
 export { registerAiWearCostSummaryShadowRoute } from './modules/ai-wear/ai-wear-cost-summary.routes.js';
+export { registerAiWearSettingsShadowRoute } from './modules/ai-wear/ai-wear-settings.routes.js';
 export { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 
 export default createApp({ router, legacyFetch });
