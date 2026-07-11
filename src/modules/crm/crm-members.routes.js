@@ -1,33 +1,11 @@
 import { runShadowReadAfterLegacy } from '../../shadow/shadow-compare.js';
-
-function stringValue(value) {
-  return value == null ? '' : String(value);
-}
-
-function clampNumber(value, min, max) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return min;
-  return Math.max(min, Math.min(max, Math.floor(number)));
-}
-
-function buildCorsHeaders(request, env) {
-  const requestOrigin = request.headers.get('Origin') || '';
-  const allowedOrigin = env.ALLOWED_ORIGIN || '';
-  const origin = allowedOrigin && requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin || '*';
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Line-Id-Token, X-Operator-Id, X-Operator-Name, X-User-Id, X-Admin-User, X-Admin-Name',
-    'Access-Control-Max-Age': '86400',
-    'Content-Type': 'application/json; charset=utf-8',
-  };
-}
+import { buildCorsHeaders, clampInteger, stringValue } from './crm-read-core.js';
 
 export async function listCrmMembersCandidate(env, url) {
   if (!env.DB || typeof env.DB.prepare !== 'function') throw new Error('DB is not configured');
   const channelKey = stringValue(url.searchParams.get('channel_key'));
   const q = stringValue(url.searchParams.get('q')).toLowerCase();
-  const limit = clampNumber(url.searchParams.get('limit') || 100, 1, 500);
+  const limit = clampInteger(url.searchParams.get('limit') || 100, 1, 500, 100);
   let sql = `
     SELECT member_ref, name, phone, email, level, source, source_json,
            ai_wear_purchase_line_url, ai_wear_share_caption, points_snapshot, updated_at
