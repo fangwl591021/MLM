@@ -1,106 +1,105 @@
-# 康立 AI 智慧營運桌面｜Phase 1
+# 康立 AI 智慧營運桌面
 
 ## 目標
 
-在不影響既有 LINE 客服、活動報到、點數與 AI 眼鏡試戴功能的前提下，新增高層可使用的統一營運入口，並建立後續 AI Agent、任務交辦與決策追蹤所需的資料基礎。
+在不破壞既有 LINE 客服、活動、點數與 AI 試戴功能的前提下，將 MLM 後台升級為高層可直接使用的 AI 營運桌面。
 
-## 本階段新增
+## Phase 1 已完成
 
-### 1. 高層桌面入口
+- 建立高層桌面 UI 骨架。
+- 建立 `business_events`、`executive_insights`、`tasks`、`decisions`、`audit_logs`。
+- 先以既有 `/api/console/summary` 驗證資料可視化方向。
+- 所有功能只讀，不影響正式資料。
 
-路徑：`/docs/executive.html`
+## Phase 2 已完成的程式骨架
 
-目前功能：
+- 新增 `worker/executive-api.js`，將高層 API 從巨型 Worker 中獨立。
+- 新增 `docs/executive-v2.html`，改接 `/api/executive/*`。
+- 建立以下 API：
+  - `GET /api/executive/summary`
+  - `GET /api/executive/insights`
+  - `GET/POST /api/executive/tasks`
+  - `GET/POST /api/executive/decisions`
+  - `POST /api/executive/ask`
+- 加入資料表與欄位自動辨識，容許現有 D1 表名差異。
+- 未串接資料明確顯示為 0／未連接，不產生推測數字。
+- 高層問答先採規則引擎，確保答案可追溯。
+- 任務、決策與高層問答加入稽核紀錄。
 
-- 驗證既有管理員 Session。
-- 讀取 `/api/console/summary`。
-- 顯示五類核心指標：會員互動、重要訊息、活動報到、點數異動、AI 使用。
-- 產生規則式高層晨報。
-- 顯示風險與機會。
-- 提供不寫入資料的初步問答框。
-- 顯示資料快照，方便核對 AI 摘要依據。
-- 可快速返回原營運控制台、客服、活動及 AI 試戴模組。
+## 待整合到 `worker.js`
 
-> 此頁目前是 Phase 1 骨架。只讀取既有摘要 API，不會修改正式資料。
+因現有 `worker.js` 同時負責 LINE、點數、行事曆、報到、AI 試戴、登入與前端路由，Phase 2 採獨立模組方式建立，正式接入時只需：
 
-### 2. 四個核心資料模組
+1. 匯入 `handleExecutiveApi`。
+2. 新增 `/executive` 頁面路由。
+3. 在客服 floor routing 前加入 `/api/executive/*` Router。
+4. 在測試 D1 執行 migration。
 
-Migration：`migrations/20260711_ai_desktop_phase1.sql`
+完整片段見 `docs/AI_DESKTOP_PHASE2_INTEGRATION.md`。
 
-- `business_events`：統一收納 LINE、活動、報到、點數、AI 試戴及其他營運事件。
-- `executive_insights`：保存每日晨報、風險、機會與建議。
-- `tasks`：將 AI 建議或高層指示轉成可追蹤任務。
-- `decisions`：保存決策內容、依據、預期成果與檢討日期。
+## 資料來源策略
 
-另加入：
+第一批整合現有系統已掌握的資料：
 
-- `decision_tasks`：決策與任務關聯。
-- `audit_logs`：記錄高層查詢、交辦與敏感操作。
+- LINE／客服互動。
+- 重要訊息與客訴。
+- 行事曆與報到。
+- 點數異動。
+- AI 眼鏡試戴。
+- AI 使用成本。
+- 高層任務與決策。
 
-## 建議部署順序
+第二批再串接康立其他正式系統：
 
-1. 在測試 D1 執行 migration。
-2. 部署目前分支到測試 Worker。
-3. 管理員登入後開啟 `/docs/executive.html`。
-4. 檢查 `/api/console/summary` 回傳欄位，確認五類指標映射。
-5. 確認既有 `/console`、`/dashboard`、活動與 AI 試戴功能皆正常。
-6. 通過測試後再合併至正式環境。
+- 經銷商組織。
+- 銷售與訂單。
+- 商品、退貨與庫存。
+- 獎金與晉升。
+- 區域營運數據。
 
-## 下一個開發批次
+## AI 架構
 
-### A. 正式摘要 API
+目前：
 
-新增：
+```text
+高層問題
+  ↓
+規則引擎
+  ↓
+可追溯 KPI／資料來源
+```
 
-- `GET /api/executive/overview`
-- `GET /api/executive/insights`
-- `POST /api/executive/ask`
+下一階段：
 
-回傳需包含：
+```text
+高層問題
+  ↓
+AI Router
+  ├─ 客服 Agent
+  ├─ 活動 Agent
+  ├─ 點數 Agent
+  ├─ AI 試戴 Agent
+  ├─ 會員 Agent
+  └─ 高層決策 Agent
+```
 
-- 統計期間與最後更新時間。
-- KPI 數值及比較基準。
-- 風險嚴重度。
-- 資料來源與查詢條件。
-- 建議行動。
+模型不能直接任意查詢或修改正式資料；所有操作需透過白名單 API、角色權限與 audit log。
 
-### B. 統一事件寫入
+## 上線順序
 
-將以下事件同步寫入 `business_events`：
+1. 測試 D1 執行 migration。
+2. 接入 `executive-api.js`。
+3. 僅開放系統管理員測試 `/executive`。
+4. 驗證所有 KPI 的資料來源。
+5. 測試建立任務、決策與問答稽核。
+6. 再開放康立指定高層帳號。
+7. 最後才導入生成式 AI Agent。
 
-- LINE 新訊息、重要訊息與客服結案。
-- 活動建立、報名、報到與未到。
-- 點數發放、扣除與異常。
-- AI 眼鏡試戴生成、分享、成本與失敗。
-- 管理員重要操作。
+## 驗收原則
 
-### C. 任務與決策 API
-
-新增：
-
-- `POST /api/tasks`
-- `PATCH /api/tasks/:taskId`
-- `GET /api/tasks`
-- `POST /api/decisions`
-- `GET /api/decisions`
-
-### D. AI Router
-
-第一批 Agent：
-
-- 客服 Agent
-- 活動 Agent
-- 點數 Agent
-- AI 試戴 Agent
-- 營運分析 Agent
-- 高層決策 Agent
-
-每一個 AI 回答必須回傳資料來源，不允許直接修改正式資料；有寫入需求時，必須經過權限確認及稽核記錄。
-
-## 驗收條件
-
-- 高層桌面能在管理員登入狀態下開啟。
-- 未登入者會被導向登入頁。
-- 既有摘要 API 失敗時，頁面顯示錯誤但不影響其他模組。
-- Migration 可重複執行，不會因資料表已存在而中斷。
-- 不在前端或 migration 寫入任何正式 Token、密碼或 API Key。
+- 不影響既有客服與 LINE webhook。
+- 不影響活動、點數與 AI 試戴。
+- 高層看到的每個數字都能追溯來源。
+- 未接入資料不得用猜測值補足。
+- 所有寫入行為都有權限控管及稽核。
+- 高層桌面首先解決「今天發生什麼、為什麼、該做什麼、誰負責」。
