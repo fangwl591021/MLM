@@ -1,23 +1,52 @@
-function buildHealthPayload(env, mode) {
+function buildHealthChecks(env) {
+  return {
+    DB: Boolean(env.DB),
+    GAS_URL: Boolean(env.GAS_URL),
+    GAS_SHARED_SECRET: Boolean(env.GAS_SHARED_SECRET),
+    LINE_CHANNEL_SECRET: Boolean(env.LINE_CHANNEL_SECRET),
+    LINE_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
+    LINE_ADMIN_CHANNEL_SECRET: Boolean(env.LINE_ADMIN_CHANNEL_SECRET),
+    LINE_ADMIN_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN),
+    LINE_OA1_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_OA1_CHANNEL_ACCESS_TOKEN),
+    LINE_OA2_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_OA2_CHANNEL_ACCESS_TOKEN),
+    DASHBOARD_API_TOKEN: Boolean(env.DASHBOARD_API_TOKEN),
+    ADMIN_TOKEN: Boolean(env.ADMIN_TOKEN),
+    CHANNEL_CONFIG_JSON: Boolean(env.CHANNEL_CONFIG_JSON),
+    POINT_API_KEY: Boolean(env.POINT_API_KEY),
+    WETW_MEMBERS_URL: Boolean(env.WETW_MEMBERS_URL),
+    WETW_POINTS_URL: Boolean(env.WETW_POINTS_URL),
+    WETW_POINT_INSERT_URL: Boolean(env.WETW_POINT_INSERT_URL),
+    WETW_SHOP_ID: Boolean(env.WETW_SHOP_ID),
+    GATEWAY_FORWARD_TOKEN: Boolean(env.GATEWAY_FORWARD_TOKEN || env.MLM_FORWARD_TOKEN),
+    OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
+    CALENDAR_EVENTS_DB: Boolean(env.DB),
+    DASHBOARD_LIFF_ID: Boolean(env.DASHBOARD_LIFF_ID),
+    ALLOWED_ORIGIN: Boolean(env.ALLOWED_ORIGIN),
+  };
+}
+
+export function buildLegacyCompatibleHealthPayload(env) {
   return {
     status: 'ok',
-    service: 'mlm-modular-staging',
-    mode,
-    checks: {
-      DB: Boolean(env.DB),
-      AI_WEAR_BUCKET: Boolean(env.AI_WEAR_BUCKET),
-      GAS_URL: Boolean(env.GAS_URL),
-      LINE_CHANNEL_SECRET: Boolean(env.LINE_CHANNEL_SECRET),
-      LINE_CHANNEL_ACCESS_TOKEN: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
-      OPENAI_API_KEY: Boolean(env.OPENAI_API_KEY),
+    service: 'line-oa-ai-suggestion-worker',
+    checks: buildHealthChecks(env),
+  };
+}
+
+function buildModularDiagnosticPayload(env) {
+  return {
+    ...buildLegacyCompatibleHealthPayload(env),
+    modular: {
+      service: 'mlm-modular-staging',
+      mode: 'staging-only',
+      timestamp: new Date().toISOString(),
     },
-    timestamp: new Date().toISOString(),
   };
 }
 
 export function registerSystemRoutes(router) {
   router.get('/health-modular', async (_request, env) => {
-    return Response.json(buildHealthPayload(env, 'staging-only'));
+    return Response.json(buildModularDiagnosticPayload(env));
   }, {
     id: 'SYSTEM-HEALTH-MODULAR-001',
     path: '/health-modular',
@@ -31,7 +60,7 @@ export function registerSystemRoutes(router) {
     if (url.pathname !== '/health') return false;
     return env.MODULAR_HEALTH_ENABLED === 'true';
   }, async (_request, env) => {
-    return Response.json(buildHealthPayload(env, 'feature-flag'));
+    return Response.json(buildLegacyCompatibleHealthPayload(env));
   }, {
     id: 'SYSTEM-HEALTH-CANARY-001',
     path: '/health',
