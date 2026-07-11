@@ -6,6 +6,7 @@ import {
   registerFrontendRoutes,
   rewriteKnowledgeBaseLinks,
   serveKnowledgeBaseHtml,
+  serveDocsAsset,
 } from '../src/modules/frontend/frontend.routes.js';
 
 function makeApp({ fetchImpl, legacyResponse = Response.json({ status: 'legacy' }) } = {}) {
@@ -81,16 +82,88 @@ test('knowledge base source failure preserves legacy 502 contract', async () => 
   assert.equal(await response.text(), 'Frontend source unavailable: knowledge-base.html');
 });
 
+test('docs route stays on legacy when feature flag is disabled', async () => {
+  const { app, getLegacyCalls } = makeApp();
+  const response = await app.fetch(new Request('https://example.test/docs/readme.md'), {
+    MODULAR_DOCS_ENABLED: 'false',
+  }, {});
+  assert.equal(response.headers.get('x-mlm-router'), 'legacy');
+  assert.equal(getLegacyCalls(), 1);
+});
+
+test('docs markdown route preserves content type, cache and source path', async () => {
+  let requestedUrl = '';
+  const { app, getLegacyCalls } = makeApp({
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return new Response('# Guide', { status: 200, headers: { 'Content-Type': 'text/markdown' } });
+    },
+  });
+  const response = await app.fetch(new Request('https://example.test/docs/guide.md'), {
+    MODULAR_DOCS_ENABLED: 'true',
+  }, {});
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-mlm-router'), 'modular');
+  assert.equal(response.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.equal(response.headers.get('cache-control'), 'public, max-age=300');
+  assert.equal(await response.text(), '# Guide');
+  assert.match(requestedUrl, /\/docs\/guide\.md$/);
+  assert.equal(getLegacyCalls(), 0);
+});
+
+test('docs route preserves upstream content type for non-markdown assets', async () => {
+  const response = await serveDocsAsset(
+    new Request('https://example.test/docs/diagram.svg'),
+    {},
+    '/docs/diagram.svg',
+    { fetchImpl: async () => new Response('<svg/>', { status: 200, headers: { 'Content-Type': 'image/svg+xml' } }) },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'image/svg+xml');
+});
+
+test('docs source failure and invalid path preserve legacy contracts', async () => {
+  const missing = await serveDocsAsset(
+    new Request('https://example.test/docs/missing.md'),
+    {},
+    '/docs/missing.md',
+    { fetchImpl: async () => new Response('missing', { status: 404 }) },
+  );
+  assert.equal(missing.status, 404);
+  assert.equal(await missing.text(), 'Asset not found');
+
+  const invalid = await serveDocsAsset(
+    new Request('https://example.test/docs/file.md'),
+    {},
+    'docs/../secret.txt',
+    { fetchImpl: async () => new Response('should not run') },
+  );
+  assert.equal(invalid.status, 400);
+  assert.equal(await invalid.text(), 'Invalid asset path');
+});
+
 test('frontend route metadata declares read-only canary behavior', () => {
   const router = createRouter();
   registerFrontendRoutes(router, { fetchImpl: async () => new Response('ok') });
-  assert.deepEqual(router.list(), [{
-    method: 'GET',
-    id: 'FRONTEND-KNOWLEDGE-BASE-CANARY-001',
-    path: '/knowledge-base|/knowledge-base.html',
-    risk: 'low',
-    write: false,
-    featureFlag: 'MODULAR_KNOWLEDGE_BASE_ENABLED',
-    externalSource: 'github-raw-main',
-  }]);
+  assert.deepEqual(router.list(), [
+    {
+      method: 'GET',
+      id: 'FRONTEND-KNOWLEDGE-BASE-CANARY-001',
+      path: '/knowledge-base|/knowledge-base.html',
+      risk: 'low',
+      write: false,
+      featureFlag: 'MODULAR_KNOWLEDGE_BASE_ENABLED',
+      externalSource: 'github-raw-main',
+    },
+    {
+      method: 'GET',
+      id: 'FRONTEND-DOCS-ASSET-CANARY-001',
+      path: '/docs/*',
+      risk: 'low',
+      write: false,
+      featureFlag: 'MODULAR_DOCS_ENABLED',
+      externalSource: 'github-raw-main',
+      cacheSeconds: 300,
+    },
+  ]);
 });
