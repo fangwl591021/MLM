@@ -8,10 +8,11 @@ import {
   registerRewardConfigShadowRoute,
 } from '../src/modules/reward/reward-config.routes.js';
 
-test('reward campaign normalization keeps safe campaign ids', () => {
+test('reward campaign normalization matches legacy replacement and length rules', () => {
   assert.equal(normalizeRewardCampaign(' smart_202605_5 '), 'smart_202605_5');
-  assert.equal(normalizeRewardCampaign('../calendar auto<script>'), 'calendarautoscript');
+  assert.equal(normalizeRewardCampaign('../calendar auto<script>'), '___calendar_auto_script_');
   assert.equal(normalizeRewardCampaign(''), 'smart_202605');
+  assert.equal(normalizeRewardCampaign('x'.repeat(80)).length, 60);
 });
 
 test('reward config maps fixed and calendar campaigns without D1', () => {
@@ -28,7 +29,7 @@ test('reward config maps fixed and calendar campaigns without D1', () => {
 
   const calendar = rewardConfigCandidate(new URL('https://example.test/api/reward/config?campaign=calendar_auto'), {
     REWARD_LIFF_ID: 'custom-liff',
-    REWARD_CALENDAR_POINTS: '12',
+    REWARD_CALENDAR_DEFAULT_POINTS: '12',
   });
   assert.equal(calendar.liffId, 'custom-liff');
   assert.equal(calendar.points, 12);
@@ -37,6 +38,14 @@ test('reward config maps fixed and calendar campaigns without D1', () => {
   const nfc = rewardConfigCandidate(new URL('https://example.test/api/reward/config?campaign=nfc_test_abc123'), {});
   assert.equal(nfc.points, 10);
   assert.equal(nfc.calendarMode, true);
+});
+
+test('legacy calendar default environment name is authoritative', () => {
+  const config = rewardConfigCandidate(new URL('https://example.test/api/reward/config?campaign=calendar_auto'), {
+    REWARD_CALENDAR_POINTS: '99',
+    REWARD_CALENDAR_DEFAULT_POINTS: '15',
+  });
+  assert.equal(config.points, 15);
 });
 
 test('reward config flag disabled stays on legacy', async () => {
