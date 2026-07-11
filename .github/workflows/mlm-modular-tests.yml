@@ -35,16 +35,18 @@ jobs:
           node --check src/modules/system/system.routes.js
           node --check src/modules/frontend/frontend.routes.js
           node --check src/modules/console/console-summary.routes.js
+          node --check src/modules/calendar/calendar-events.routes.js
           node --check src/shadow/shadow-compare.js
           node --check src/legacy/legacy-fetch.js
           node --check tests/modular-router.test.mjs
           node --check tests/frontend-routes.test.mjs
           node --check tests/shadow-compare.test.mjs
           node --check tests/console-summary-shadow.test.mjs
+          node --check tests/calendar-events-shadow.test.mjs
           node --check tools/staging-preflight.mjs
 
       - name: Run read-only modular regression tests
-        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs
+        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs
 
       - name: Run staging safety preflight
         run: node tools/staging-preflight.mjs wrangler.staging.toml
