@@ -56,9 +56,46 @@ export async function serveKnowledgeBaseHtml(request, env, { fetchImpl = fetch, 
   });
 }
 
+export async function serveDocsAsset(request, env, pathname, { fetchImpl = fetch } = {}) {
+  const corsHeaders = buildCorsHeaders(request, env);
+  const safePath = String(pathname || '').replace(/^\/+/, '');
+
+  if (!safePath || safePath.includes('..')) {
+    return new Response('Invalid asset path', {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+
+  const sourceResponse = await fetchImpl(`${FRONTEND_RAW_BASE}/${safePath}`, {
+    cf: { cacheEverything: true, cacheTtl: 300 },
+  });
+
+  if (!sourceResponse.ok) {
+    return new Response('Asset not found', {
+      status: 404,
+      headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+
+  const contentType = safePath.endsWith('.md')
+    ? 'text/plain; charset=utf-8'
+    : (sourceResponse.headers.get('Content-Type') || 'application/octet-stream');
+
+  return new Response(sourceResponse.body, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=300',
+    },
+  });
+}
+
 export function registerFrontendRoutes(router, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   const now = dependencies.now || Date.now;
+
   router.get((url, _request, env) => {
     if (url.pathname !== '/knowledge-base' && url.pathname !== '/knowledge-base.html') return false;
     return env.MODULAR_KNOWLEDGE_BASE_ENABLED === 'true';
@@ -69,5 +106,17 @@ export function registerFrontendRoutes(router, dependencies = {}) {
     write: false,
     featureFlag: 'MODULAR_KNOWLEDGE_BASE_ENABLED',
     externalSource: 'github-raw-main',
+  });
+
+  router.get((url, _request, env) => {
+    return url.pathname.startsWith('/docs/') && env.MODULAR_DOCS_ENABLED === 'true';
+  }, (request, env, _ctx, { url }) => serveDocsAsset(request, env, url.pathname, { fetchImpl }), {
+    id: 'FRONTEND-DOCS-ASSET-CANARY-001',
+    path: '/docs/*',
+    risk: 'low',
+    write: false,
+    featureFlag: 'MODULAR_DOCS_ENABLED',
+    externalSource: 'github-raw-main',
+    cacheSeconds: 300,
   });
 }
