@@ -56,6 +56,7 @@ jobs:
           node --check src/modules/crm/crm-members.routes.js
           node --check src/modules/crm/crm-member-search.routes.js
           node --check src/modules/line-oa/line-oa-thread.routes.js
+          node --check src/modules/line-oa/line-oa-threads.routes.js
           node --check src/modules/monitor/smart-monitor-data.routes.js
           node --check src/shadow/shadow-compare.js
           node --check src/legacy/legacy-fetch.js
@@ -84,11 +85,12 @@ jobs:
           node --check tests/crm-members-shadow.test.mjs
           node --check tests/crm-member-search-shadow.test.mjs
           node --check tests/line-oa-thread-shadow.test.mjs
+          node --check tests/line-oa-threads-shadow.test.mjs
           node --check tests/smart-monitor-data-shadow.test.mjs
           node --check tools/staging-preflight.mjs
 
       - name: Run read-only modular regression tests
-        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs tests/knowledge-read-shadow.test.mjs tests/ai-wear-public-shadow.test.mjs tests/ai-wear-gallery-shadow.test.mjs tests/ai-wear-results-shadow.test.mjs tests/ai-wear-cost-summary-shadow.test.mjs tests/ai-wear-settings-shadow.test.mjs tests/ai-wear-share-card-shadow.test.mjs tests/checkin-template-shadow.test.mjs tests/reply-learning-shadow.test.mjs tests/floor-whitelist-shadow.test.mjs tests/reward-config-shadow.test.mjs tests/reward-calendar-events-shadow.test.mjs tests/login-config-shadow.test.mjs tests/auth-session-shadow.test.mjs tests/point-observations-shadow.test.mjs tests/point-member-links-shadow.test.mjs tests/point-stats-data-shadow.test.mjs tests/crm-members-shadow.test.mjs tests/crm-member-search-shadow.test.mjs tests/line-oa-thread-shadow.test.mjs tests/smart-monitor-data-shadow.test.mjs
+        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs tests/knowledge-read-shadow.test.mjs tests/ai-wear-public-shadow.test.mjs tests/ai-wear-gallery-shadow.test.mjs tests/ai-wear-results-shadow.test.mjs tests/ai-wear-cost-summary-shadow.test.mjs tests/ai-wear-settings-shadow.test.mjs tests/ai-wear-share-card-shadow.test.mjs tests/checkin-template-shadow.test.mjs tests/reply-learning-shadow.test.mjs tests/floor-whitelist-shadow.test.mjs tests/reward-config-shadow.test.mjs tests/reward-calendar-events-shadow.test.mjs tests/login-config-shadow.test.mjs tests/auth-session-shadow.test.mjs tests/point-observations-shadow.test.mjs tests/point-member-links-shadow.test.mjs tests/point-stats-data-shadow.test.mjs tests/crm-members-shadow.test.mjs tests/crm-member-search-shadow.test.mjs tests/line-oa-thread-shadow.test.mjs tests/line-oa-threads-shadow.test.mjs tests/smart-monitor-data-shadow.test.mjs
 
       - name: Run staging safety preflight
         run: node tools/staging-preflight.mjs wrangler.staging.toml
