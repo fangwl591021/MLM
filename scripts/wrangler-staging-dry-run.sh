@@ -2,7 +2,9 @@
 set -euo pipefail
 
 CONFIG="${1:-wrangler.staging.toml}"
-TMP_CONFIG="$(mktemp)"
+# Wrangler resolves relative `main` paths from the config file directory.
+# Keep the temporary config in the repository root so `src/index.js` resolves correctly.
+TMP_CONFIG="$(mktemp ./wrangler.staging.dryrun.XXXXXX.toml)"
 OUT_DIR="$(mktemp -d)"
 trap 'rm -f "$TMP_CONFIG"; rm -rf "$OUT_DIR"' EXIT
 
