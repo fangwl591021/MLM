@@ -44,6 +44,11 @@ function buildModularDiagnosticPayload(env) {
   };
 }
 
+function calendarRedirectResponse(request) {
+  const url = new URL(request.url);
+  return Response.redirect(`${url.origin}/console/calendar`, 302);
+}
+
 export function registerSystemRoutes(router) {
   router.get('/health-modular', async (_request, env) => {
     return Response.json(buildModularDiagnosticPayload(env));
@@ -54,8 +59,6 @@ export function registerSystemRoutes(router) {
     write: false,
   });
 
-  // Canary takeover for the real /health path. It is intentionally disabled
-  // unless MODULAR_HEALTH_ENABLED is the literal string "true".
   router.get((url, _request, env) => {
     if (url.pathname !== '/health') return false;
     return env.MODULAR_HEALTH_ENABLED === 'true';
@@ -70,12 +73,24 @@ export function registerSystemRoutes(router) {
   });
 
   router.get('/calendar-modular', async (request) => {
-    const url = new URL(request.url);
-    return Response.redirect(`${url.origin}/console/calendar`, 302);
+    return calendarRedirectResponse(request);
   }, {
-    id: 'SYSTEM-CALENDAR-REDIRECT-001',
+    id: 'SYSTEM-CALENDAR-MODULAR-001',
     path: '/calendar-modular',
     risk: 'low',
     write: false,
+  });
+
+  router.get((url, _request, env) => {
+    if (url.pathname !== '/calendar') return false;
+    return env.MODULAR_CALENDAR_ENABLED === 'true';
+  }, async (request) => {
+    return calendarRedirectResponse(request);
+  }, {
+    id: 'SYSTEM-CALENDAR-CANARY-001',
+    path: '/calendar',
+    risk: 'low',
+    write: false,
+    featureFlag: 'MODULAR_CALENDAR_ENABLED',
   });
 }
