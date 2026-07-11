@@ -17,6 +17,7 @@ import { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitel
 import { registerRewardConfigShadowRoute } from './modules/reward/reward-config.routes.js';
 import { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 import { registerPointObservationsShadowRoute } from './modules/points/point-observations.routes.js';
+import { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -39,6 +40,7 @@ registerFloorWhitelistShadowRoute(router, { legacyFetch });
 registerRewardConfigShadowRoute(router, { legacyFetch });
 registerRewardCalendarEventsShadowRoute(router, { legacyFetch });
 registerPointObservationsShadowRoute(router, { legacyFetch });
+registerPointMemberLinksShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -60,5 +62,6 @@ export { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitel
 export { registerRewardConfigShadowRoute } from './modules/reward/reward-config.routes.js';
 export { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 export { registerPointObservationsShadowRoute } from './modules/points/point-observations.routes.js';
+export { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
 
 export default createApp({ router, legacyFetch });
