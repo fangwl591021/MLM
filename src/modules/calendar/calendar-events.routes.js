@@ -1,4 +1,4 @@
-import { runShadowRead } from '../../shadow/shadow-compare.js';
+import { runShadowReadAfterLegacy } from '../../shadow/shadow-compare.js';
 
 function stringValue(value) {
   return value == null ? '' : String(value);
@@ -76,11 +76,11 @@ export async function calendarEventsCandidateResponse(request, env, options = {}
 
 export function registerCalendarEventsShadowRoute(router, { legacyFetch, logger = console, now = Date.now } = {}) {
   router.get((url, _request, env) => url.pathname === '/api/calendar/events' && env.SHADOW_CALENDAR_EVENTS_ENABLED === 'true', async (request, env, ctx) => {
-    const result = await runShadowRead({
+    const result = await runShadowReadAfterLegacy({
       legacy: () => legacyFetch(request, env, ctx),
       candidate: () => calendarEventsCandidateResponse(request, env, { now }),
       logger,
-      runCandidateWhen: (legacyResponse) => legacyResponse.status >= 200 && legacyResponse.status < 300,
+      allowedStatuses: [200],
     });
     return result.response;
   }, {
