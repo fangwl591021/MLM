@@ -1,0 +1,42 @@
+name: MLM Modular Staging Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "wrangler.staging.toml"
+      - ".github/workflows/mlm-modular-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Syntax check modular files
+        run: |
+          node --check src/app.js
+          node --check src/index.js
+          node --check src/router/router.js
+          node --check src/modules/system/system.routes.js
+          node --check src/legacy/legacy-fetch.js
+          node --check tests/modular-router.test.mjs
+
+      - name: Run read-only modular regression tests
+        run: node --test tests/modular-router.test.mjs
+
+      - name: Verify production entry files are untouched by Batch A
+        shell: bash
+        run: |
+          git diff --exit-code origin/${{ github.base_ref || 'main' }}...HEAD -- worker/worker.js wrangler.toml
