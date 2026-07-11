@@ -1,0 +1,42 @@
+name: MLM Worker Inventory
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "worker/worker.js"
+      - "tools/inventory-scan.mjs"
+      - ".github/workflows/mlm-worker-inventory.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run read-only inventory scan
+        run: node tools/inventory-scan.mjs worker/worker.js artifacts/inventory
+
+      - name: Add summary to workflow
+        shell: bash
+        run: |
+          echo "## MLM Worker Inventory" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat artifacts/inventory/inventory-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload inventory reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlm-worker-inventory
+          path: artifacts/inventory/
+          if-no-files-found: error
+          retention-days: 30
