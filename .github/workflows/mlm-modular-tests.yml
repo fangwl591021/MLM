@@ -40,6 +40,7 @@ jobs:
           node --check src/modules/ai-wear/ai-wear-public.routes.js
           node --check src/modules/ai-wear/ai-wear-gallery.routes.js
           node --check src/modules/ai-wear/ai-wear-results.routes.js
+          node --check src/modules/ai-wear/ai-wear-cost-summary.routes.js
           node --check src/shadow/shadow-compare.js
           node --check src/legacy/legacy-fetch.js
           node --check tests/modular-router.test.mjs
@@ -51,10 +52,11 @@ jobs:
           node --check tests/ai-wear-public-shadow.test.mjs
           node --check tests/ai-wear-gallery-shadow.test.mjs
           node --check tests/ai-wear-results-shadow.test.mjs
+          node --check tests/ai-wear-cost-summary-shadow.test.mjs
           node --check tools/staging-preflight.mjs
 
       - name: Run read-only modular regression tests
-        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs tests/knowledge-read-shadow.test.mjs tests/ai-wear-public-shadow.test.mjs tests/ai-wear-gallery-shadow.test.mjs tests/ai-wear-results-shadow.test.mjs
+        run: node --test tests/modular-router.test.mjs tests/frontend-routes.test.mjs tests/shadow-compare.test.mjs tests/console-summary-shadow.test.mjs tests/calendar-events-shadow.test.mjs tests/knowledge-read-shadow.test.mjs tests/ai-wear-public-shadow.test.mjs tests/ai-wear-gallery-shadow.test.mjs tests/ai-wear-results-shadow.test.mjs tests/ai-wear-cost-summary-shadow.test.mjs
 
       - name: Run staging safety preflight
         run: node tools/staging-preflight.mjs wrangler.staging.toml
