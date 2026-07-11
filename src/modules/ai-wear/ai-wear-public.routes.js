@@ -85,7 +85,7 @@ export function normalizePublicAiWearSettings(input = {}) {
   };
 }
 
-function publicBaseUrl(env) {
+export function aiWearPublicBaseUrl(env) {
   return stringValue(env.PUBLIC_BASE_URL || env.WORKER_PUBLIC_URL || DEFAULT_PUBLIC_BASE_URL).replace(/\/+$/, '');
 }
 
@@ -102,7 +102,7 @@ function buildCorsHeaders(request, env) {
   };
 }
 
-function referenceToClient(row, env) {
+export function aiWearReferenceToClient(row, env) {
   const id = stringValue(row.id);
   const version = numberOrZero(row.updated_at) || numberOrZero(row.created_at);
   return {
@@ -112,7 +112,7 @@ function referenceToClient(row, env) {
     fileName: stringValue(row.file_name),
     mimeType: stringValue(row.mime_type),
     size: numberOrZero(row.size),
-    url: `${publicBaseUrl(env)}${REFERENCE_PREFIX}${encodeURIComponent(id)}?v=${version}`,
+    url: `${aiWearPublicBaseUrl(env)}${REFERENCE_PREFIX}${encodeURIComponent(id)}?v=${version}`,
     createdAt: numberOrZero(row.created_at),
     updatedAt: numberOrZero(row.updated_at),
   };
@@ -130,7 +130,7 @@ export async function getAiWearPublicCandidate(env) {
   }
   return {
     settings: normalizePublicAiWearSettings(stored),
-    gallery: (references.results || []).map((row) => referenceToClient(row, env)),
+    gallery: (references.results || []).map((row) => aiWearReferenceToClient(row, env)),
   };
 }
 
