@@ -13,6 +13,7 @@ import { registerAiWearShareCardShadowRoute } from './modules/ai-wear/ai-wear-sh
 import { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 import { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
 import { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
+import { registerRewardConfigShadowRoute } from './modules/reward/reward-config.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -31,6 +32,7 @@ registerAiWearShareCardShadowRoute(router, { legacyFetch });
 registerCheckinTemplateShadowRoute(router, { legacyFetch });
 registerReplyLearningShadowRoute(router, { legacyFetch });
 registerFloorWhitelistShadowRoute(router, { legacyFetch });
+registerRewardConfigShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -48,5 +50,6 @@ export { registerAiWearShareCardShadowRoute } from './modules/ai-wear/ai-wear-sh
 export { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-template.routes.js';
 export { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
 export { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
+export { registerRewardConfigShadowRoute } from './modules/reward/reward-config.routes.js';
 
 export default createApp({ router, legacyFetch });
