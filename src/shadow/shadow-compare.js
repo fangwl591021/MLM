@@ -63,3 +63,20 @@ export async function runShadowRead({ legacy, candidate, compareOptions, logger 
   logger.info?.(JSON.stringify({ level: comparison.equal ? 'info' : 'warn', type: 'shadow-read-comparison', equal: comparison.equal, differences: comparison.differences }));
   return { response: legacyResponse, comparison };
 }
+
+export async function runShadowReadAfterLegacy({ legacy, candidate, compareOptions, logger = console, allowedStatuses = [200] }) {
+  const legacyResponse = await legacy();
+  if (!allowedStatuses.includes(legacyResponse.status)) {
+    logger.info?.(JSON.stringify({ level: 'info', type: 'shadow-read-skipped', legacyStatus: legacyResponse.status }));
+    return { response: legacyResponse, comparison: { skipped: true, legacyStatus: legacyResponse.status } };
+  }
+  try {
+    const candidateResponse = await candidate();
+    const comparison = await compareResponses(legacyResponse, candidateResponse, compareOptions);
+    logger.info?.(JSON.stringify({ level: comparison.equal ? 'info' : 'warn', type: 'shadow-read-comparison', equal: comparison.equal, differences: comparison.differences }));
+    return { response: legacyResponse, comparison };
+  } catch (error) {
+    logger.error(JSON.stringify({ level: 'error', type: 'shadow-read-candidate-error', message: error instanceof Error ? error.message : String(error) }));
+    return { response: legacyResponse, comparison: { equal: false, candidateError: true } };
+  }
+}
