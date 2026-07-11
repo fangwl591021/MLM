@@ -68,6 +68,27 @@ test('public reward event falls back to early minutes and configured default poi
   assert.equal(data.points, 15);
 });
 
+test('reward calendar point parsing and checkin fallback match legacy rules', () => {
+  const startsAt = 2_000_000;
+  const base = { uid: 'event-4', summary: '', location: '', startsAt, endsAt: startsAt + 60_000, checkinStartsAt: 0, checkinEndsAt: 0 };
+  assert.equal(publicRewardCalendarEvent({ ...base, description: '本場 points: 7.5' }, {}, startsAt).points, 7.5);
+  assert.equal(publicRewardCalendarEvent({ ...base, description: '完成可獲 6 K點' }, {}, startsAt).points, 6);
+  assert.equal(publicRewardCalendarEvent({ ...base, description: '贈點：0' }, { REWARD_CALENDAR_DEFAULT_POINTS: '11' }, startsAt).points, 11);
+  const laterConfiguredStart = publicRewardCalendarEvent({ ...base, description: '', checkinStartsAt: startsAt + 1 }, { REWARD_CHECKIN_EARLY_MINUTES: '45' }, startsAt);
+  assert.equal(laterConfiguredStart.checkinStartsAt, startsAt - 45 * 60 * 1000);
+});
+
+test('reward calendar filters invalid rows and sorts by startsAt', async () => {
+  const now = Date.parse('2026-07-11T10:30:00+08:00');
+  const DB = fakeDb([
+    { id: 'late', title: '晚場', description: '', location: '', starts_at: now + 20_000, ends_at: now + 30_000, checkin_starts_at: 0, checkin_ends_at: 0 },
+    { id: 'invalid', title: '無效', description: '', location: '', starts_at: 0, ends_at: 0, checkin_starts_at: 0, checkin_ends_at: 0 },
+    { id: 'early', title: '早場', description: '', location: '', starts_at: now + 10_000, ends_at: now + 15_000, checkin_starts_at: 0, checkin_ends_at: 0 },
+  ]);
+  const events = await listRewardCalendarEventsCandidate({ DB }, { now: () => now });
+  assert.deepEqual(events.map((event) => event.uid), ['early', 'late']);
+});
+
 test('reward calendar flag disabled stays on legacy', async () => {
   const router = createRouter();
   let calls = 0;
