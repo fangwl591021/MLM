@@ -18,6 +18,7 @@ import { registerRewardConfigShadowRoute } from './modules/reward/reward-config.
 import { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 import { registerPointObservationsShadowRoute } from './modules/points/point-observations.routes.js';
 import { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
+import { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -41,6 +42,7 @@ registerRewardConfigShadowRoute(router, { legacyFetch });
 registerRewardCalendarEventsShadowRoute(router, { legacyFetch });
 registerPointObservationsShadowRoute(router, { legacyFetch });
 registerPointMemberLinksShadowRoute(router, { legacyFetch });
+registerCrmMembersShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -63,5 +65,6 @@ export { registerRewardConfigShadowRoute } from './modules/reward/reward-config.
 export { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 export { registerPointObservationsShadowRoute } from './modules/points/point-observations.routes.js';
 export { registerPointMemberLinksShadowRoute } from './modules/points/point-member-links.routes.js';
+export { registerCrmMembersShadowRoute } from './modules/crm/crm-members.routes.js';
 
 export default createApp({ router, legacyFetch });
