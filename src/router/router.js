@@ -22,7 +22,7 @@ export function createRouter() {
       const url = new URL(request.url);
       for (const route of routes) {
         if (route.method !== '*' && route.method !== request.method.toUpperCase()) continue;
-        if (!route.matcher(url, request)) continue;
+        if (!route.matcher(url, request, env, ctx)) continue;
         return route.handler(request, env, ctx, { url, meta: route.meta });
       }
       return null;
