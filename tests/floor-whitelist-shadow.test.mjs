@@ -18,7 +18,7 @@ function fakeDb(rows = []) {
   };
 }
 
-test('floor whitelist candidate preserves grouping and fallback floor mapping', async () => {
+test('floor whitelist candidate preserves exact legacy grouping and fallback floor mapping', async () => {
   const DB = fakeDb([
     { floor_id: 'admin', operator_id: 'A1', operator_name: '行政', active: 1, updated_at: 10 },
     { floor_id: 'admin_all', operator_id: 'ROOT', operator_name: '總管', active: 1, updated_at: 20 },
@@ -32,9 +32,9 @@ test('floor whitelist candidate preserves grouping and fallback floor mapping', 
   assert.deepEqual(data, { floors: {
     main: [{ floorId: 'main', operatorId: 'M1', operatorName: '產品', active: false, updatedAt: 30 }],
     admin: [{ floorId: 'admin', operatorId: 'A1', operatorName: '行政', active: true, updatedAt: 10 }],
-    smart: [],
     adminAll: [{ floorId: 'admin_all', operatorId: 'ROOT', operatorName: '總管', active: true, updatedAt: 20 }],
   } });
+  assert.equal(Object.hasOwn(data.floors, 'smart'), false);
 });
 
 test('floor whitelist route stays on legacy when flag is disabled', async () => {
@@ -54,7 +54,7 @@ test('floor whitelist candidate runs only after successful access-manager author
   const router = createRouter();
   const DB = fakeDb([]);
   registerFloorWhitelistShadowRoute(router, {
-    legacyFetch: async () => Response.json({ status: 'success', data: { floors: { main: [], admin: [], smart: [], adminAll: [] } } }),
+    legacyFetch: async () => Response.json({ status: 'success', data: { floors: { main: [], admin: [], adminAll: [] } } }),
     logger: { info() {}, error() {} },
   });
   const app = createApp({ router, legacyFetch: async () => { throw new Error('unexpected fallback'); } });
