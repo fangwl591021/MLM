@@ -14,6 +14,7 @@ import { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-te
 import { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
 import { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
 import { registerRewardConfigShadowRoute } from './modules/reward/reward-config.routes.js';
+import { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -33,6 +34,7 @@ registerCheckinTemplateShadowRoute(router, { legacyFetch });
 registerReplyLearningShadowRoute(router, { legacyFetch });
 registerFloorWhitelistShadowRoute(router, { legacyFetch });
 registerRewardConfigShadowRoute(router, { legacyFetch });
+registerRewardCalendarEventsShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -51,5 +53,6 @@ export { registerCheckinTemplateShadowRoute } from './modules/checkin/checkin-te
 export { registerReplyLearningShadowRoute } from './modules/reply-learning/reply-learning.routes.js';
 export { registerFloorWhitelistShadowRoute } from './modules/access/floor-whitelist.routes.js';
 export { registerRewardConfigShadowRoute } from './modules/reward/reward-config.routes.js';
+export { registerRewardCalendarEventsShadowRoute } from './modules/reward/reward-calendar-events.routes.js';
 
 export default createApp({ router, legacyFetch });
