@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "strategy": "strangler-with-shadow-read",
+  "productionEntryFrozen": ["worker/worker.js", "wrangler.toml"],
+  "requiredFields": ["id", "module", "risk", "reads", "writes", "externalApis", "schemaSideEffects", "activation"],
+  "batches": [
+    {
+      "id": "P2-LINE-OA-READS",
+      "module": "line-oa",
+      "risk": "high",
+      "reads": ["threads", "messages", "profiles", "webhook_events"],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /api/line-oa/thread", "GET /api/line-oa/threads"]
+    },
+    {
+      "id": "P2-CRM-READS",
+      "module": "crm",
+      "risk": "high",
+      "reads": ["crm_members", "member_line_links"],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /admin/crm/members", "GET /admin/crm/member-search"]
+    },
+    {
+      "id": "P2-POINTS-LOCAL-READS",
+      "module": "points",
+      "risk": "high",
+      "reads": ["point_ledger", "point_accounts", "member_line_links", "crm_members", "profiles"],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /admin/points/observations", "GET /admin/points/member-links", "GET /admin/points/stats-data"]
+    },
+    {
+      "id": "P2-REWARD-READS",
+      "module": "reward",
+      "risk": "medium",
+      "reads": ["calendar_events"],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /api/reward/config", "GET /api/reward/calendar-events"]
+    },
+    {
+      "id": "P2-AI-WEAR-READS",
+      "module": "ai-wear",
+      "risk": "high",
+      "reads": ["ai_wear_settings", "ai_wear_gallery", "ai_wear_results", "ai_wear_shares", "crm_members"],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /api/ai-wear-public", "GET /api/ai-wear-gallery", "GET /api/ai-wear-results", "GET /api/ai-wear-cost-summary", "GET /api/ai-wear-settings", "GET /api/ai-wear-share-card"]
+    },
+    {
+      "id": "P2-MONITOR-READS",
+      "module": "monitor",
+      "risk": "high",
+      "reads": ["point_ledger", "daily_keyword_rewards", "webhook_events", "threads", "messages"],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /admin/smart-monitor-data"]
+    },
+    {
+      "id": "P2-AUTH-READS",
+      "module": "system",
+      "risk": "high",
+      "reads": [],
+      "writes": [],
+      "externalApis": [],
+      "schemaSideEffects": false,
+      "activation": "shadow-after-legacy-200",
+      "status": "candidate-ready",
+      "routes": ["GET /api/login-config", "GET /api/auth/session"]
+    },
+    {
+      "id": "P2-DEFER-EXTERNAL-POINTS",
+      "module": "points",
+      "risk": "critical",
+      "reads": [],
+      "writes": [],
+      "externalApis": ["WETW point query API"],
+      "schemaSideEffects": false,
+      "activation": "deferred",
+      "status": "blocked-external-side-effect",
+      "routes": ["GET /admin/points/ledger", "GET /admin/points/balance"]
+    },
+    {
+      "id": "P2-DEFER-WRITES",
+      "module": "cross-cutting",
+      "risk": "critical",
+      "reads": [],
+      "writes": ["D1", "R2", "LINE", "WETW"],
+      "externalApis": ["LINE Messaging API", "WETW mutation API", "OpenAI Images API"],
+      "schemaSideEffects": true,
+      "activation": "deferred",
+      "status": "blocked-write-path",
+      "routes": ["all POST/PUT/PATCH/DELETE mutation routes"]
+    }
+  ]
+}
