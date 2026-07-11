@@ -4,6 +4,7 @@ import { registerFrontendRoutes } from './modules/frontend/frontend.routes.js';
 import { registerConsoleSummaryShadowRoute } from './modules/console/console-summary.routes.js';
 import { registerCalendarEventsShadowRoute } from './modules/calendar/calendar-events.routes.js';
 import { registerKnowledgeReadShadowRoutes } from './modules/knowledge/knowledge-read.routes.js';
+import { registerAiWearPublicShadowRoute } from './modules/ai-wear/ai-wear-public.routes.js';
 import { legacyFetch } from './legacy/legacy-fetch.js';
 import { createApp } from './app.js';
 
@@ -13,6 +14,7 @@ registerFrontendRoutes(router);
 registerConsoleSummaryShadowRoute(router, { legacyFetch });
 registerCalendarEventsShadowRoute(router, { legacyFetch });
 registerKnowledgeReadShadowRoutes(router, { legacyFetch });
+registerAiWearPublicShadowRoute(router, { legacyFetch });
 
 export { createApp } from './app.js';
 export { createRouter } from './router/router.js';
@@ -21,5 +23,6 @@ export { registerFrontendRoutes } from './modules/frontend/frontend.routes.js';
 export { registerConsoleSummaryShadowRoute } from './modules/console/console-summary.routes.js';
 export { registerCalendarEventsShadowRoute } from './modules/calendar/calendar-events.routes.js';
 export { registerKnowledgeReadShadowRoutes } from './modules/knowledge/knowledge-read.routes.js';
+export { registerAiWearPublicShadowRoute } from './modules/ai-wear/ai-wear-public.routes.js';
 
 export default createApp({ router, legacyFetch });
