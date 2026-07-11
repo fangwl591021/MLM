@@ -10,7 +10,7 @@ function dbMock() {
     if(q.sql.includes('FROM threads t LEFT JOIN profiles')) return {results:[{id:'user:U1',floor_id:'main',user_id:'U1',display_name:'王小明',summary:'測試',status:'pending',risk:'low',tags:'[]',note:'',last_message_at:1,updated_at:1}]};
     if(q.sql.includes('FROM messages WHERE thread_id IN')) return {results:[{id:1,thread_id:'user:U1',floor_id:'main',user_id:'U1',sender_role:'user',message_type:'text',text:'你好',created_at:1,suggestions:'[]',important:0,raw_json:'{}'}]};
     return {results:[]};
-  }}}}};
+  }}}};
 }
 
 test('candidate reads local D1 only and maps threads', async()=>{const DB=dbMock();const rows=await listLineOaThreadsCandidate({DB},'main');assert.equal(rows.length,1);assert.equal(rows[0].name,'王小明');assert.equal(rows[0].messages[0].text,'你好');assert.equal(DB.queries.length,2);for(const q of DB.queries){assert.match(q.sql,/^SELECT/i);assert.doesNotMatch(q.sql,/\b(CREATE|ALTER|INSERT|UPDATE|DELETE|DROP|REPLACE)\b/i)}});
