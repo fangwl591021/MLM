@@ -1,0 +1,16 @@
+name: MLM Modular Staging Tests
+
+on:
+  push:
+    branches: ["refactor/phase2-module-split"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run phase2:check

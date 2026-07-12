@@ -1,0 +1,17 @@
+{
+  "batch": "A-points",
+  "featureFlagDefault": false,
+  "requiredFiles": [
+    "src/modules/points/point-stats-core.js",
+    "src/modules/points/point-stats-candidate.js",
+    "src/modules/system/shadow-compare.js"
+  ],
+  "dependencyDirection": {
+    "point-stats-candidate.js": ["point-stats-core.js"],
+    "shadow-compare.js": []
+  },
+  "forbiddenCoreReferences": ["worker/worker.js", "wrangler.toml", "router", "middleware", "monitor", "reward", "ai-wear", "line-oa", "crm"],
+  "runtimeWiring": "local-shadow-harness-only",
+  "productionRoute": "unchanged",
+  "legacyResponseOwner": true
+}

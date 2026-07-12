@@ -1,0 +1,12 @@
+{
+  "batch": "A-points",
+  "baselineCommit": "bfe2034",
+  "workerBlobSha1": "902d735d09f3e906d54e60388e2ffeed388305d5",
+  "wranglerBlobSha1": "08eacc43e7b85bbf4833b9dfc53a30b68d6833f9",
+  "routeInventory": {
+    "method": "protected by unchanged worker blob hash",
+    "formalRouteChanged": false,
+    "newWriteRoute": false
+  },
+  "secretsIncluded": false
+}
