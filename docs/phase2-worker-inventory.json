@@ -8,5 +8,6 @@
     "formalRouteChanged": false,
     "newWriteRoute": false
   },
+  "requiredCandidateFiles": ["src/modules/points/point-stats-core.js", "src/modules/points/point-stats-candidate.js", "src/modules/reward/reward-read-core.js", "src/modules/reward/reward-read-candidate.js"],
   "secretsIncluded": false
 }

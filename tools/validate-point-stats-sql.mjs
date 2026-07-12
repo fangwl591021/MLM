@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const { POINT_STATS_SQL } = require("../src/modules/points/point-stats-candidate.js");
+const { REWARD_CALENDAR_SQL } = require("../src/modules/reward/reward-read-candidate.js");
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const worker = fs.readFileSync(path.join(root, "worker/worker.js"), "utf8");
 const where = "pl.created_at >= ? AND pl.source NOT IN ('sync', 'import') AND pl.action NOT IN ('sync', 'import') AND pl.business_key NOT LIKE 'sync:%' AND pl.channel_key = ? AND pl.point_type = ?";
@@ -71,7 +72,15 @@ for (const [name, pattern, candidateFactory] of specs) {
   console.log(`${name}: ${hash(legacy)} ${hash(candidate)}`);
   if (legacy !== candidate) failures.push(`${name}: SQL mismatch`);
 }
-if (failures.length) {
+const rewardMatch = worker.match(/async function fetchRewardCalendarEvents[\s\S]*?prepare\(`([\s\S]*?)`\)\.bind/);
+if (!rewardMatch) failures.push("reward-calendar: Legacy SQL not found");
+else {
+  const legacy = normalize(rewardMatch[1]);
+  const candidate = normalize(REWARD_CALENDAR_SQL);
+  const hash = (sql) => crypto.createHash("sha256").update(sql).digest("hex");
+  console.log(`reward-calendar: ${hash(legacy)} ${hash(candidate)}`);
+  if (legacy !== candidate) failures.push("reward-calendar: SQL mismatch");
+}if (failures.length) {
   console.error("Point Stats SQL Parity: FAIL");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exitCode = 1;

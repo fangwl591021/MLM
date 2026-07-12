@@ -11,6 +11,7 @@
     "shadow-compare.js": []
   },
   "forbiddenCoreReferences": ["worker/worker.js", "wrangler.toml", "router", "middleware", "monitor", "reward", "ai-wear", "line-oa", "crm"],
+  "rewardCoreForbiddenReferences": ["worker/worker.js", "wrangler.toml", "router", "middleware", "monitor", "ai-wear", "line-oa", "crm"],
   "runtimeWiring": "local-shadow-harness-only",
   "productionRoute": "unchanged",
   "legacyResponseOwner": true

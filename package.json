@@ -2,7 +2,7 @@
   "name": "mlm-phase2-harness",
   "private": true,
   "scripts": {
-    "test": "node --test tests/modules/points/point-stats-core.test.cjs tests/modules/points/point-stats-candidate.test.cjs tests/modules/system/shadow-compare.test.cjs",
+    "test": "node --test tests/modules/points/point-stats-core.test.cjs tests/modules/points/point-stats-candidate.test.cjs tests/modules/system/shadow-compare.test.cjs tests/modules/reward/reward-read-core.test.cjs tests/modules/reward/reward-read-candidate.test.cjs",
     "phase2:boundary": "node tools/validate-phase2-boundaries.mjs",
     "phase2:inventory": "node tools/phase2-worker-inventory.mjs",
     "phase2:dry-run": "node tools/phase2-staging-dry-run.mjs",

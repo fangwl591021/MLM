@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { runPointStatsCandidate } from "../src/modules/points/point-stats-candidate.js";
 import { compareShadowResults } from "../src/modules/system/shadow-compare.js";
+import rewardModule from "../src/modules/reward/reward-read-candidate.js";
+const { runRewardReadCandidate } = rewardModule;
 
 function mockDb() {
   const calls = [];
@@ -34,3 +36,24 @@ console.log("Phase 2 Staging Dry Run: PASS");
 console.log("- Local Shadow Harness");
 console.log("- Not Production Wiring");
 console.log("- feature flag false path, candidate order, compare mismatch and exception isolation verified");
+const rewardDisabled = await runRewardReadCandidate({ db: { prepare() { throw new Error("must not query"); } } });
+assert.equal(rewardDisabled.enabled, false);
+const rewardCalls = [];
+const rewardDb = {
+  prepare(sql) {
+    return {
+      bind(...bindings) {
+        rewardCalls.push({ sql, bindings });
+        return { all: async () => ({ results: [
+          { id: "event-2", title: "第二場 5 K點", description: "", starts_at: 3000, ends_at: 4000, checkin_starts_at: 0, checkin_ends_at: 0, location: "台北" },
+          { id: "event-1", title: "第一場", description: "", starts_at: 1000, ends_at: 2000, checkin_starts_at: 900, checkin_ends_at: 1800, location: "台中" },
+        ] }) };
+      },
+    };
+  },
+};
+const rewardCandidate = await runRewardReadCandidate({ db: rewardDb, featureFlag: true, requestInput: { campaign: "calendar_auto" }, now: 1000000000000 });
+assert.equal(rewardCalls.length, 1);
+assert.equal(rewardCandidate.config.calendarMode, true);
+assert.deepEqual(rewardCandidate.calendar.events.map((event) => event.uid), ["event-1", "event-2"]);
+assert.equal(rewardCandidate.calendar.events[1].points, 5);
