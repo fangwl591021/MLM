@@ -12,11 +12,13 @@ function gitBlob(relative) {
 for (const file of ["worker/worker.js", "wrangler.toml"]) if (!fs.existsSync(path.join(root, file))) failures.push(`missing ${file}`);
 if (fs.existsSync(path.join(root, "worker/worker.js")) && gitBlob("worker/worker.js") !== inventory.workerBlobSha1) failures.push("worker/worker.js baseline hash mismatch");
 if (fs.existsSync(path.join(root, "wrangler.toml")) && gitBlob("wrangler.toml") !== inventory.wranglerBlobSha1) failures.push("wrangler.toml baseline hash mismatch");
-for (const file of ["src/modules/points/point-stats-core.js", "src/modules/points/point-stats-candidate.js", "src/modules/reward/reward-read-core.js", "src/modules/reward/reward-read-candidate.js"]) if (!fs.existsSync(path.join(root, file))) failures.push(`missing ${file}`);
+for (const file of ["src/modules/points/point-stats-core.js", "src/modules/points/point-stats-candidate.js", "src/modules/reward/reward-read-core.js", "src/modules/reward/reward-read-candidate.js", "src/modules/ai-wear/ai-wear-read-core.js", "src/modules/ai-wear/ai-wear-read-candidate.js"]) if (!fs.existsSync(path.join(root, file))) failures.push(`missing ${file}`);
 const candidate = fs.readFileSync(path.join(root, "src/modules/points/point-stats-candidate.js"), "utf8");
 if (!candidate.includes("featureFlag = false")) failures.push("feature flag default is not false");
 const rewardCandidate = fs.readFileSync(path.join(root, "src/modules/reward/reward-read-candidate.js"), "utf8");
 if (!rewardCandidate.includes("featureFlag = false")) failures.push("reward feature flag default is not false");
+const aiWearCandidate = fs.readFileSync(path.join(root, "src/modules/ai-wear/ai-wear-read-candidate.js"), "utf8");
+if (!aiWearCandidate.includes("AI_WEAR_READ_SHADOW_ENABLED = false")) failures.push("AI Wear feature flag default is not false");
 if (failures.length) {
   console.error("Phase 2 Worker Inventory: FAIL");
   for (const failure of failures) console.error(`- ${failure}`);
