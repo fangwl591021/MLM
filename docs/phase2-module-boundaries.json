@@ -6,7 +6,8 @@
                           "src/modules/points/point-stats-candidate.js",
                           "src/modules/system/shadow-compare.js",
                           "src/modules/ai-wear/ai-wear-read-core.js",
-                          "src/modules/ai-wear/ai-wear-read-candidate.js"
+                          "src/modules/ai-wear/ai-wear-read-candidate.js",
+                          "src/modules/compliance/compliance-scan-core.js"
                       ],
     "dependencyDirection":  {
                                 "point-stats-candidate.js":  [

@@ -7,6 +7,9 @@
  * - GAS is kept as an async backup / legacy bridge.
  */
 
+import complianceScanCore from "../src/modules/compliance/compliance-scan-core.js";
+
+const { buildComplianceScanResult, canPublishComplianceResult, hashComplianceContent } = complianceScanCore;
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 const STATUS_PENDING = "\u5f85\u56de\u8986";
 const STATUS_IMPORTANT = "\u5f85\u8655\u7406";
@@ -649,6 +652,45 @@ export default {
         return jsonResponse({ status: "success", scanned: results.length, results }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/knowledge/editor-config" && request.method === "GET") {
+        await assertDashboardAuth(request, env);
+        return jsonResponse({ success: true, status: "success", data: knowledgeEditorFlags(env) }, 200, corsHeaders);
+      }
+
+      const knowledgeItemMatch = url.pathname.match(/^\/api\/knowledge\/items\/(\d+)$/);
+      const knowledgeItemsRoute = url.pathname === "/api/knowledge/items";
+      if ((knowledgeItemsRoute || knowledgeItemMatch) && ["GET", "POST", "PUT", "DELETE"].includes(request.method)) {
+        if (!knowledgeItemEditorEnabled(env)) return jsonResponse({ success: false, status: "error", message: "KNOWLEDGE_ITEM_EDITOR_DISABLED" }, 404, corsHeaders);
+        const auth = await assertDashboardAuth(request, env);
+        const itemId = knowledgeItemMatch ? Number(knowledgeItemMatch[1]) : 0;
+        if (request.method === "GET") {
+          const data = itemId ? await getKnowledgeItem(env, floor, itemId) : await listKnowledgeItems(env, floor, url.searchParams);
+          if (!data) return jsonResponse({ success: false, status: "error", message: "KNOWLEDGE_ITEM_NOT_FOUND" }, 404, corsHeaders);
+          return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+        }
+        if (request.method === "POST" && !knowledgeItemsRoute) return jsonResponse({ success: false, status: "error", message: "METHOD_NOT_ALLOWED" }, 405, corsHeaders);
+        if (request.method === "POST") {
+          const body = await safeJson(request);
+          const data = await createKnowledgeItem(env, floor, body, request, auth);
+          return jsonResponse({ success: true, status: "success", data }, 201, corsHeaders);
+        }
+        if (!itemId) return jsonResponse({ success: false, status: "error", message: "item id is required" }, 400, corsHeaders);
+        if (request.method === "PUT") {
+          const body = await safeJson(request);
+          const data = await updateKnowledgeItem(env, floor, itemId, body, request, auth);
+          return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+        }
+        const data = await archiveKnowledgeItem(env, floor, itemId, request, auth);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/compliance/scan" && request.method === "POST") {
+        if (!knowledgeComplianceReviewEnabled(env)) return jsonResponse({ success: false, status: "error", message: "KNOWLEDGE_COMPLIANCE_REVIEW_DISABLED" }, 404, corsHeaders);
+        const auth = await assertDashboardAuth(request, env);
+        const body = await safeJson(request);
+        const data = await scanKnowledgeContent(env, floor, body, request, auth, null, "scan");
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/knowledge" && request.method === "POST") {
         await assertDashboardAuth(request, env);
         const body = await safeJson(request);
@@ -1367,7 +1409,7 @@ function requiresFloorAccess(pathname) {
   if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path === "/api/ai-wear-share-card" || path.startsWith("/ai-wear/share/")) return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
-  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results" || path === "/api/ai-wear-cost-summary") return true;
+  if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/knowledge/editor-config" || path === "/api/knowledge/items" || path.startsWith("/api/knowledge/items/") || path === "/api/compliance/scan" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results" || path === "/api/ai-wear-cost-summary") return true;
   if (path === "/api/backfill-profiles" || path === "/api/profile-debug") return true;
   if (path === "/admin/points/stats" || path === "/admin/points/stats-data") return false;
   if (path.startsWith("/admin/points/")) return true;
@@ -7556,7 +7598,8 @@ async function analyzeMessage(env, floor, text, userId, userName) {
 async function localKnowledgeSuggestion(env, floor, text) {
   if (!env.DB) return { matches: [], suggestions: [] };
   const targetFloor = floor || FLOOR_MAIN;
-  const { results } = await env.DB.prepare("SELECT category, question, answer FROM knowledge_items WHERE floor_id = ? OR floor_id = 'main' ORDER BY CASE WHEN floor_id = ? THEN 0 ELSE 1 END, id ASC LIMIT 1200").bind(targetFloor, targetFloor).all();
+  const knowledgeFilter = knowledgeComplianceReviewEnabled(env) ? " AND (status IS NULL OR status = 'published') AND deleted_at IS NULL AND (compliance_status IS NULL OR compliance_status <> 'blocked')" : "";
+  const { results } = await env.DB.prepare(`SELECT category, question, answer FROM knowledge_items WHERE (floor_id = ? OR floor_id = 'main')${knowledgeFilter} ORDER BY CASE WHEN floor_id = ? THEN 0 ELSE 1 END, id ASC LIMIT 1200`).bind(targetFloor, targetFloor).all();
   const query = normalizeKnowledgeText(text);
   const terms = knowledgeSearchTerms(text);
   const matches = (results || []).map((item) => {
@@ -7887,6 +7930,156 @@ async function getKnowledgeMeta(env, floor = FLOOR_MAIN) {
   return { count: Number((count && count.count) || 0), source: "D1", updatedAt: "" };
 }
 
+function flagEnabled(value) {
+  return value === true || String(value || "").trim().toLowerCase() === "true";
+}
+
+function knowledgeItemEditorEnabled(env) {
+  return flagEnabled(env && env.KNOWLEDGE_ITEM_EDITOR_ENABLED);
+}
+
+function knowledgeComplianceReviewEnabled(env) {
+  return flagEnabled(env && env.KNOWLEDGE_COMPLIANCE_REVIEW_ENABLED);
+}
+
+function knowledgeEditorFlags(env) {
+  return {
+    itemEditorEnabled: knowledgeItemEditorEnabled(env),
+    complianceReviewEnabled: knowledgeComplianceReviewEnabled(env),
+    defaultStatus: "draft",
+  };
+}
+
+function knowledgeKeywords(value) {
+  if (Array.isArray(value)) return value.map((item) => stringValue(item)).filter(Boolean).slice(0, 50);
+  if (typeof value === "string") return value.split(/[\n,，、]/u).map((item) => item.trim()).filter(Boolean).slice(0, 50);
+  return [];
+}
+
+function knowledgeStatus(value, fallback = "draft") {
+  const status = stringValue(value || fallback).toLowerCase();
+  return ["draft", "published", "archived"].includes(status) ? status : fallback;
+}
+
+function knowledgeActorId(request) {
+  return stringValue(request.headers.get("X-Operator-Id") || request.headers.get("X-Admin-User") || "knowledge-manager").slice(0, 120);
+}
+
+function knowledgeItemRowToApi(row) {
+  let keywords = [];
+  try { keywords = row.keywords_json ? JSON.parse(row.keywords_json) : []; } catch (_error) { keywords = []; }
+  return {
+    id: Number(row.id),
+    floor: stringValue(row.floor_id || "main"),
+    sourcePath: stringValue(row.source || ""),
+    category: stringValue(row.category || "一般"),
+    question: stringValue(row.question),
+    answer: stringValue(row.answer),
+    keywords: knowledgeKeywords(keywords),
+    status: knowledgeStatus(row.status, "published"),
+    complianceStatus: stringValue(row.compliance_status || "not_scanned"),
+    sourceType: stringValue(row.source_type || "imported"),
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: stringValue(row.created_at),
+    updatedAt: stringValue(row.updated_at),
+    createdBy: stringValue(row.created_by),
+    updatedBy: stringValue(row.updated_by),
+  };
+}
+
+async function loadComplianceTerms(env) {
+  const result = await env.DB.prepare("SELECT term, normalized_term, category, risk_level, block_publish, reason, legal_source, internal_case_note, suggested_replacement, enabled, rule_version FROM compliance_terms WHERE enabled = 1 ORDER BY id ASC").all();
+  return result.results || [];
+}
+
+async function scanKnowledgeContent(env, floor, body, request, _auth, itemId = null, action = "scan") {
+  const fields = {
+    question: stringValue(body.question),
+    answer: stringValue(body.answer),
+    keywords: knowledgeKeywords(body.keywords),
+  };
+  const terms = await loadComplianceTerms(env);
+  const scan = buildComplianceScanResult(fields, terms);
+  await writeComplianceScanLogs(env, { itemId, floor, sourcePath: stringValue(body.sourcePath || body.source), fields, scan, action, actorId: knowledgeActorId(request) });
+  return { ...scan, contentHash: hashComplianceContent(fields) };
+}
+
+async function writeComplianceScanLogs(env, { itemId, floor, sourcePath, fields, scan, action, actorId }) {
+  const now = new Date().toISOString();
+  const rows = scan.matches.length ? scan.matches : [{ field: "", matchedTerm: "", matchedText: "", riskLevel: scan.riskLevel, category: "", ruleVersion: scan.ruleVersion }];
+  const statements = rows.map((match) => env.DB.prepare("INSERT INTO compliance_scan_logs (knowledge_item_id, floor, source_path, content_hash, field_name, matched_term, matched_text, risk_level, category, rule_version, action, actor_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(itemId, floor, sourcePath || "", hashComplianceContent(fields), match.field || "", match.matchedTerm || "", match.matchedText || "", match.riskLevel || scan.riskLevel, match.category || "", match.ruleVersion || scan.ruleVersion, action, actorId, now));
+  if (statements.length) await env.DB.batch(statements);
+}
+
+async function listKnowledgeItems(env, floor, params) {
+  const sourcePath = stringValue(params.get("sourcePath") || params.get("path"));
+  const sql = sourcePath
+    ? "SELECT id, floor_id, category, question, answer, source, created_at, keywords_json, status, compliance_status, source_type, sort_order, updated_at, created_by, updated_by FROM knowledge_items WHERE floor_id = ? AND source = ? AND deleted_at IS NULL ORDER BY sort_order ASC, id ASC"
+    : "SELECT id, floor_id, category, question, answer, source, created_at, keywords_json, status, compliance_status, source_type, sort_order, updated_at, created_by, updated_by FROM knowledge_items WHERE floor_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, id ASC";
+  const result = sourcePath ? await env.DB.prepare(sql).bind(floor, sourcePath).all() : await env.DB.prepare(sql).bind(floor).all();
+  return (result.results || []).map(knowledgeItemRowToApi);
+}
+
+async function getKnowledgeItem(env, floor, id) {
+  const row = await env.DB.prepare("SELECT id, floor_id, category, question, answer, source, created_at, keywords_json, status, compliance_status, source_type, sort_order, updated_at, created_by, updated_by FROM knowledge_items WHERE floor_id = ? AND id = ? AND deleted_at IS NULL").bind(floor, id).first();
+  return row ? knowledgeItemRowToApi(row) : null;
+}
+
+function validateKnowledgeItemBody(body, fallback = {}) {
+  const question = stringValue(body.question !== undefined ? body.question : fallback.question);
+  const answer = stringValue(body.answer !== undefined ? body.answer : fallback.answer);
+  const keywords = knowledgeKeywords(body.keywords !== undefined ? body.keywords : fallback.keywords);
+  const sourcePath = stringValue(body.sourcePath || body.source || fallback.sourcePath);
+  const category = stringValue(body.category || fallback.category || "一般");
+  if (!question || !answer || !sourcePath) throw httpError("sourcePath、question、answer 為必填", 400);
+  return { question, answer, keywords, sourcePath, category };
+}
+
+async function createKnowledgeItem(env, floor, body, request, _auth) {
+  const fields = validateKnowledgeItemBody(body);
+  const status = knowledgeStatus(body.status, "draft");
+  let complianceStatus = "not_scanned";
+  let scan = null;
+  if (status === "published" && knowledgeComplianceReviewEnabled(env)) {
+    scan = await scanKnowledgeContent(env, floor, fields, request, _auth, null, "publish_attempt");
+    if (!canPublishComplianceResult(scan)) throw complianceBlockedError(scan);
+    complianceStatus = scan.riskLevel === "green" ? "passed" : "review";
+  }
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare("INSERT INTO knowledge_items (floor_id, category, question, answer, source, created_at, keywords_json, status, compliance_status, source_type, sort_order, updated_at, created_by, updated_by, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)").bind(floor, fields.category, fields.question, fields.answer, fields.sourcePath, Date.now(), JSON.stringify(fields.keywords), status, complianceStatus, "manual", Number(body.sortOrder || 0), now, knowledgeActorId(request), knowledgeActorId(request)).run();
+  return getKnowledgeItem(env, floor, Number(result.meta && result.meta.last_row_id));
+}
+
+async function updateKnowledgeItem(env, floor, id, body, request, _auth) {
+  const current = await getKnowledgeItem(env, floor, id);
+  if (!current) throw httpError("KNOWLEDGE_ITEM_NOT_FOUND", 404);
+  const fields = validateKnowledgeItemBody(body, current);
+  const status = knowledgeStatus(body.status, current.status);
+  let complianceStatus = status === "draft" ? "not_scanned" : current.complianceStatus;
+  if (status === "published" && knowledgeComplianceReviewEnabled(env)) {
+    const scan = await scanKnowledgeContent(env, floor, fields, request, _auth, id, "publish_attempt");
+    if (!canPublishComplianceResult(scan)) throw complianceBlockedError(scan);
+    complianceStatus = scan.riskLevel === "green" ? "passed" : "review";
+  }
+  const now = new Date().toISOString();
+  await env.DB.prepare("UPDATE knowledge_items SET category = ?, question = ?, answer = ?, source = ?, keywords_json = ?, status = ?, compliance_status = ?, sort_order = ?, updated_at = ?, updated_by = ? WHERE floor_id = ? AND id = ? AND deleted_at IS NULL").bind(fields.category, fields.question, fields.answer, fields.sourcePath, JSON.stringify(fields.keywords), status, complianceStatus, Number(body.sortOrder !== undefined ? body.sortOrder : current.sortOrder), now, knowledgeActorId(request), floor, id).run();
+  return getKnowledgeItem(env, floor, id);
+}
+
+async function archiveKnowledgeItem(env, floor, id, request, _auth) {
+  const current = await getKnowledgeItem(env, floor, id);
+  if (!current) throw httpError("KNOWLEDGE_ITEM_NOT_FOUND", 404);
+  const now = new Date().toISOString();
+  await env.DB.prepare("UPDATE knowledge_items SET status = 'archived', deleted_at = ?, updated_at = ?, updated_by = ? WHERE floor_id = ? AND id = ? AND deleted_at IS NULL").bind(now, now, knowledgeActorId(request), floor, id).run();
+  return { ...current, status: "archived", deletedAt: now, updatedAt: now };
+}
+
+function complianceBlockedError(scan) {
+  const error = httpError("內容含高風險用語，不能發布。", 409);
+  error.code = "COMPLIANCE_BLOCKED";
+  error.detail = { scan };
+  return error;
+}
 function normalizeKnowledgePayload(payload) {
   const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const rawItems = Array.isArray(payload) ? payload : (Array.isArray(source.items) ? source.items : (Array.isArray(source.entries) ? source.entries : []));
