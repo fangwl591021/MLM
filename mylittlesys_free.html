@@ -4143,25 +4143,41 @@
     }
 
     function addShareButtonToBubble(bubble, shareUrl) {
-      if (!bubble || bubble.type !== "bubble") return;
+      if (!bubble || bubble.type !== "bubble" || !shareUrl) return;
       var button = {
-        type: "button",
-        style: "primary",
-        color: "#06C755",
-        height: "sm",
-        action: { type: "uri", label: "轉傳分享", uri: shareUrl }
+        type: "box",
+        layout: "vertical",
+        position: "absolute",
+        offsetTop: "12px",
+        offsetEnd: "12px",
+        backgroundColor: "#ef4444",
+        cornerRadius: "20px",
+        paddingTop: "6px",
+        paddingBottom: "6px",
+        paddingStart: "16px",
+        paddingEnd: "16px",
+        contents: [{ type: "text", text: "\u5206\u4eab", color: "#ffffff", weight: "bold", size: "sm", align: "center" }],
+        action: { type: "uri", uri: shareUrl }
       };
+      var body = bubble.body;
+      if (body && body.type === "box") {
+        body.contents = Array.isArray(body.contents) ? body.contents : [];
+        var existsInBody = body.contents.some(function(item) {
+          return item && item.action && item.action.uri === shareUrl;
+        });
+        if (!existsInBody) body.contents.unshift(button);
+        return;
+      }
       if (!bubble.footer || bubble.footer.type !== "box") {
         bubble.footer = { type: "box", layout: "vertical", spacing: "sm", contents: [button], paddingAll: "12px" };
         return;
       }
       bubble.footer.contents = Array.isArray(bubble.footer.contents) ? bubble.footer.contents : [];
-      var exists = bubble.footer.contents.some(function(item) {
+      var existsInFooter = bubble.footer.contents.some(function(item) {
         return item && item.action && item.action.uri === shareUrl;
       });
-      if (!exists) bubble.footer.contents.push(button);
+      if (!existsInFooter) bubble.footer.contents.push(button);
     }
-
     function getIncomingShareId() {
       var params = new URLSearchParams(location.search);
       var id = params.get("shareId");
