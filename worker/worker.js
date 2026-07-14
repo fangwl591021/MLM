@@ -42,6 +42,7 @@ const DEFAULT_WETW_POINT_INSERT_URL = "https://k-link.cc/index.php/wp-json/wetw-
 const DEFAULT_WETW_POINT_QUERY_URL = "https://k-link.cc/index.php/wp-json/wetw-point/v1/query-user-point-list";
 const DEFAULT_WETW_LINE_MEMBER_URL = "https://aiwe.cc/index.php/wp-json/wetw/v1/check-or-create-line-user";
 const FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/main";
+const ACTION_FRONTEND_RAW_BASE = "https://raw.githubusercontent.com/fangwl591021/MLM/feature/knowledge-editor-compliance";
 const FRONTEND_BUILD_ID = "checkin-template-rotation-20260711-1";
 const REWARD_LIFF_ID = "2007221311-WjM9sZPz";
 const REWARD_NFC_LIFF_ID = "2007221311-sqXIHCoK";
@@ -1000,7 +1001,8 @@ async function fetchFrontendHtmlSource(fileName) {
       if (content) return new TextDecoder().decode(base64ToUint8Array(content));
     }
   }
-  const response = await fetch(`${FRONTEND_RAW_BASE}/${fileName}?v=${FRONTEND_BUILD_ID}-${Date.now()}`, {
+  const frontendBase = fileName === "action-admin.html" || fileName === "mylittlesys_free.html" ? ACTION_FRONTEND_RAW_BASE : FRONTEND_RAW_BASE;
+  const response = await fetch(`${frontendBase}/${fileName}?v=${FRONTEND_BUILD_ID}-${Date.now()}`, {
     headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
     cf: { cacheEverything: false, cacheTtl: 0 },
   });
