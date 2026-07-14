@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>宏學管理站</title>
+    <title>KLINK 機器人與專區卡片</title>
     <!-- Version: 2026.05.08.V297_Color_And_Auto_Sync_UI -->
     <script src="https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -47,16 +47,21 @@
         .tag-gray { background-color: #f1f5f9; color: #94a3b8; font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 4px; display: inline-block; }
         .tag-green { background-color: #f0fdf4; color: #06C755; font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 4px; display: inline-block; }
         .tag-orange { background-color: #FF5809; color: #ffffff; font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+'
+        .action-flex-only .sidebar { display: none; }
+        .action-flex-only .main-content { margin-left: 0; width: 100%; }
+        .action-flex-only .page-header > div { display: none; }
+        .action-flex-only .page-header { justify-content: flex-start; }
     </style>
 </head>
-<body>
+<body class="action-flex-only">
     <div id="app" v-cloak>
         <div v-if="!isAuthenticated" class="min-h-screen flex items-center justify-center bg-[#F8FAFC] px-4 relative text-center">
             <div class="max-w-[360px] w-full bg-white rounded-2xl shadow-sm p-8 border border-slate-200 relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-1.5 bg-[#06C755]"></div>
                 <div class="mb-8">
                     <div class="w-14 h-14 bg-[#f0fdf4] text-[#06C755] rounded-xl flex items-center justify-center text-2xl mx-auto mb-4 border border-[#dcfce7]"><i class="fas fa-shield-alt"></i></div>
-                    <h2 class="text-xl font-bold text-slate-800">宏學管理站</h2>
+                    <h2 class="text-xl font-bold text-slate-800">KLINK 機器人與專區卡片</h2>
                     <p class="text-slate-500 text-sm mt-1.5 font-medium">系統安全驗證</p>
                 </div>
                 <div class="space-y-4">
@@ -76,7 +81,7 @@
 
         <div v-else class="flex min-h-screen">
             <aside class="sidebar">
-                <div class="sidebar-brand">宏學管理站</div>
+                <div class="sidebar-brand">KLINK 機器人與專區卡片</div>
                 <nav class="flex-grow mt-2 overflow-y-auto hide-scrollbar">
                     <div class="nav-group mb-2">
                         <div @click="toggleGroup('groupA')" class="nav-group-header"><span>📦 營運中心</span><i class="fas" :class="groups.groupA ? 'fa-chevron-down' : 'fa-chevron-right'"></i></div>
@@ -1630,8 +1635,7 @@
                 setup() {
                     const isAuthenticated = ref(false);
                     const loginForm = ref({ account: '', password: '' });
-                    const initialView = new URLSearchParams(location.search).get('view');
-                    const view = ref(initialView === 'flex_rules' ? 'flex_rules' : 'dashboard');
+                    const view = ref('flex_rules');
                     const groups = ref({ groupA: true, groupB: true });
                     const isLoading = ref(false);
                     const liffProfile = ref({});
@@ -3196,7 +3200,8 @@
                             table{border-collapse:collapse;font-family:"Microsoft JhengHei",Arial,sans-serif;font-size:12pt;}
                             th{background:#f1f5f9;font-weight:700;}
                             th,td{border:1px solid #cbd5e1;padding:6px 10px;white-space:nowrap;vertical-align:top;}
-                        </style></head><body><table>${tableRows}</table></body></html>`;
+                    '
+    </style></head><body class="action-flex-only"><table>${tableRows}</table></body></html>`;
                         const blob = new Blob(["\uFEFF" + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
                         const url = URL.createObjectURL(blob);
                         const link = document.createElement("a");
