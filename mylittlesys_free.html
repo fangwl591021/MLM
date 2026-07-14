@@ -806,7 +806,7 @@
       if (typeof window.ACT_ADMIN_API_CALL === 'function') {
         return window.ACT_ADMIN_API_CALL('UPLOAD_IMAGE', { imageBase64: imageBase64 });
       }
-      return fetch(${location.origin}/api/action, {
+      return fetch(location.origin + '/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'UPLOAD_IMAGE', payload: { imageBase64: imageBase64 } })
