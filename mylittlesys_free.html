@@ -4254,7 +4254,7 @@
 
     async function tryLineAdminLogin() {
       if (window.MYLITTLESYS_FREE_EMBED) return;
-      if (currentUser || getIncomingShareId() || !window.liff) return;
+      if (currentUser || getIncomingShareId() || new URLSearchParams(location.search).get("flexRuleId") || !window.liff) return;
       try {
         await ensureMyLittleSysLiffReady();
         if (!liff.isLoggedIn()) {
