@@ -6800,6 +6800,39 @@ function messageFromD1(thread, message) {
   };
 }
 
+async function maybeReplyActionFlexRule(env, floor, provider, event, userId, text) {
+  if (!env.DB || !userId || !text) return false;
+  const rules = await listActionFlexRules(env);
+  const normalizedText = normalizeTextKeyword(text);
+  const now = Date.now();
+  const rule = rules.find((candidate) => {
+    if (!candidate || candidate.active === false) return false;
+    const start = candidate.startAt ? Date.parse(candidate.startAt) : 0;
+    const end = candidate.endAt ? Date.parse(candidate.endAt) : 0;
+    if (Number.isFinite(start) && start > 0 && now < start) return false;
+    if (Number.isFinite(end) && end > 0 && now > end) return false;
+    const keywords = String(candidate.keyword || "").split(/[\n,，、]/).map((item) => normalizeTextKeyword(item)).filter(Boolean);
+    return keywords.some((keyword) => normalizedText === keyword || normalizedText.includes(keyword));
+  });
+  if (!rule) return false;
+
+  let message;
+  const type = String(rule.replyType || "FLEX").toUpperCase();
+  if (type === "FLEX" || type === "IMAGE") {
+    try { message = typeof rule.payload === "string" ? JSON.parse(rule.payload) : rule.payload; } catch (_) { message = null; }
+  } else if (type === "TEXT") {
+    message = { type: "text", text: String(rule.bodyText || rule.payload || rule.altText || rule.moduleName || "").slice(0, 5000) };
+  }
+  if (!message || typeof message !== "object") return false;
+  if (type === "IMAGE" && message.type !== "image") {
+    const imageUrl = String(rule.imageUrl || message.url || "").trim();
+    if (!imageUrl) return false;
+    message = { type: "image", originalContentUrl: imageUrl, previewImageUrl: String(rule.previewImageUrl || imageUrl) };
+  }
+  const delivery = await replyOrPushLineMessages(provider, event.replyToken, userId, [message]);
+  await saveAdminMessage(env, { floor, userId, text: JSON.stringify(message), createdAt: Date.now(), status: STATUS_DONE, category: "Flex 關鍵字自動回覆" });
+  return Boolean(delivery && delivery.ok);
+}
 async function processLineWebhook(env, floor, provider, payload, options = {}) {
   for (const event of payload.events || []) {
     if (!event || event.type !== "message" || !event.message) continue;
@@ -6810,6 +6843,8 @@ async function processLineWebhook(env, floor, provider, payload, options = {}) {
     const templateReplied = messageType === "text" && options.skipCheckinTemplateReply !== true && await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text);
     await saveIncomingMessage(env, floor, provider, event, userId, text);
     if (templateReplied || messageType !== "text") continue;
+    const actionFlexReplied = await maybeReplyActionFlexRule(env, floor, provider, event, userId, text);
+    if (actionFlexReplied) continue;
     await handleKeywordAutomation(env, floor, provider, event, userId, text);
   }
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });
