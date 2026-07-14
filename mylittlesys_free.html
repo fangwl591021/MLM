@@ -104,9 +104,7 @@
     }
   </script>
   <script>
-    window.MYLITTLESYS_API_BASE = location.hostname.endsWith("github.io")
-      ? "https://mylittlesys.fangwl591021.workers.dev"
-      : "";
+    window.MYLITTLESYS_API_BASE = "https://mylittlesys.fangwl591021.workers.dev";
     window.google = window.google || {};
     window.google.script = window.google.script || {};
     window.google.script.run = new Proxy({
@@ -4275,12 +4273,6 @@
       try {
         var flexMsg = buildCurrentFlexShareMessage();
         if (shareButton) shareButton.disabled = true;
-        var shareRecord = await callMyLittleSysRpc("createFlexShareLink", flexMsg, {
-          title: flexMsg.altText || "小系統分享",
-          liffId: getMyLittleSysLiffId()
-        });
-        if (!shareRecord || !shareRecord.success) throw new Error((shareRecord && shareRecord.msg) || "分享網址產生失敗");
-        flexMsg = addShareUrlToFlexMessage(flexMsg, shareRecord.url);
         await ensureMyLittleSysLiffReady();
 
         if (!liff.isLoggedIn()) {
@@ -4289,27 +4281,31 @@
         }
 
         if (liff.isApiAvailable && !liff.isApiAvailable("shareTargetPicker")) {
-          alert("此 LIFF 尚未開啟 Share Target Picker，請到 LINE Developers 開啟並同意條款。");
-          return;
+          throw new Error("Share Target Picker 目前不可用，請從 LINE LIFF 開啟此頁面。");
         }
 
+        var shareRecord = await callMyLittleSysRpc("createFlexShareLink", flexMsg, {
+          title: flexMsg.altText || "小系統分享",
+          liffId: getMyLittleSysLiffId()
+        });
+        if (!shareRecord || !shareRecord.success) throw new Error((shareRecord && shareRecord.msg) || "分享網址產生失敗");
+        flexMsg = addShareUrlToFlexMessage(flexMsg, shareRecord.url);
         var res = await liff.shareTargetPicker([flexMsg]);
         if (res) showToast("已開啟 LINE 分享");
       } catch (error) {
         console.error("LIFF SDK Share Error:", error);
         var msg = error && error.message ? error.message : String(error);
         if (msg.includes("not allowed")) {
-          alert("系統分享權限已更新，將重新登入以取得最新權限。");
+          alert("系統分享權限尚未啟用，請先在 LINE Developers 啟用 Share Target Picker。");
           try { liff.logout(); } catch (_err) {}
           window.location.reload();
         } else {
-          alert("分享取消或失敗：" + msg);
+          alert("分享失敗：" + msg);
         }
       } finally {
         if (shareButton) shareButton.disabled = false;
       }
     }
-
     async function shareStoredFlexFromUrl() {
       var shareId = getIncomingShareId();
       if (!shareId) return;
