@@ -176,6 +176,10 @@ export default {
         const result = await handleActionAdminApi(request, env);
         return jsonResponse({ status: "success", data: result }, 200, corsHeaders);
       }
+      if (url.pathname === "/api/action-flex-share" && request.method === "GET") {
+        const result = await getActionFlexShareMessage(url, env);
+        return jsonResponse({ status: "success", data: result }, 200, corsHeaders);
+      }
 
       if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/console/ai-wear" || url.pathname === "/console/ai-wear-cost" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && (request.method === "GET" || request.method === "HEAD")) {
         const session = await verifyConsoleSession(request, env);
@@ -1424,7 +1428,7 @@ function calendarEventRowToConsoleEvent(row) {
 
 function requiresFloorAccess(pathname) {
   const path = stringValue(pathname);
-  if (path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path === "/api/ai-wear-share-card" || path.startsWith("/ai-wear/share/")) return false;
+  if (path === "/api/action-flex-share" || path === "/api/floor-whitelist" || path === "/api/ai-wear-public" || path === "/api/ai-wear/upload-selfie" || path === "/api/ai-wear/member-points" || path === "/api/ai-wear/preflight" || path === "/api/ai-wear/generate" || path === "/api/ai-wear-results" || path === "/api/ai-wear-share" || path === "/api/ai-wear-share-card" || path.startsWith("/ai-wear/share/")) return false;
   if (path === "/api/data") return true;
   if (path === "/api/send" || path === "/api/log-reply" || path === "/api/conversation-meta") return true;
   if (path === "/api/knowledge" || path === "/api/knowledge/manifest" || path === "/api/knowledge/file" || path === "/api/knowledge/editor-config" || path === "/api/knowledge/items" || path.startsWith("/api/knowledge/items/") || path === "/api/compliance/scan" || path === "/api/reply-learning" || path === "/api/reply-learning/rebuild" || path === "/api/checkin-template" || path === "/api/ai-wear-settings" || path === "/api/ai-wear-gallery" || path === "/api/ai-wear-results" || path === "/api/ai-wear-cost-summary") return true;
@@ -6800,6 +6804,33 @@ function messageFromD1(thread, message) {
   };
 }
 
+function addActionFlexShareButton(env, rule, message) {
+  if (!message || message.type !== "flex" || !message.contents || !rule || !rule.id) return message;
+  const liffId = stringValue(env.ACTION_LIFF_ID || env.DASHBOARD_LIFF_ID || "1660923784-69AM2Je4").trim();
+  if (!/^\d+-[A-Za-z0-9_-]+$/.test(liffId)) return message;
+  const shareUri = `https://liff.line.me/${liffId}?view=share&flexRuleId=${encodeURIComponent(rule.id)}`;
+  const addToBubble = (bubble) => {
+    if (!bubble || bubble.type !== "bubble" || !bubble.body || bubble.body.type !== "box") return;
+    const contents = Array.isArray(bubble.body.contents) ? bubble.body.contents : [];
+    if (contents.some((item) => item && item.action && item.action.uri === shareUri)) return;
+    contents.unshift({ type: "box", layout: "vertical", position: "absolute", offsetTop: "12px", offsetEnd: "12px", backgroundColor: "#ef4444", cornerRadius: "20px", paddingTop: "6px", paddingBottom: "6px", paddingStart: "16px", paddingEnd: "16px", contents: [{ type: "text", text: "分享", color: "#ffffff", weight: "bold", size: "sm", align: "center" }], action: { type: "uri", uri: shareUri } });
+    bubble.body.contents = contents;
+  };
+  if (message.contents.type === "carousel" && Array.isArray(message.contents.contents)) message.contents.contents.forEach(addToBubble);
+  else addToBubble(message.contents);
+  return message;
+}
+async function getActionFlexShareMessage(url, env) {
+  const id = stringValue(url.searchParams.get("id")).trim();
+  if (!id || !env.DB) throw httpError("分享資料不存在。", 404);
+  const rules = await listActionFlexRules(env);
+  const rule = rules.find((item) => item && stringValue(item.id) === id && item.active !== false);
+  if (!rule || String(rule.replyType || "").toUpperCase() !== "FLEX") throw httpError("分享資料不存在。", 404);
+  let message = null;
+  try { message = typeof rule.payload === "string" ? JSON.parse(rule.payload) : rule.payload; } catch (_) { message = null; }
+  if (!message || message.type !== "flex") throw httpError("分享資料格式錯誤。", 500);
+  return { message: addActionFlexShareButton(env, rule, message), title: stringValue(rule.altText || rule.moduleName || "分享") };
+}
 async function maybeReplyActionFlexRule(env, floor, provider, event, userId, text) {
   if (!env.DB || !userId || !text) return false;
   const rules = await listActionFlexRules(env);
@@ -6820,6 +6851,7 @@ async function maybeReplyActionFlexRule(env, floor, provider, event, userId, tex
   const type = String(rule.replyType || "FLEX").toUpperCase();
   if (type === "FLEX") {
     try { message = typeof rule.payload === "string" ? JSON.parse(rule.payload) : rule.payload; } catch (_) { message = null; }
+    message = addActionFlexShareButton(env, rule, message);
   } else if (type === "IMAGE") {
     const imageUrl = String(rule.imageUrl || rule.payload || "").trim();
     if (!imageUrl) return false;
@@ -6839,11 +6871,14 @@ async function processLineWebhook(env, floor, provider, payload, options = {}) {
     const messageType = stringValue(event.message.type || "text");
     const text = messageType === "text" ? stringValue(event.message.text) : lineMessageDisplayText(event.message);
     if (!userId || !text) continue;
+    const actionFlexReplied = messageType === "text" && await maybeReplyActionFlexRule(env, floor, provider, event, userId, text);
+    if (actionFlexReplied) {
+      await saveIncomingMessage(env, floor, provider, event, userId, text);
+      continue;
+    }
     const templateReplied = messageType === "text" && options.skipCheckinTemplateReply !== true && await maybeReplyCheckinTemplate(env, floor, provider, event, userId, text);
     await saveIncomingMessage(env, floor, provider, event, userId, text);
     if (templateReplied || messageType !== "text") continue;
-    const actionFlexReplied = await maybeReplyActionFlexRule(env, floor, provider, event, userId, text);
-    if (actionFlexReplied) continue;
     await handleKeywordAutomation(env, floor, provider, event, userId, text);
   }
   if (floor === FLOOR_MAIN) await backupGas(env, { type: "LINE_WEBHOOK", data: payload });

@@ -4306,6 +4306,26 @@
         if (shareButton) shareButton.disabled = false;
       }
     }
+    async function shareActionFlexFromUrl() {
+      var params = new URLSearchParams(location.search);
+      var flexRuleId = params.get("flexRuleId");
+      if (!flexRuleId) return;
+      try {
+        toggleLoader(true);
+        var response = await fetch("https://mlm.fangwl591021.workers.dev/api/action-flex-share?id=" + encodeURIComponent(flexRuleId));
+        var loaded = await response.json();
+        if (!response.ok || !loaded || !loaded.data || !loaded.data.message) throw new Error("分享資料不存在");
+        await ensureMyLittleSysLiffReady();
+        if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+        if (liff.isApiAvailable && !liff.isApiAvailable("shareTargetPicker")) throw new Error("Share Target Picker 目前不可用");
+        var result = await liff.shareTargetPicker([loaded.data.message]);
+        if (result) showToast("已開啟 LINE 分享");
+      } catch (error) {
+        alert("分享失敗：" + (error && error.message ? error.message : String(error)));
+      } finally {
+        toggleLoader(false);
+      }
+    }
     async function shareStoredFlexFromUrl() {
       var shareId = getIncomingShareId();
       if (!shareId) return;
@@ -4332,7 +4352,7 @@
       }
     }
 
-    setTimeout(shareStoredFlexFromUrl, 300);
+    setTimeout(function() { shareActionFlexFromUrl(); shareStoredFlexFromUrl(); }, 300);
     setTimeout(tryLineAdminLogin, 500);
 
     document.getElementById("img-upload").onchange = function(e) {
