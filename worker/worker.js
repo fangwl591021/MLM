@@ -63,6 +63,7 @@ const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
 const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_SHARE_ASSET_PREFIX = "/assets/ai-wear/share/";
+const ACTION_FLEX_ASSET_PREFIX = "/assets/action-flex/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
 const AI_WEAR_RESULT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
@@ -164,6 +165,17 @@ export default {
         }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/action-admin" || url.pathname === "/action-admin.html") {
+        if (request.method === "GET" || request.method === "HEAD") return serveFrontendHtml("action-admin.html", corsHeaders);
+      }
+      if (url.pathname === "/mylittlesys_free.html" && (request.method === "GET" || request.method === "HEAD")) {
+        return serveFrontendHtml("mylittlesys_free.html", corsHeaders);
+      }
+      if (url.pathname === "/api/action" && request.method === "POST") {
+        const result = await handleActionAdminApi(request, env);
+        return jsonResponse({ status: "success", data: result }, 200, corsHeaders);
+      }
+
       if ((url.pathname === "/console" || url.pathname === "/console.html" || url.pathname === "/console/calendar" || url.pathname === "/console/events" || url.pathname === "/console/ai-wear" || url.pathname === "/console/ai-wear-cost" || url.pathname === "/checkin-template" || url.pathname === "/checkin-template.html") && (request.method === "GET" || request.method === "HEAD")) {
         const session = await verifyConsoleSession(request, env);
         if (session.ok && !session.profile.admin) {
@@ -202,7 +214,10 @@ export default {
       if (url.pathname.startsWith("/assets/checkin-template/") && request.method === "GET") {
         return serveCheckinTemplateImage(env, url.pathname, corsHeaders);
       }
-      if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
+'      if (url.pathname.startsWith(ACTION_FLEX_ASSET_PREFIX) && (request.method === "GET" || request.method === "HEAD")) {
+        return serveActionFlexAsset(env, url.pathname, corsHeaders, request.method);
+      }
+'      if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearReferenceImage(env, url.pathname, corsHeaders);
       }
       if (url.pathname.startsWith(AI_WEAR_SELFIE_ASSET_PREFIX) && request.method === "GET") {
@@ -10217,6 +10232,92 @@ function passwordLoginHtml(corsHeaders) {
   </script>
 </body>
 </html>`, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
+}
+function decodeActionFlexImage(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) throw httpError("圖片格式不支援，請使用 PNG、JPG、WEBP 或 GIF", 400);
+  const binary = atob(match[2]);
+  if (binary.length > 2 * 1024 * 1024) throw httpError("圖片不可超過 2 MB", 413);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return { bytes, mimeType: match[1].toLowerCase() };
+}
+
+async function uploadActionFlexImage(request, env, payload) {
+  const bucket = env.AI_WEAR_BUCKET;
+  if (!bucket || typeof bucket.put !== "function") throw httpError("圖片儲存空間尚未設定", 500);
+  const { bytes, mimeType } = decodeActionFlexImage(payload.imageBase64);
+  const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1];
+  const key = `${ACTION_FLEX_ASSET_PREFIX.slice(1)}${crypto.randomUUID()}.${ext}`;
+  await bucket.put(key, bytes, { httpMetadata: { contentType: mimeType, cacheControl: "public, max-age=31536000, immutable" } });
+  const origin = new URL(request.url).origin;
+  return { success: true, url: `${origin}/${key}` };
+}
+
+async function serveActionFlexAsset(env, pathname, corsHeaders, method = "GET") {
+  const bucket = env.AI_WEAR_BUCKET;
+  if (!bucket || typeof bucket.get !== "function") return new Response("Asset storage is not configured", { status: 500, headers: corsHeaders });
+  const key = String(pathname || "").replace(/^\/+/, "");
+  const object = await bucket.get(key);
+  if (!object) return new Response("Not found", { status: 404, headers: corsHeaders });
+  const headers = { ...corsHeaders, "Content-Type": object.httpMetadata?.contentType || "application/octet-stream", "Cache-Control": "public, max-age=31536000, immutable", "ETag": object.httpEtag || "" };
+  return new Response(method === "HEAD" ? null : object.body, { status: 200, headers });
+}
+async function ensureActionFlexRulesTable(env) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS action_flex_rules (
+      id TEXT PRIMARY KEY,
+      rule_json TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `).run();
+}
+
+async function listActionFlexRules(env) {
+  await ensureActionFlexRulesTable(env);
+  const rows = await env.DB.prepare("SELECT rule_json FROM action_flex_rules ORDER BY updated_at DESC").all();
+  return (rows.results || []).map((row) => {
+    try { return JSON.parse(row.rule_json); } catch (_) { return null; }
+  }).filter(Boolean);
+}
+
+async function handleActionAdminApi(request, env) {
+  const auth = await assertDashboardAuth(request, env);
+  if (!auth.adminToken && !auth.admin) throw httpError("只有系統管理員可使用機器人與專區卡片", 403);
+  const body = await safeJson(request);
+  const action = String(body.action || "").trim();
+  const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
+  if (action === "GET_SETTINGS") return { liff_id: dashboardLiffId(env) || "" };
+  if (action === "CHECK_USER") return { isAdmin: true, canCrmLogin: true, canSystemTools: true, userId: auth.userId || "SESSION_ADMIN", name: auth.name || "系統管理員" };
+  if (action === "ADMIN_GET_DATA") return { users: [], teachers: [], courses: [], products: [], orders: [], settings: { liff_id: dashboardLiffId(env) || "" }, paymentLogs: [], flexRules: await listActionFlexRules(env), broadcastTags: [], broadcastCampaigns: [] };
+  if (action === "ADMIN_GET_SLOTS") return { slots: [], occupiedLocations: [] };
+  if (action === "LOG_ADMIN_EVENT") return { success: true };
+  if (action === "UPLOAD_IMAGE") return uploadActionFlexImage(request, env, payload);
+  if (action === "ADMIN_SAVE_REPLY_RULE") {
+    await ensureActionFlexRulesTable(env);
+    const id = String(payload.id || "").trim();
+    if (!id) throw httpError("規則 ID 為必填", 400);
+    const now = new Date().toISOString();
+    const rule = { ...payload, id, active: payload.active !== false, createdAt: payload.createdAt || now, updatedAt: now };
+    await env.DB.prepare(`
+      INSERT INTO action_flex_rules (id, rule_json, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET rule_json = excluded.rule_json, active = excluded.active, updated_at = excluded.updated_at
+    `).bind(id, JSON.stringify(rule), rule.active ? 1 : 0, rule.createdAt, now).run();
+    const flexRules = await listActionFlexRules(env);
+    return { success: true, rule, flexRules };
+  }
+  if (action === "ADMIN_DELETE_REPLY_RULE") {
+    await ensureActionFlexRulesTable(env);
+    const id = String(payload.id || "").trim();
+    if (!id) throw httpError("規則 ID 為必填", 400);
+    await env.DB.prepare("DELETE FROM action_flex_rules WHERE id = ?").bind(id).run();
+    return { success: true, flexRules: await listActionFlexRules(env) };
+  }
+  throw httpError(`不支援的 Action：${action}`, 400);
 }
 async function assertDashboardAuth(request, env) {
   const tokens = [env.DASHBOARD_API_TOKEN, env.ADMIN_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
