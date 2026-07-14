@@ -6818,17 +6818,16 @@ async function maybeReplyActionFlexRule(env, floor, provider, event, userId, tex
 
   let message;
   const type = String(rule.replyType || "FLEX").toUpperCase();
-  if (type === "FLEX" || type === "IMAGE") {
+  if (type === "FLEX") {
     try { message = typeof rule.payload === "string" ? JSON.parse(rule.payload) : rule.payload; } catch (_) { message = null; }
+  } else if (type === "IMAGE") {
+    const imageUrl = String(rule.imageUrl || rule.payload || "").trim();
+    if (!imageUrl) return false;
+    message = { type: "image", originalContentUrl: imageUrl, previewImageUrl: String(rule.previewImageUrl || imageUrl) };
   } else if (type === "TEXT") {
     message = { type: "text", text: String(rule.bodyText || rule.payload || rule.altText || rule.moduleName || "").slice(0, 5000) };
   }
   if (!message || typeof message !== "object") return false;
-  if (type === "IMAGE" && message.type !== "image") {
-    const imageUrl = String(rule.imageUrl || message.url || "").trim();
-    if (!imageUrl) return false;
-    message = { type: "image", originalContentUrl: imageUrl, previewImageUrl: String(rule.previewImageUrl || imageUrl) };
-  }
   const delivery = await replyOrPushLineMessages(provider, event.replyToken, userId, [message]);
   await saveAdminMessage(env, { floor, userId, text: JSON.stringify(message), createdAt: Date.now(), status: STATUS_DONE, category: "Flex 關鍵字自動回覆" });
   return Boolean(delivery && delivery.ok);
