@@ -215,10 +215,10 @@ export default {
       if (url.pathname.startsWith("/assets/checkin-template/") && request.method === "GET") {
         return serveCheckinTemplateImage(env, url.pathname, corsHeaders);
       }
-'      if (url.pathname.startsWith(ACTION_FLEX_ASSET_PREFIX) && (request.method === "GET" || request.method === "HEAD")) {
+      if (url.pathname.startsWith(ACTION_FLEX_ASSET_PREFIX) && (request.method === "GET" || request.method === "HEAD")) {
         return serveActionFlexAsset(env, url.pathname, corsHeaders, request.method);
       }
-'      if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
+      if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearReferenceImage(env, url.pathname, corsHeaders);
       }
       if (url.pathname.startsWith(AI_WEAR_SELFIE_ASSET_PREFIX) && request.method === "GET") {
@@ -963,6 +963,7 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
     .replaceAll("<label>K點類型<select id=\"pointType\"><option value=\"gift_money\">購物金</option><option value=\"system_point\">原始點數</option></select></label>", "<input id=\"pointType\" type=\"hidden\" value=\"gift_money\" />")
     .replaceAll("可用K點合計", "K點餘額")
     .replaceAll("扣除後可用K點", "K點餘額");
+  if (fileName === "console.html" && !html.includes("/action-admin")) html = html.replace("</nav>", "<a href=\"/action-admin?view=flex_rules\">機器人與專區卡片 <span>Action</span></a></nav>");
   if (fileName === "ai-wear.html") html = rewriteAiWearMobileShareHtml(html);
   if (options && options.smartMonitorDashboard) html = rewriteSmartMonitorDashboardHtml(html);
   return new Response(html, {
