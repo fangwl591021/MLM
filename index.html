@@ -60,13 +60,57 @@
     .sendrow textarea{height:86px!important;min-height:86px!important;max-height:86px!important;resize:none!important;overflow:auto!important;align-self:start!important}
     .sendGroup,.sendPrimary,.sendSplit{height:86px!important;align-self:start!important}
     @media(max-height:760px){.composer{flex-basis:126px!important;height:126px!important;min-height:126px!important;max-height:126px!important;grid-template-rows:34px 92px!important}.suggestions{height:34px!important;min-height:34px!important;max-height:34px!important;padding:4px 14px!important}.sendrow{height:92px!important;min-height:92px!important;max-height:92px!important;padding:6px 14px 8px!important}.sendrow textarea,.sendGroup,.sendPrimary,.sendSplit{height:76px!important}.sendrow textarea{min-height:76px!important;max-height:76px!important}}
+
+    /* SaaS customer service workspace — presentation layer only. */
+    :root{--saas-green:#06c755;--saas-green-dark:#049b46;--saas-green-soft:#edfbf3;--saas-orange:#f79009;--saas-orange-soft:#fff7e8;--saas-red:#d92d20;--saas-red-soft:#fff1f0;--saas-ink:#172033;--saas-sub:#667085;--saas-border:#e2e8f0;--saas-canvas:#f4f6f8;--saas-control:40px}
+    body{background:var(--saas-canvas);color:var(--saas-ink);font-size:14px}
+    button,input,textarea,summary{font:inherit}
+    button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid rgba(6,199,85,.18);outline-offset:2px}
+    .app{grid-template-columns:320px minmax(620px,1fr) 400px!important;width:100vw;height:100dvh;background:var(--saas-canvas)}
+    .left,.assist{min-width:0;background:#fff}.left{display:flex;flex-direction:column;border-right:1px solid var(--saas-border)}
+    .brand,.head,.assistHead{height:72px!important;min-height:72px!important;max-height:72px!important;padding:14px 18px!important;border-color:var(--saas-border)}
+    .brand{flex:0 0 72px;justify-content:flex-start}.brand h1{font-size:17px!important}.brand p{font-size:12px!important}.oa{width:42px!important;height:42px!important;border-radius:12px!important;font-size:15px!important}.brandActions{display:none!important}
+    .floorTabs{flex:0 0 auto;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:10px 14px!important;border-bottom:1px solid var(--saas-border);background:#fff}
+    .floorTab{height:var(--saas-control)!important;border:0!important;border-radius:10px!important;background:#f3f6f8!important;color:#475467!important;font-size:13px!important;font-weight:800!important;text-decoration:none;display:flex;align-items:center;justify-content:center;padding:0 12px!important}
+    .floorTab.active{background:var(--saas-green-soft)!important;color:#047a38!important;box-shadow:inset 0 0 0 1px #a8e9c2!important}.floorTabs>.smartMonitorBtn,.floorTabs>.motherSyncBtn{display:none!important}
+    .search{flex:0 0 auto;padding:12px 14px!important;border-color:var(--saas-border)}.search::before{content:"客戶佇列"!important;margin-bottom:9px!important;font-size:13px!important;color:var(--saas-ink)!important}
+    .search input{height:var(--saas-control)!important;border-radius:10px!important;background:#f8fafc!important;font-size:13px!important}.filterTabs{gap:6px!important;margin-top:10px!important}
+    .filterTab{height:32px!important;border-radius:8px!important;background:#f3f6f8!important;color:#667085!important;padding:0 11px!important;font-size:12px!important}.filterTab.active{background:var(--saas-green)!important;color:#fff!important}
+    .list{flex:1 1 auto!important;height:auto!important;min-height:0;overflow:auto}.item{grid-template-columns:42px minmax(0,1fr);gap:10px;padding:13px 14px;border-color:#edf1f5}.item:hover{background:#f7fbf8}.item.active{background:var(--saas-green-soft);box-shadow:inset 3px 0 0 var(--saas-green)}
+    .avatar{width:42px;height:42px}.uid{display:none}.tags{gap:5px;margin-top:7px}.label{padding:3px 7px;font-size:10px}.item .state{padding:4px 7px;font-size:10px;box-shadow:none}
+    .state.warn{background:var(--saas-orange)!important}.state.danger{background:var(--saas-red)!important}.state.dark{background:var(--saas-green-dark)!important}.state.neutral{background:#667085!important}
+    .label.risk.high,.label.hot{background:var(--saas-red-soft)!important;color:var(--saas-red)!important}.label.risk.low{display:none}
+    .config{position:fixed;z-index:40;top:16px;right:16px;width:min(380px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:18px!important;border:1px solid var(--saas-border)!important;border-radius:16px;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.22);overflow:auto}
+    .left.config-open::after{content:"";position:fixed;z-index:39;inset:0;background:rgba(15,23,42,.28)}.left.config-open .config{display:grid!important}
+    .chat{background:var(--saas-canvas)}.head{flex:0 0 72px!important;background:#fff}.activeAvatar{width:44px!important;height:44px!important;font-size:14px!important}.room h2{font-size:18px!important}.room p{font-size:12px!important;color:var(--saas-sub)!important}
+    .roomActions{gap:6px!important}.statusBtn,.refresh,.settingsBtn,.motherSyncBtn,.smartMonitorBtn,.outlineBtn{height:var(--saas-control)!important;border-radius:10px!important;font-size:13px!important}
+    .statusBtn{border:1px solid var(--saas-border)!important;padding:0 12px!important}.statusBtn.active{border-color:#9de3b8!important;background:var(--saas-green-soft)!important;color:#047a38!important}#pendingButton.active{border-color:#fdc77b!important;background:var(--saas-orange-soft)!important;color:#a85b00!important}.refresh{width:var(--saas-control)!important}.pill{height:32px!important;border-radius:999px!important;font-size:11px!important;padding:0 10px!important}
+    .moreMenu{position:relative}.moreMenu summary{height:var(--saas-control);display:flex;align-items:center;justify-content:center;border:1px solid var(--saas-border);border-radius:10px;background:#fff;color:#475467;padding:0 12px;font-weight:800;cursor:pointer;list-style:none}.moreMenu summary::-webkit-details-marker{display:none}
+    .moreMenuPanel{position:absolute;z-index:20;top:46px;right:0;width:190px;display:grid;gap:6px;padding:8px;border:1px solid var(--saas-border);border-radius:12px;background:#fff;box-shadow:0 16px 36px rgba(15,23,42,.14)}
+    .moreMenuPanel a,.moreMenuPanel button{width:100%;height:36px!important;display:flex;align-items:center;justify-content:flex-start;border:0!important;border-radius:8px!important;background:#fff!important;color:#344054!important;text-decoration:none;padding:0 10px!important;font-size:13px!important;font-weight:750!important}.moreMenuPanel a:hover,.moreMenuPanel button:hover{background:#f3f6f8!important}
+    .manage{flex:0 0 42px!important;min-height:42px!important;max-height:42px!important;padding:6px 18px!important;border-color:var(--saas-border);background:#fff!important}.accessChoices,.manageTags{display:none!important}.manageActions .outlineBtn{height:30px!important}.customerQuickActions{display:flex;gap:7px;padding-top:12px}.customerQuickActions .manageActions{display:flex;gap:7px;width:100%}.customerQuickActions .outlineBtn{flex:1;height:34px!important}
+    .manualBar.show{flex:0 0 40px!important;min-height:40px!important;max-height:40px!important;padding:7px 18px!important;background:#475467!important;font-size:12px!important}.manualBar button{height:28px!important;border-radius:8px}
+    .messages{padding:22px 28px!important;background:#eef2f5!important;background-image:none!important}.wrap{max-width:min(620px,76%)!important}.bubble{border-radius:6px 14px 14px 14px!important;padding:11px 14px!important;font-size:14px!important;box-shadow:0 1px 2px rgba(15,23,42,.08)}.admin .bubble{border-radius:14px 6px 14px 14px!important;background:#dff8e9!important}
+    .composer{flex:0 0 116px!important;height:116px!important;min-height:116px!important;max-height:116px!important;display:block!important;border-color:var(--saas-border)!important}.suggestions{display:none!important}
+    .sendrow{height:116px!important;min-height:116px!important;max-height:116px!important;padding:14px 18px!important;grid-template-columns:minmax(0,1fr) auto!important;gap:10px!important}.sendrow textarea,.sendGroup,.sendPrimary,.sendSplit{height:88px!important;min-height:88px!important;max-height:88px!important}.sendrow textarea{border-radius:12px!important;background:#fff!important;padding:13px 14px!important;font-size:14px!important}.sendPrimary{min-width:84px!important;border-radius:10px 0 0 10px!important;background:var(--saas-green)!important;font-size:14px!important}.sendSplit{width:36px!important;border-radius:0 10px 10px 0!important;background:var(--saas-green-dark)!important}
+    .assist{border-left:1px solid var(--saas-border);background:#f8fafc!important}.assistHead{background:#fff!important}.assist h2{font-size:17px!important}.assist p{font-size:12px!important}.assistHead .pill{background:var(--saas-green-soft);color:#047a38}.assistBody{height:calc(100dvh - 72px)!important;padding:14px!important;background:#f8fafc!important}
+    .card{margin:0 0 12px!important;border:1px solid var(--saas-border)!important;border-radius:12px!important;background:#fff!important;overflow:hidden}.cardTitle{min-height:42px;padding:11px 13px!important;border-color:#edf1f5!important;font-size:13px!important}.cardBody{padding:13px!important}
+    .aiDecision{display:grid;gap:12px}.aiInsight{display:grid;gap:4px}.aiInsightLabel{color:#667085;font-size:11px;font-weight:850;letter-spacing:.03em}.aiInsightValue{color:#243044;font-size:13px;line-height:1.5}.aiReplyBox{border:1px solid #abe8c3;border-radius:10px;background:var(--saas-green-soft);padding:11px 12px;color:#173c28;line-height:1.55;white-space:pre-wrap}.aiRisk{border-left:3px solid var(--saas-green);border-radius:8px;background:var(--saas-green-soft);padding:9px 10px;color:#35614a;font-size:12px;line-height:1.45}.aiRisk.pending{border-color:var(--saas-orange);background:var(--saas-orange-soft);color:#7a4300}.aiRisk.high{border-color:var(--saas-red);background:var(--saas-red-soft);color:#9f1c15}
+    .aiActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.aiAction{height:36px;border:1px solid var(--saas-border);border-radius:9px;background:#fff;color:#344054;font-size:12px;font-weight:800}.aiAction.primary{grid-column:1/-1;border-color:var(--saas-green);background:var(--saas-green);color:#fff}.aiAction:hover{border-color:#8adfaa;background:var(--saas-green-soft);color:#057a36}.aiAction.primary:hover{background:var(--saas-green-dark);color:#fff}.aiNotice{min-height:18px;margin-top:8px;color:#057a36;font-size:11px;font-weight:750}
+    .infoDisclosure{margin-bottom:10px;border:1px solid var(--saas-border);border-radius:12px;background:#fff;overflow:hidden}.infoDisclosure summary{min-height:44px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:11px 13px;color:#344054;font-size:13px;font-weight:850;list-style:none}.infoDisclosure summary::-webkit-details-marker{display:none}.infoDisclosure summary::after{content:"＋";color:#98a2b3}.infoDisclosure[open] summary::after{content:"−"}.infoDisclosureBody{padding:0 13px 13px;border-top:1px solid #edf1f5}
+    .profileGrid{padding-top:12px}.profileGrid input,.tagInput{height:36px!important;border-radius:9px!important;font-size:12px}.profileActions{grid-template-columns:minmax(0,1fr) 70px}.noteInput{height:72px!important;min-height:72px!important;font-size:12px!important}.tagChoice{height:30px;font-size:11px}.alert{border-left-color:var(--saas-red);background:var(--saas-red-soft)}.alert strong{color:var(--saas-red)}
+    @media(max-width:1280px){.app{grid-template-columns:300px minmax(560px,1fr) 360px!important}.room p{max-width:340px}.statusBtn{padding:0 9px!important}}
+    @media(max-width:1080px){.app{grid-template-columns:290px minmax(560px,1fr)!important;width:max-content}.assist{display:none!important}}
+    .assistHeadActions{display:flex;align-items:center;gap:8px}.assistFullscreenButton{height:36px;border:1px solid var(--saas-border);border-radius:10px;background:#fff;color:#344054;padding:0 12px;font-size:12px;font-weight:800;cursor:pointer}.assistFullscreenButton:hover{border-color:#91deb0;background:var(--saas-green-soft);color:#057a36}
+    .app.assistantFullscreen{display:block!important;width:100vw!important;height:100dvh!important;overflow:hidden!important}.app.assistantFullscreen>.left,.app.assistantFullscreen>.chat{display:none!important}.app.assistantFullscreen>.assist{position:fixed;z-index:50;inset:0;display:flex!important;flex-direction:column;width:100vw;height:100dvh;border:0!important;background:#f8fafc!important}.app.assistantFullscreen .assistHead{flex:0 0 72px;width:100%;padding-inline:24px!important}.app.assistantFullscreen .assistBody{height:calc(100dvh - 72px)!important;display:grid;grid-template-columns:minmax(560px,1.35fr) minmax(340px,.65fr);grid-auto-rows:max-content;align-content:start;gap:14px;padding:20px 24px!important;overflow:auto}.app.assistantFullscreen .assistBody>.card{grid-column:1;grid-row:1 / span 3;margin:0!important}.app.assistantFullscreen .assistBody>.infoDisclosure{grid-column:2;margin:0}.app.assistantFullscreen .aiDecision{grid-template-columns:minmax(260px,.8fr) minmax(360px,1.2fr);column-gap:24px;align-items:start}.app.assistantFullscreen .aiInsight:nth-child(1){grid-column:1;grid-row:1}.app.assistantFullscreen .aiInsight:nth-child(2){grid-column:1;grid-row:2}.app.assistantFullscreen .aiInsight:nth-child(3){grid-column:1;grid-row:3}.app.assistantFullscreen .aiInsight:nth-child(4){grid-column:2;grid-row:1 / span 4}.app.assistantFullscreen .aiInsight:nth-child(5){grid-column:1;grid-row:4}.app.assistantFullscreen .aiReplyBox{min-height:260px;font-size:15px}.app.assistantFullscreen .aiActions{grid-template-columns:repeat(3,minmax(0,1fr))}.app.assistantFullscreen .aiAction.primary{grid-column:1/-1}.app.assistantFullscreen .cardBody{padding:18px!important}
+    @media(max-width:900px){.app.assistantFullscreen .assistBody{grid-template-columns:1fr;padding:14px!important}.app.assistantFullscreen .assistBody>.card,.app.assistantFullscreen .assistBody>.infoDisclosure{grid-column:1;grid-row:auto}.app.assistantFullscreen .aiDecision{display:grid;grid-template-columns:1fr}.app.assistantFullscreen .aiInsight:nth-child(n){grid-column:1;grid-row:auto}.app.assistantFullscreen .aiReplyBox{min-height:180px}}
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="left">
-      <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服系統</h1><p>AI 建議模式，不自動回覆</p></div><div class="brandActions"><a class="settingsBtn homeBtn" href="https://mlm.fangwl591021.workers.dev/console">主控台</a><button id="settingsButton" class="settingsBtn" type="button">設定</button></div></header>
-      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button><a class="smartMonitorBtn" href="/admin/smart-monitor">康立智能監控</a><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div>
+      <header class="brand"><div class="oa">KL</div><div><h1>KLINK 客服工作台</h1><p>客戶佇列</p></div></header>
+      <div class="floorTabs"><button type="button" class="floorTab active" data-floor="main">產品客服</button><button type="button" class="floorTab" data-floor="admin">行政客服</button></div>
       <section class="config">
         <section class="settingsPanel">
           <div class="settingTitle"><h3>登入身份</h3><span class="roleBadge">Token 僅存在本機</span></div>
@@ -103,9 +147,9 @@
         <div class="roomActions">
           <button class="statusBtn" id="pendingButton">待處理</button>
           <button class="statusBtn" id="doneButton">處理完畢</button>
-          <button class="statusBtn" id="searchButton">搜尋</button>
           <span class="pill" id="syncStatus">同步中</span>
-          <button class="refresh" id="refreshButton">↻</button>
+          <button class="refresh" id="refreshButton" title="重新整理">↻</button>
+          <details class="moreMenu"><summary>更多</summary><div class="moreMenuPanel"><button class="statusBtn" id="searchButton">搜尋客戶</button><a href="https://mlm.fangwl591021.workers.dev/console">返回主控台</a><a class="smartMonitorBtn" href="/admin/smart-monitor">智能監控</a><button id="settingsButton" class="settingsBtn" type="button">系統設定</button><button type="button" id="syncMotherButton" class="motherSyncBtn">同步母站</button></div></details>
         </div>
       </header>
       <div id="manageBar" class="manage"></div>
@@ -123,13 +167,12 @@
     </main>
 
     <aside class="assist">
-      <header class="assistHead"><div><h2>AI 助理</h2><p>僅提供管理員參考</p></div><span class="pill">建議中</span></header>
+      <header class="assistHead"><div><h2>AI 客服助理</h2><p>分析、建議與客戶資料</p></div><div class="assistHeadActions"><span class="pill">人工確認</span><button id="assistantFullscreenButton" class="assistFullscreenButton" type="button" aria-pressed="false" title="將 AI 面板展開為全螢幕">⛶ 全螢幕</button></div></header>
       <div class="assistBody">
-        <section class="card"><div class="cardTitle"><span>最新建議回覆</span><span class="time" id="suggestionCount">0</span></div><div class="cardBody"><div id="sideSuggestions" class="sideList"></div></div></section>
-        <section class="card"><div class="cardTitle"><span>用戶資料</span><span class="time" id="profileState">未同步</span></div><div class="cardBody"><div class="profileGrid"><input id="profileName" placeholder="顯示名稱，例如：王小姐" /><input id="profileAvatar" placeholder="頭像 URL，可留空" /></div><div class="profileActions"><span id="profileHint" class="muted">自動補抓失敗時，可手動固定顯示名稱。</span><button id="saveProfile" class="outlineBtn">儲存</button></div></div></section>
-        <section class="card"><div class="cardTitle"><span>對話標籤</span><span class="time" id="metaStatus">無</span></div><div class="cardBody"><div id="tagGrid" class="tagGrid"></div><div class="tagAdd"><input id="customTag" class="tagInput" placeholder="新增自訂標籤" /><button id="addTag" class="outlineBtn">新增</button></div></div></section>
-        <section class="card"><div class="cardTitle">備註</div><div class="cardBody"><textarea id="noteInput" class="noteInput" placeholder="內部備註，不會發送給用戶"></textarea></div></section>
-        <section class="card"><div class="cardTitle"><span>重要訊息通報</span><span class="time" id="alertCount">0</span></div><div class="cardBody" id="alertList"></div></section>
+        <section class="card"><div class="cardTitle"><span>AI 建議</span><span class="time" id="suggestionCount">0</span></div><div class="cardBody"><div id="sideSuggestions" class="sideList"></div><div class="aiActions"><button id="aiUseReply" class="aiAction primary" type="button">套用建議回覆</button><button id="aiCopy" class="aiAction" type="button">複製</button><button id="aiShorter" class="aiAction" type="button">更簡短</button><button id="aiFriendlier" class="aiAction" type="button">更親切</button><button id="aiProduct" class="aiAction" type="button">加入產品資訊</button><button id="aiSaveScript" class="aiAction" type="button">儲存話術</button></div><div id="aiNotice" class="aiNotice" role="status"></div></div></section>
+        <details class="infoDisclosure"><summary>客戶資料 <span class="time" id="profileState">未同步</span></summary><div class="infoDisclosureBody"><div id="customerQuickActions" class="customerQuickActions"></div><div class="profileGrid"><input id="profileName" placeholder="顯示名稱，例如：王小姐" /><input id="profileAvatar" placeholder="頭像 URL，可留空" /></div><div class="profileActions"><span id="profileHint" class="muted">自動補抓失敗時，可手動固定顯示名稱。</span><button id="saveProfile" class="outlineBtn">儲存</button></div></div></details>
+        <details class="infoDisclosure"><summary>標籤與內部備註 <span class="time" id="metaStatus">無</span></summary><div class="infoDisclosureBody"><div id="tagGrid" class="tagGrid"></div><div class="tagAdd"><input id="customTag" class="tagInput" placeholder="新增自訂標籤" /><button id="addTag" class="outlineBtn">新增</button></div><textarea id="noteInput" class="noteInput" placeholder="內部備註，不會發送給用戶"></textarea></div></details>
+        <details class="infoDisclosure"><summary>風險通報 <span class="time" id="alertCount">0</span></summary><div class="infoDisclosureBody"><div id="alertList"></div></div></details>
       </div>
     </aside>
   </div>
@@ -241,6 +284,14 @@
     els.attachTool.addEventListener("click", () => showError("目前 LINE 推送僅支援文字；圖片與附件會放在下一版。"));
     els.plusTool.addEventListener("click", applyFirstSuggestion);
     els.noteInput.addEventListener("input", queueNoteSave);
+    $("aiUseReply").addEventListener("click", () => applyAssistantSuggestion());
+    $("aiCopy").addEventListener("click", copyAssistantSuggestion);
+    $("aiShorter").addEventListener("click", () => transformAssistantSuggestion("shorter"));
+    $("aiFriendlier").addEventListener("click", () => transformAssistantSuggestion("friendlier"));
+    $("aiProduct").addEventListener("click", () => transformAssistantSuggestion("product"));
+    $("aiSaveScript").addEventListener("click", saveAssistantScript);
+    $("assistantFullscreenButton").addEventListener("click", toggleAssistantFullscreen);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") setAssistantFullscreen(false); });
     els.pointClose.addEventListener("click", closePointModal);
     els.pointModal.addEventListener("click", (e) => { if (e.target === els.pointModal) closePointModal(); });
     els.pointSource.addEventListener("change", () => { renderPointSources(); updatePointActionState(); });
@@ -469,6 +520,8 @@
       }).filter(Boolean);
       return names.length ? names.join("、") : "尚未指定";
     }
+
+    const assistantView = { userId: "", text: "", savedScripts: [] };
 
     function initialFloor() {
       const requested = new URLSearchParams(window.location.search).get("floor");
@@ -981,6 +1034,9 @@
         if (pointBtn) pointBtn.onclick = () => openPointModal(group.userId);
         if (adminToggle) adminToggle.onchange = () => setAccessEntry("admin_all", group, adminToggle.checked).catch((err) => showError(err.message || String(err)));
         if (operatorToggle) operatorToggle.onchange = () => setAccessEntry(state.floor, group, operatorToggle.checked).catch((err) => showError(err.message || String(err)));
+        const customerQuickActions = $("customerQuickActions");
+        const manageActions = els.manageBar.querySelector(".manageActions");
+        if (customerQuickActions && manageActions) customerQuickActions.replaceChildren(manageActions);
       }, 0);
       els.messages.innerHTML = '<div class="day">今天</div>' + group.messages.map((row) => {
         const isAdmin = row["身份"] === "admin";
@@ -997,9 +1053,24 @@
     function renderAssistant(groups) {
       const group = groups.find((item) => item.userId === state.activeUserId) || groups[0];
       const suggestions = group ? suggestionsFor(group) : [];
+      const latestCustomer = group ? [...group.messages].reverse().find((item) => item["身份"] !== "admin") : null;
+      const hasHighRisk = Boolean(group && (group.risk === "high" || group.messages.some((row) => row["重要"] === "是")));
+      const isPending = Boolean(group && !isDoneStatus(group.status));
+      const intent = group ? String((latestCustomer && latestCustomer["類別"]) || group.tags[0] || "一般諮詢") : "尚未選擇客戶";
+      const latestText = String((latestCustomer && latestCustomer["內容"]) || "尚無客戶文字訊息").trim();
+      const summary = group ? `客戶最近提到「${latestText.slice(0, 90)}${latestText.length > 90 ? "…" : ""}」，目前共有 ${group.messages.length} 則對話。` : "請先從左側客戶佇列選擇一筆對話。";
+      const strategy = hasHighRisk ? "先確認客戶感受與問題範圍，避免承諾未確認事項，再提供明確處理節點。" : isPending ? "先回應核心問題，再補充必要資訊與下一步，保持回覆清楚且可執行。" : "對話已處理，可確認是否仍需其他協助並保留後續聯繫入口。";
+      const riskText = hasHighRisk ? "偵測到重要或高風險標記，送出前請人工確認承諾、價格與處理時程。" : isPending ? "目前仍為待處理狀態，建議確認資訊完整後再由客服人工送出。" : "目前未偵測到高風險標記，建議仍由客服確認內容後送出。";
+      const riskClass = hasHighRisk ? "high" : isPending ? "pending" : "";
+      if (!group || assistantView.userId !== group.userId) {
+        assistantView.userId = group ? group.userId : "";
+        assistantView.text = suggestions[0] || "目前沒有可用的 AI 建議回覆。";
+      } else if (!assistantView.text) {
+        assistantView.text = suggestions[0] || "目前沒有可用的 AI 建議回覆。";
+      }
       els.suggestionCount.textContent = String(suggestions.length);
-      els.sideSuggestions.innerHTML = suggestions.length ? suggestions.map((text) => `<button class="sideBtn" data-side-suggestion="${esc(text)}">${esc(text)}</button>`).join("") : '<div class="muted">選擇對話後，AI 建議會顯示在這裡。</div>';
-      document.querySelectorAll("[data-side-suggestion]").forEach((btn) => { btn.onclick = () => { els.replyText.value = btn.dataset.sideSuggestion; els.replyText.focus(); }; });
+      els.sideSuggestions.innerHTML = `<div class="aiDecision"><div class="aiInsight"><span class="aiInsightLabel">客戶意圖</span><div class="aiInsightValue">${esc(intent)}</div></div><div class="aiInsight"><span class="aiInsightLabel">對話摘要</span><div class="aiInsightValue">${esc(summary)}</div></div><div class="aiInsight"><span class="aiInsightLabel">建議策略</span><div class="aiInsightValue">${esc(strategy)}</div></div><div class="aiInsight"><span class="aiInsightLabel">建議回覆</span><div id="aiSuggestionText" class="aiReplyBox">${esc(assistantView.text)}</div></div><div class="aiInsight"><span class="aiInsightLabel">風險提醒</span><div class="aiRisk ${riskClass}">${esc(riskText)}</div></div></div>`;
+      ["aiUseReply", "aiCopy", "aiShorter", "aiFriendlier", "aiProduct", "aiSaveScript"].forEach((id) => { $(id).disabled = !group || !suggestions.length; });
       els.metaStatus.textContent = group ? group.status : "無"; els.metaStatus.className = group ? statusClass(group.status) : "state neutral";
       els.profileState.textContent = group ? (group.hasRealName ? "已命名" : "待同步") : "無";
       setInputUnlessFocused(els.profileName, group && group.hasRealName ? group.displayName : "");
@@ -1008,8 +1079,67 @@
       els.tagGrid.innerHTML = TAG_OPTIONS.map((tag) => `<button class="tagChoice ${group && group.tags.includes(tag) ? "active" : ""}" data-tag="${esc(tag)}">${esc(tag)}</button>`).join("");
       document.querySelectorAll("[data-tag]").forEach((btn) => { btn.onclick = () => toggleTag(btn.dataset.tag); });
       els.noteInput.value = group ? group.note : "";
-      els.alertCount.textContent = String(state.aiLogs.length);
-      els.alertList.innerHTML = state.aiLogs.length ? state.aiLogs.map((row) => `<article class="alert"><strong>${esc(nameOf(row, row["用戶ID"]))} · ${esc(row["類別"] || "重要訊息")}</strong><p>${esc(row["內容"] || "")}</p><div class="time">${esc(row["狀態"] || "待處理")} · ${fmt(row["時間"])} · TG ${esc(row["TG通知"] || "")}</div></article>`).join("") : '<div class="muted">目前沒有客訴、負評、建議或重大風險通報。</div>';
+      const relevantAlerts = group ? state.aiLogs.filter((row) => !row["用戶ID"] || row["用戶ID"] === group.userId) : [];
+      els.alertCount.textContent = String(relevantAlerts.length);
+      els.alertList.innerHTML = relevantAlerts.length ? relevantAlerts.map((row) => `<article class="alert"><strong>${esc(nameOf(row, row["用戶ID"]))} · ${esc(row["類別"] || "重要訊息")}</strong><p>${esc(row["內容"] || "")}</p><div class="time">${esc(row["狀態"] || "待處理")} · ${fmt(row["時間"])} · TG ${esc(row["TG通知"] || "")}</div></article>`).join("") : '<div class="muted">目前沒有客訴、負評或重大風險通報。</div>';
+    }
+
+    function assistantText() { return String(assistantView.text || "").trim(); }
+    function showAssistantNotice(message) { const node = $("aiNotice"); node.textContent = message || ""; clearTimeout(showAssistantNotice.timer); showAssistantNotice.timer = setTimeout(() => { node.textContent = ""; }, 2600); }
+    function updateAssistantText(text, notice, applyToReply = true) {
+      assistantView.text = String(text || "").trim();
+      const node = $("aiSuggestionText");
+      if (node) node.textContent = assistantView.text;
+      if (applyToReply) els.replyText.value = assistantView.text;
+      showAssistantNotice(notice);
+    }
+    function applyAssistantSuggestion() {
+      const text = assistantText();
+      if (!text || text.includes("目前沒有可用")) return;
+      els.replyText.value = text; els.replyText.focus(); showAssistantNotice("已套用到人工回覆輸入框，尚未送出。");
+    }
+    async function copyAssistantSuggestion() {
+      const text = assistantText();
+      if (!text) return;
+      try { await navigator.clipboard.writeText(text); showAssistantNotice("已複製建議回覆。"); }
+      catch (_err) { els.replyText.value = text; els.replyText.select(); document.execCommand("copy"); showAssistantNotice("已複製建議回覆。"); }
+    }
+    function transformAssistantSuggestion(mode) {
+      const group = currentGroup();
+      const current = assistantText();
+      if (!group || !current) return;
+      if (mode === "shorter") {
+        const pieces = current.split(/(?<=[。！？!?])/).map((part) => part.trim()).filter(Boolean);
+        updateAssistantText((pieces.slice(0, 2).join("") || current).slice(0, 120), "已產生較精簡版本，尚未送出。");
+        return;
+      }
+      if (mode === "friendlier") {
+        const friendly = `${/^您好/.test(current) ? "" : "您好，"}${current}${/[。！!]$/.test(current) ? "" : "。"} 謝謝您的詢問，我們會協助您確認。`;
+        updateAssistantText(friendly, "已調整為較親切語氣，尚未送出。");
+        return;
+      }
+      const alternatives = suggestionsFor(group);
+      const productInfo = alternatives.find((text) => text && text !== current) || "若您需要，我也可以再補充相關產品規格、使用方式與適用情境。";
+      updateAssistantText(`${current}\n\n${productInfo}`, "已加入現有知識建議中的產品資訊，尚未送出。");
+    }
+    function saveAssistantScript() {
+      const text = assistantText();
+      if (!text) return;
+      if (!assistantView.savedScripts.includes(text)) assistantView.savedScripts.push(text);
+      showAssistantNotice(`已儲存至本次工作階段話術（共 ${assistantView.savedScripts.length} 則，不寫入資料庫）。`);
+    }
+
+    function toggleAssistantFullscreen() {
+      const app = document.querySelector(".app");
+      setAssistantFullscreen(!app.classList.contains("assistantFullscreen"));
+    }
+    function setAssistantFullscreen(active) {
+      const app = document.querySelector(".app");
+      const button = $("assistantFullscreenButton");
+      app.classList.toggle("assistantFullscreen", Boolean(active));
+      button.setAttribute("aria-pressed", String(Boolean(active)));
+      button.textContent = active ? "↙ 返回三欄" : "⛶ 全螢幕";
+      button.title = active ? "返回客戶佇列、聊天室與 AI 面板三欄模式" : "將 AI 面板展開為全螢幕";
     }
 
     function allGroups() {
@@ -1400,7 +1530,7 @@
     }
     function statusClass(status) {
       const s = String(status || "").trim();
-      if (s.includes("待處理")) return "state danger";
+      if (s.includes("待處理")) return "state warn";
       if (s.includes("待回覆")) return "state warn";
       if (s.includes("處理完畢") || s.includes("已回覆")) return "state dark";
       return "state neutral";
