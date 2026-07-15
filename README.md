@@ -79,3 +79,26 @@ https://你的-worker.workers.dev/webhook/line
 - 系統不呼叫 LINE reply API。
 - 系統不會自動把 Gemini 內容傳給客戶。
 - 只有管理員在後台按送出，Worker 才會呼叫 LINE push API。
+
+## LINE COPILOT Extension API
+
+LINE COPILOT 不內嵌 `ADMIN_TOKEN` 或 `DASHBOARD_API_TOKEN`。客服使用既有後台帳號呼叫：
+
+- `POST /api/auth/extension-login`：簽發 8 小時有效的 HMAC 短效 Token。
+- `GET /api/copilot/customer?floor=main&uid=U...`：回傳最小化客戶資料、UID 對應結果與 K 點餘額。
+- `/admin/points/grant`、`/admin/points/deduct`：沿用既有 K 點規則、客服權限與操作紀錄。
+
+建議在 Cloudflare 設定獨立 Secret：
+
+```text
+EXTENSION_AUTH_SECRET=至少 32 bytes 的隨機密鑰
+```
+
+若未設定，Worker 會依序使用 `ADMIN_TOKEN` 或 `DASHBOARD_API_TOKEN` 作為簽章密鑰；三者皆未設定時不簽發 Extension Token。短效 Token 不使用 Cookie，適合由 Manifest V3 background service worker 以 `Authorization: Bearer` 呼叫。
+
+安全邊界：
+
+- 登入失敗不回傳 Token。
+- 客戶端點不回傳聊天歷史或同名候選會員明細。
+- Extension Token 仍受客服樓層權限限制。
+- K 點異動仍需有效母站 UID，並沿用康立全球只能扣點等限制。
