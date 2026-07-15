@@ -438,6 +438,8 @@ export default {
         await assertFloorAccess(request, env, floor);
         const userId = stringValue(url.searchParams.get("uid") || url.searchParams.get("userId") || url.searchParams.get("line_user_id"));
         const userName = stringValue(url.searchParams.get("name") || url.searchParams.get("user_name"));
+        const rawPictureUrl = stringValue(url.searchParams.get("picture_url") || url.searchParams.get("pictureUrl"));
+        const userPictureUrl = /^https:\/\//i.test(rawPictureUrl) && rawPictureUrl.length <= 2048 ? rawPictureUrl : "";
         if (!/^U[a-zA-Z0-9_-]{20,}$/.test(userId)) {
           return jsonResponse({ success: false, status: "error", message: "有效的 LINE UID 必填" }, 400, corsHeaders);
         }
@@ -447,6 +449,7 @@ export default {
         const pointUrl = new URL(request.url);
         pointUrl.searchParams.set("line_user_id", userId);
         pointUrl.searchParams.set("user_name", userName || stringValue(thread && (thread.displayName || thread.name)));
+        pointUrl.searchParams.set("picture_url", userPictureUrl || stringValue(thread && thread.pictureUrl));
         pointUrl.searchParams.set("point_type", "gift_money");
         pointUrl.searchParams.set("limit", "200");
         const pointResult = await listPointBalances(env, pointUrl).catch(() => ({ balances: [], resolved: null, alternatives: [] }));
@@ -4415,6 +4418,8 @@ async function listPointBalances(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
+  const rawPictureUrl = stringValue(url.searchParams.get("picture_url") || url.searchParams.get("pictureUrl"));
+  const userPictureUrl = /^https:\/\//i.test(rawPictureUrl) && rawPictureUrl.length <= 2048 ? rawPictureUrl : "";
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
   const pointTypes = pointBalanceQueryTypes(url.searchParams.get("point_type") || url.searchParams.get("pointType"));
@@ -4432,7 +4437,7 @@ async function listPointBalances(env, url) {
       return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
     }
     if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
-    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName, chatPictureUrl: userPictureUrl });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const resolvedRows = channelKey
         ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, pointTypes)
@@ -4715,6 +4720,7 @@ async function resolvePointIdentity(env, input) {
   const chatLineUserId = stringValue(input.chatLineUserId);
   const masterMemberRef = stringValue(input.masterMemberRef || input.master_member_ref);
   const userName = stringValue(input.userName).trim();
+  const chatPictureUrl = stringValue(input.chatPictureUrl || input.pictureUrl).trim();
   if (!env.DB) return null;
 
   if (masterMemberRef) {
@@ -4792,7 +4798,7 @@ async function resolvePointIdentity(env, input) {
     }
 
     if (userName) {
-      const profileResolved = await pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName);
+      const profileResolved = await pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName, chatPictureUrl);
       if (hasPointSourceLineUsers(profileResolved.channelLineUserIds)) {
         return {
           channelLineUserIds: profileResolved.channelLineUserIds,
@@ -5014,20 +5020,23 @@ async function pointSourceLineUsersFromUniquePointAccountName(env, userName) {
   if (!POINT_CHANNELS.has(channelKey) || !lineUserId) return { channelLineUserIds: {} };
   return { channelLineUserIds: { [channelKey]: lineUserId }, memberRef: "", name, source: "unique_point_account_name" };
 }
-async function pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName) {
+async function pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName, providedPictureUrl = "") {
   const chatUserId = stringValue(chatLineUserId);
   const name = stringValue(userName).trim();
   if (!chatUserId || !name || !env.DB) return { channelLineUserIds: {} };
-  const chatProfile = await env.DB.prepare(`
-    SELECT picture_url, display_name
-    FROM profiles
-    WHERE user_id = ?
-      AND picture_url IS NOT NULL
-      AND picture_url <> ''
-    ORDER BY updated_at DESC, last_profile_sync DESC
-    LIMIT 1
-  `).bind(chatUserId).first();
-  const chatPictureKey = linePictureKey(chatProfile && chatProfile.picture_url);
+  let chatPictureKey = linePictureKey(providedPictureUrl);
+  if (!chatPictureKey) {
+    const chatProfile = await env.DB.prepare(`
+      SELECT picture_url, display_name
+      FROM profiles
+      WHERE user_id = ?
+        AND picture_url IS NOT NULL
+        AND picture_url <> ''
+      ORDER BY updated_at DESC, last_profile_sync DESC
+      LIMIT 1
+    `).bind(chatUserId).first();
+    chatPictureKey = linePictureKey(chatProfile && chatProfile.picture_url);
+  }
   if (!chatPictureKey) return { channelLineUserIds: {} };
   const rows = await env.DB.prepare(`
     SELECT p.user_id, p.display_name, p.picture_url, p.updated_at
@@ -5417,6 +5426,8 @@ async function listPointDailyStats(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
+  const rawPictureUrl = stringValue(url.searchParams.get("picture_url") || url.searchParams.get("pictureUrl"));
+  const userPictureUrl = /^https:\/\//i.test(rawPictureUrl) && rawPictureUrl.length <= 2048 ? rawPictureUrl : "";
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
   const pointTypes = pointBalanceQueryTypes(url.searchParams.get("point_type") || url.searchParams.get("pointType"));
@@ -5437,7 +5448,7 @@ async function listPointDailyStats(env, url) {
     const exactLedgers = ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
     if (exactLedgers.length) return exactLedgers;
     if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
-    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName, chatPictureUrl: userPictureUrl });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const mappedLedgers = [];
       for (const sourceKey of sourceKeys) {
