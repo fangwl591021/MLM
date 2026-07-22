@@ -30,6 +30,7 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const STORAGE_KEY = "klink_ai_wear_state_v2";
+    const AI_WEAR_LIFF_OVERRIDE = "";
     let state = { settings:{}, memberSettings:{ purchaseLineUrl:"", shareCaption:"我正在試戴康立負離子眼鏡，你覺得這副適合我嗎？" }, shareStats:{items:[],totalVisitors:0,totalPlays:0}, models:[], selected:"", selfie:null, selfieFile:null, series:"全部", results:[], progressTimer:null, wearMode:"has_glasses", auth:{ idToken:"", displayName:"", userId:"", pictureUrl:"", points:null, pointError:"" } };
     const sharePayloads = {};
     const AI_WEAR_ADD_FRIEND_URL = "https://lin.ee/9rvLYhF";
@@ -43,7 +44,7 @@
     function modelSeries(model){return String(model.series||model.title||"未分類").replace(/負離子|眼鏡|系列|MODEL/gi,"").trim() || "未分類";}
     function currentModel(){return state.models.find((m)=>m.id===state.selected)||null;}
     async function initLineLogin(){
-      const liffId = String(state.settings.liffId || "2007221311-ISFxRBY3").trim();
+      const liffId = String(AI_WEAR_LIFF_OVERRIDE || state.settings.liffId || "2007221311-ISFxRBY3").trim();
       if(!liffId || !window.liff){return;}
       try{
         await liff.init({ liffId });
