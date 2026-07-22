@@ -6519,7 +6519,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
   let { results } = await env.DB.prepare(`
     SELECT t.*, p.display_name AS profile_display_name, p.picture_url AS profile_picture_url, (SELECT tx.display_name FROM threads tx WHERE tx.user_id = t.user_id AND tx.display_name <> '' AND tx.display_name <> tx.user_id ORDER BY tx.updated_at DESC LIMIT 1) AS linked_display_name, (SELECT tx.picture_url FROM threads tx WHERE tx.user_id = t.user_id AND tx.picture_url <> '' ORDER BY tx.updated_at DESC LIMIT 1) AS linked_picture_url, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
     WHERE ${where.join(" AND ")}
     ORDER BY t.last_message_at DESC, t.updated_at DESC
     LIMIT ?
@@ -6531,7 +6531,7 @@ async function fetchThreads(env, floor = FLOOR_MAIN, limit = 120, options = {}) 
   const messageResults = [];
   for (const batch of chunkArray(ids, D1_IN_QUERY_BATCH_SIZE)) {
     const placeholders = batch.map(() => "?").join(",");
-    const messageRows = await env.DB.prepare(`SELECT * FROM messages WHERE thread_id IN (${placeholders}) ORDER BY created_at ASC`).bind(...batch).all();
+    const messageRows = await env.DB.prepare(`SELECT * FROM messages WHERE floor_id = ? AND thread_id IN (${placeholders}) ORDER BY created_at ASC`).bind(floor, ...batch).all();
     messageResults.push(...(messageRows.results || []));
   }
   const byThread = new Map(ids.map((id) => [id, []]));
@@ -6660,7 +6660,7 @@ async function fetchThread(env, floor, id) {
   const row = await env.DB.prepare(`
     SELECT t.*, p.display_name AS profile_display_name, p.picture_url AS profile_picture_url, (SELECT tx.display_name FROM threads tx WHERE tx.user_id = t.user_id AND tx.display_name <> '' AND tx.display_name <> tx.user_id ORDER BY tx.updated_at DESC LIMIT 1) AS linked_display_name, (SELECT tx.picture_url FROM threads tx WHERE tx.user_id = t.user_id AND tx.picture_url <> '' ORDER BY tx.updated_at DESC LIMIT 1) AS linked_picture_url, p.profile_status, p.profile_error, p.last_profile_sync
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
     WHERE t.floor_id = ? AND (t.id = ? OR t.user_id = ?)
   `).bind(floor, lookup, id.replace(/^(admin:)?user:/, "")).first();
   if (!row) return null;
@@ -7459,7 +7459,7 @@ async function backfillProfiles(env, floor, provider, limit, options = {}) {
   const { results } = await env.DB.prepare(`
     SELECT t.user_id, t.source_type, t.source_id, t.display_name, t.picture_url
     FROM threads t
-    LEFT JOIN profiles p ON p.user_id = t.user_id
+    LEFT JOIN profiles p ON p.user_id = t.user_id AND p.floor_id = t.floor_id
     WHERE t.floor_id = ? AND (t.display_name = '' OR t.display_name = t.user_id OR t.picture_url = '')
       ${staleClause}
     ORDER BY t.updated_at DESC
