@@ -146,6 +146,14 @@ export default {
         }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/internal/ai/responses" && request.method === "POST") {
+        if (url.hostname !== "mlm.internal") {
+          return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
+        }
+        const body = await safeJson(request);
+        return proxyInternalAiResponses(env, body);
+      }
+
       if (url.pathname === "/api/public/klink-courses" && request.method === "GET") {
         const courses = await listPublicKlinkCourses(env);
         return jsonResponse({ status: "success", courses }, 200, {
@@ -3815,6 +3823,30 @@ function calendarEventRowToRewardEvent(row) {
     checkinStartsAt: numberOrZero(row && row.checkin_starts_at),
     checkinEndsAt: numberOrZero(row && row.checkin_ends_at),
   };
+}
+
+async function proxyInternalAiResponses(env, body) {
+  if (!env.OPENAI_API_KEY) throw httpError("MLM OPENAI_API_KEY is not configured", 500);
+  const payload = body && body.request && typeof body.request === "object" ? { ...body.request } : null;
+  if (!payload || !Array.isArray(payload.input)) throw httpError("Invalid internal AI request", 400);
+  const serializedInput = JSON.stringify(payload.input);
+  if (serializedInput.length > 8 * 1024 * 1024) throw httpError("Internal AI request is too large", 413);
+  const hasImage = serializedInput.includes('"input_image"');
+  payload.model = hasImage
+    ? (env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-5-mini")
+    : (env.OPENAI_MODEL || "gpt-5-mini");
+  payload.max_output_tokens = Math.max(100, Math.min(8000, Number(payload.max_output_tokens) || 1200));
+  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
+  const upstream = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify(payload),
+  });
+  const responseText = await upstream.text();
+  return new Response(responseText, {
+    status: upstream.status,
+    headers: { "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
 }
 
 async function importCalendarImageToD1(env, request) {
