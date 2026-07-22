@@ -65,6 +65,7 @@ const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
 const AI_WEAR_RESULT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
 const AI_WEAR_D1_RESULT_BASE64_MAX_CHARS = 700000; // Legacy fallback only; new AI wear results are stored in R2.
 const DEFAULT_AI_WEAR_LIFF_ID = "2007221311-ISFxRBY3";
+const KLINK_AI_WEAR_LIFF_ID = "2007221311-snSAlddv";
 const DEFAULT_AI_WEAR_PROMPT = `請以人物照片為主圖，完整保留人物本人臉部特徵、臉型、五官、膚色、表情、眼神、髮型、衣服、拍攝角度、背景與光線。
 
 請以眼鏡參考圖作為眼鏡款式來源，只參考眼鏡本身，不參考圖片中的人物、背景或其他元素。
@@ -177,6 +178,9 @@ export default {
 
       if ((url.pathname === "/ai-wear" || url.pathname === "/ai-wear.html") && (request.method === "GET" || request.method === "HEAD")) {
         return serveFrontendHtml("ai-wear.html", corsHeaders);
+      }
+      if (url.pathname === "/ai-wear/klink" && (request.method === "GET" || request.method === "HEAD")) {
+        return serveFrontendHtml("ai-wear.html", corsHeaders, { aiWearLiffId: KLINK_AI_WEAR_LIFF_ID });
       }
       if (url.pathname.startsWith("/ai-wear/share/") && url.pathname.endsWith("/preview") && (request.method === "GET" || request.method === "HEAD")) {
         return serveAiWearSharePreviewPage(env, url.pathname, corsHeaders);
@@ -906,6 +910,10 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
     .replaceAll("可用K點合計", "K點餘額")
     .replaceAll("扣除後可用K點", "K點餘額");
   if (fileName === "ai-wear.html") html = rewriteAiWearMobileShareHtml(html);
+  if (fileName === "ai-wear.html" && options && options.aiWearLiffId) {
+    const liffId = normalizeAiWearLiffId(options.aiWearLiffId);
+    html = html.replace('const AI_WEAR_LIFF_OVERRIDE = "";', `const AI_WEAR_LIFF_OVERRIDE = ${JSON.stringify(liffId)};`);
+  }
   if (options && options.smartMonitorDashboard) html = rewriteSmartMonitorDashboardHtml(html);
   return new Response(html, {
     status: 200,
