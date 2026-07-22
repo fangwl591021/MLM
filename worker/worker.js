@@ -165,6 +165,26 @@ export default {
         return jsonResponse({ status:"success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/internal/klinkweb/consume-admin-sso" && request.method === "POST") {
+        if (url.hostname !== "mlm.internal") {
+          return jsonResponse({ status:"error", error:"Not Found" }, 404, corsHeaders);
+        }
+        const result=await consumeKlinkwebAdminSso(env,await safeJson(request));
+        return jsonResponse({status:"success",...result},200,corsHeaders);
+      }
+
+      if (url.pathname === "/api/internal/klinkweb/super-admin-status" && request.method === "POST") {
+        if (url.hostname !== "mlm.internal") {
+          return jsonResponse({ status:"error", error:"Not Found" }, 404, corsHeaders);
+        }
+        const body=await safeJson(request);
+        const lineUserId=stringValue(body.lineUserId || body.line_user_id).trim();
+        const access=/^U[0-9a-f]{32}$/i.test(lineUserId)
+          ? await resolveLineDashboardAccess(env,{userId:lineUserId,displayName:""})
+          : {admin:false};
+        return jsonResponse({status:"success",superAdmin:Boolean(access.admin)},200,corsHeaders);
+      }
+
       if (url.pathname === "/api/internal/number-science/reports" && request.method === "POST") {
         if (url.hostname !== "mlm.internal") {
           return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
@@ -345,6 +365,17 @@ export default {
           response.headers.append("Set-Cookie", await buildConsoleSessionCookie(env, result.profile, access));
         }
         return response;
+      }
+
+      if (url.pathname === "/api/console/klinkweb-entry" && request.method === "POST") {
+        const auth=await assertAccessManager(request,env);
+        const lineUserId=stringValue(auth.userId).trim();
+        if(!/^U[0-9a-f]{32}$/i.test(lineUserId))throw httpError("請使用最高權限 LINE 帳號登入後再開啟 Klinkweb",403);
+        const access=await resolveLineDashboardAccess(env,{userId:lineUserId,displayName:stringValue(auth.displayName)});
+        if(!access.admin)throw httpError("只有綜合主控台最高權限可以開啟 Klinkweb",403);
+        const sso=await createKlinkwebAdminSso(env,lineUserId,stringValue(auth.displayName));
+        const origin=stringValue(env.KLINKWEB_ADMIN_ORIGIN || "https://klinweb.fangwl591021.workers.dev").replace(/\/+$/,"");
+        return jsonResponse({status:"success",entryUrl:`${origin}/admin/sso?token=${encodeURIComponent(sso.token)}`,expiresIn:90},200,corsHeaders);
       }
 
       if (url.pathname === "/r/nfc" && (request.method === "GET" || request.method === "HEAD")) {
@@ -10338,6 +10369,44 @@ async function verifyLineLoginIdToken(env, idToken) {
   } catch (err) {
     return { ok: false, status: 0, message: err && err.message ? err.message : String(err) };
   }
+}
+
+async function ensureKlinkwebAdminSsoTable(env) {
+  if(!env.DB)throw httpError("DB is not configured",500);
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS klinkweb_admin_sso_tokens (
+    token TEXT PRIMARY KEY,
+    line_user_id TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`).run();
+}
+
+async function createKlinkwebAdminSso(env,lineUserId,displayName="") {
+  await ensureKlinkwebAdminSsoTable(env);
+  const now=Date.now();
+  const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`;
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM klinkweb_admin_sso_tokens WHERE expires_at < ? OR used_at > 0").bind(now-300000),
+    env.DB.prepare("INSERT INTO klinkweb_admin_sso_tokens (token,line_user_id,display_name,expires_at,created_at) VALUES (?,?,?,?,?)")
+      .bind(token,lineUserId,stringValue(displayName).slice(0,120),now+90000,now),
+  ]);
+  return {token};
+}
+
+async function consumeKlinkwebAdminSso(env,body={}) {
+  await ensureKlinkwebAdminSsoTable(env);
+  const token=stringValue(body.token).trim();
+  if(!/^[0-9a-f]{64}$/i.test(token))throw httpError("Klinkweb 管理入口無效",400);
+  const now=Date.now();
+  const row=await env.DB.prepare("SELECT line_user_id,display_name FROM klinkweb_admin_sso_tokens WHERE token=? AND used_at=0 AND expires_at>=? LIMIT 1").bind(token,now).first();
+  if(!row)throw httpError("Klinkweb 管理入口已失效，請回主控台重新開啟",401);
+  const access=await resolveLineDashboardAccess(env,{userId:row.line_user_id,displayName:row.display_name});
+  if(!access.admin)throw httpError("Klinkweb 最高權限已取消",403);
+  const used=await env.DB.prepare("UPDATE klinkweb_admin_sso_tokens SET used_at=? WHERE token=? AND used_at=0").bind(now,token).run();
+  if(Number(used?.meta?.changes || 0)!==1)throw httpError("Klinkweb 管理入口已使用",409);
+  return {lineUserId:row.line_user_id,displayName:row.display_name};
 }
 
 async function resolveLineDashboardAccess(env, profile) {
