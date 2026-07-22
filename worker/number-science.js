@@ -93,10 +93,10 @@ export async function buildVendorPayload(input) {
     Gender: input.self.gender,
     RequestType: input.requestType,
     Client: CLIENT_ID,
-    hashValue: await sha256Hex(`NumTech${CLIENT_ID}${input.self.birthDate}`),
+    hashValue: (await sha256Hex(`NumTech${CLIENT_ID}${input.self.birthDate}`)).toUpperCase(),
   };
   if (input.person) {
-    payload.Person = {
+    payload.person = {
       Name: input.person.name,
       BirthDate: input.person.birthDate,
       Gender: input.person.gender,
