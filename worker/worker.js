@@ -8691,13 +8691,25 @@ async function fetchAiWearMemberPoints(env, body) {
   if (!profile && idTokenError) throw idTokenError;
   const lineUserId = stringValue(profile && profile.userId);
   if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
-  const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+  // 餘額與明細必須取自同一個 MLM 母站快照，避免 klinkweb 顯示
+  // 母站餘額、卻混用自己的本機流水。母站暫時無法讀取時才退回
+  // MLM 的本機快取；這種情況不偽造母站明細。
+  const snapshot = await fetchWetwPointSnapshot(env, settings.pointChannelKey, lineUserId, settings.pointType, 100).catch(() => null);
+  const liveBalance = Number(snapshot && snapshot.balance);
+  const balance = Number.isFinite(liveBalance)
+    ? liveBalance
+    : await getPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+  const items = snapshot && Array.isArray(snapshot.rows)
+    ? snapshot.rows.map((row) => wetwPointListItem(row))
+    : [];
   const memberSettings = await loadAiWearMemberSettings(env, lineUserId);
   return {
     lineUserId,
     displayName: stringValue((body && body.displayName) || (profile && profile.displayName)),
     pictureUrl: stringValue((body && body.pictureUrl) || (profile && profile.pictureUrl)),
     balance,
+    items,
+    ledgerSource: snapshot ? "mlm-mother-site" : "mlm-local-fallback",
     pointChannelKey: settings.pointChannelKey,
     pointType: settings.pointType,
     pointCost: Number(settings.pointCost || 0),
@@ -10614,7 +10626,7 @@ async function handleInternalCardCollectionReward(env, body = {}) {
     }, {
       event_name:'收藏名片贈點',
       event_content:`成功收藏新名片贈送 ${points} K點`,
-      shop_remark:`收藏新名片贈點；card=${cardId};user=${userId}`,
+      shop_remark:`收藏新名片贈點；business_key=${businessKey};card=${cardId};user=${userId}`,
     });
     await env.DB.prepare("UPDATE internal_reward_claims SET status='completed', error_message='', updated_at=? WHERE business_key=?").bind(Date.now(), businessKey).run();
     const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, 'gift_money').catch(() => null);
