@@ -10443,6 +10443,10 @@ async function handleInternalNumberScience(env, body = {}) {
   let input;
   try { input = normalizeNumberScienceInput(body); }
   catch (error) { throw httpError(error && error.message ? error.message : "報告資料不正確", 400); }
+  const configuredPointCost=Number(body.pointCost || body.point_cost);
+  if(Number.isInteger(configuredPointCost)&&configuredPointCost>0&&configuredPointCost<=1000000){
+    input={...input,product:{...input.product,cost:configuredPointCost}};
+  }
 
   const entitlement = await buildEntitlement(lineUserId, input);
   const businessKey = `number-science:${entitlement.id}`;
@@ -10485,9 +10489,9 @@ async function handleInternalNumberScience(env, body = {}) {
   } else {
     await env.DB.prepare(`
       UPDATE number_science_reports
-      SET status = 'generating', error_message = '', updated_at = ?
+      SET status = 'generating', point_cost = ?, error_message = '', updated_at = ?
       WHERE id = ?
-    `).bind(now, row.id).run();
+    `).bind(input.product.cost, now, row.id).run();
   }
 
   try {
@@ -10576,7 +10580,8 @@ async function handleInternalCardCollectionReward(env, body = {}) {
   if (!/^U[0-9a-f]{32}$/i.test(lineUserId)) throw httpError('LINE 會員身份無效', 401);
   if (!/^usr_[0-9a-f]{32}$/i.test(userId) || !/^contact_[0-9a-f]{32}$/i.test(cardId)) throw httpError('收藏名片識別無效', 400);
   await ensureInternalRewardClaimsTable(env);
-  const points = 10;
+  const requestedPoints=Number(body.points);
+  let points=Number.isInteger(requestedPoints)&&requestedPoints>0&&requestedPoints<=1000000?requestedPoints:10;
   const businessKey = `klink-card-collection:${userId}:${cardId}`;
   const now = Date.now();
   let claim = await env.DB.prepare('SELECT * FROM internal_reward_claims WHERE business_key = ? LIMIT 1').bind(businessKey).first();
@@ -10588,6 +10593,10 @@ async function handleInternalCardCollectionReward(env, body = {}) {
       ON CONFLICT(business_key) DO NOTHING
     `).bind(businessKey, lineUserId, cardId, points, now, now).run();
     claim = await env.DB.prepare('SELECT * FROM internal_reward_claims WHERE business_key = ? LIMIT 1').bind(businessKey).first();
+  }
+  if(claim){
+    const claimedPoints=Number(claim.points);
+    if(Number.isInteger(claimedPoints)&&claimedPoints>0)points=claimedPoints;
   }
   if (claim && claim.status === 'completed') {
     const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, 'gift_money').catch(() => null);
