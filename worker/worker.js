@@ -180,7 +180,7 @@ export default {
         return serveFrontendHtml("ai-wear.html", corsHeaders);
       }
       if (url.pathname === "/ai-wear/klink" && (request.method === "GET" || request.method === "HEAD")) {
-        return serveFrontendHtml("ai-wear.html", corsHeaders, { aiWearLiffId: KLINK_AI_WEAR_LIFF_ID });
+        return serveFrontendHtml("ai-wear.html", corsHeaders, { aiWearLiffId: KLINK_AI_WEAR_LIFF_ID, aiWearPointChannelKey: POINT_OA1 });
       }
       if (url.pathname.startsWith("/ai-wear/share/") && url.pathname.endsWith("/preview") && (request.method === "GET" || request.method === "HEAD")) {
         return serveAiWearSharePreviewPage(env, url.pathname, corsHeaders);
@@ -913,6 +913,9 @@ async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
   if (fileName === "ai-wear.html" && options && options.aiWearLiffId) {
     const liffId = normalizeAiWearLiffId(options.aiWearLiffId);
     html = html.replace('const AI_WEAR_LIFF_OVERRIDE = "";', `const AI_WEAR_LIFF_OVERRIDE = ${JSON.stringify(liffId)};`);
+  }
+  if (fileName === "ai-wear.html" && options && options.aiWearPointChannelKey === POINT_OA1) {
+    html = html.replace('const AI_WEAR_POINT_CHANNEL_OVERRIDE = "";', `const AI_WEAR_POINT_CHANNEL_OVERRIDE = ${JSON.stringify(POINT_OA1)};`);
   }
   if (options && options.smartMonitorDashboard) html = rewriteSmartMonitorDashboardHtml(html);
   return new Response(html, {
@@ -8067,9 +8070,9 @@ async function validateAiWearSelfieForTryOn(env, settings, selfie) {
 }
 async function preflightAiWearGenerate(request, env) {
   await ensureAiWearSchema(env);
-  const settings = await loadAiWearSettingsRaw(env);
-  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const form = await request.formData();
+  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), form.get("aiWearPointChannelKey"));
+  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const selfie = await resolveAiWearSelfieFromForm(form, env);
   if (!selfie || !selfie.buffer || !selfie.buffer.byteLength) throw httpError("請先上傳人物照片。", 400);
   if (selfie.buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請重新上傳較小的照片。", 400);
@@ -8100,9 +8103,9 @@ async function preflightAiWearGenerate(request, env) {
 }
 async function generateAiWearImage(request, env) {
   await ensureAiWearSchema(env);
-  const settings = await loadAiWearSettingsRaw(env);
-  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const form = await request.formData();
+  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), form.get("aiWearPointChannelKey"));
+  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const selfie = await resolveAiWearSelfieFromForm(form, env);
   const personBuffer = selfie.buffer;
   const personMimeType = selfie.mimeType;
@@ -8571,9 +8574,14 @@ async function verifyAiWearLineProfileFromForm(env, settings, form) {
   return verifyAiWearLineProfileFromToken(env, settings, idToken);
 }
 
+function aiWearSettingsForPointChannel(settings, requestedChannelKey) {
+  if (stringValue(requestedChannelKey).trim() !== POINT_OA1) return settings;
+  return { ...settings, pointChannelKey: POINT_OA1, pointType: "gift_money" };
+}
+
 async function fetchAiWearMemberPoints(env, body) {
   await ensureAiWearSchema(env);
-  const settings = await loadAiWearSettingsRaw(env);
+  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), body && body.aiWearPointChannelKey);
   const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
   const lineUserId = stringValue(profile && profile.userId);
   if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
@@ -8859,7 +8867,6 @@ async function serveAiWearReferenceImage(env, pathname, corsHeaders) {
 
 async function saveAiWearResult(request, env) {
   await ensureAiWearSchema(env);
-  const settings = await loadAiWearSettingsRaw(env);
   const now = Date.now();
   const contentType = request.headers.get("content-type") || "";
   let body = {};
@@ -8879,6 +8886,7 @@ async function saveAiWearResult(request, env) {
   } else {
     body = await safeJson(request);
   }
+  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), body.aiWearPointChannelKey);
 
   const configuredPointCost = Math.max(0, Math.floor(Number(settings.pointCost || 0) || 0));
   const shouldDeductPoints = Boolean(settings.pointDeductionEnabled && configuredPointCost > 0);
