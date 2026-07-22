@@ -1,3 +1,5 @@
+import { buildEntitlement, normalizeNumberScienceInput, requestNumberScienceReport } from "./number-science.js";
+
 /**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
  *
@@ -152,6 +154,15 @@ export default {
         }
         const body = await safeJson(request);
         return proxyInternalAiResponses(env, body);
+      }
+
+      if (url.pathname === "/api/internal/number-science/reports" && request.method === "POST") {
+        if (url.hostname !== "mlm.internal") {
+          return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
+        }
+        const body = await safeJson(request);
+        const result = await handleInternalNumberScience(env, body);
+        return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
       if (url.pathname === "/api/public/klink-courses" && request.method === "GET") {
@@ -10322,6 +10333,204 @@ async function resolveLineDashboardAccess(env, profile) {
   return { allowed: Boolean(adminAllowed || floors.length), admin: Boolean(adminAllowed), floors };
 }
 
+async function ensureNumberScienceReportsTable(env) {
+  if (!env.DB) throw httpError("DB is not configured", 500);
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS number_science_reports (
+      id TEXT PRIMARY KEY,
+      entitlement_key TEXT NOT NULL UNIQUE,
+      line_user_id TEXT NOT NULL,
+      request_type INTEGER NOT NULL,
+      product_key TEXT NOT NULL,
+      product_label TEXT NOT NULL,
+      point_cost INTEGER NOT NULL,
+      self_name TEXT NOT NULL,
+      self_birth_date TEXT NOT NULL,
+      self_gender INTEGER NOT NULL,
+      person_name TEXT NOT NULL DEFAULT '',
+      person_birth_date TEXT NOT NULL DEFAULT '',
+      person_gender INTEGER,
+      status TEXT NOT NULL,
+      response_json TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_number_science_reports_user
+    ON number_science_reports(line_user_id, created_at DESC)
+  `).run();
+}
+
+function numberScienceReportView(row, includeReport = false) {
+  const view = {
+    id: stringValue(row && row.id),
+    requestType: Number(row && row.request_type),
+    productKey: stringValue(row && row.product_key),
+    productLabel: stringValue(row && row.product_label),
+    pointCost: Number(row && row.point_cost || 0),
+    personName: stringValue(row && row.person_name),
+    createdAt: Number(row && row.created_at || 0),
+    status: stringValue(row && row.status),
+  };
+  if (includeReport) {
+    try { view.report = JSON.parse(stringValue(row && row.response_json) || "{}"); }
+    catch (_err) { view.report = null; }
+  }
+  return view;
+}
+
+async function numberScienceCompletedByBusinessKey(env, businessKey) {
+  const row = await env.DB.prepare(`
+    SELECT id FROM point_ledger WHERE business_key = ? LIMIT 1
+  `).bind(businessKey).first();
+  return Boolean(row);
+}
+
+async function handleInternalNumberScience(env, body = {}) {
+  await ensureNumberScienceReportsTable(env);
+  const action = stringValue(body.action || "generate").toLowerCase();
+  const lineUserId = stringValue(body.lineUserId || body.line_user_id);
+  if (!/^U[0-9a-f]{32}$/i.test(lineUserId)) throw httpError("LINE 會員身份無效，請重新登入", 401);
+
+  if (action === "list") {
+    const rows = await env.DB.prepare(`
+      SELECT id, request_type, product_key, product_label, point_cost, person_name, status, created_at
+      FROM number_science_reports
+      WHERE line_user_id = ? AND status = 'completed'
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).bind(lineUserId).all();
+    return { reports: (rows.results || []).map((row) => numberScienceReportView(row)) };
+  }
+
+  if (action === "get") {
+    const id = stringValue(body.id);
+    const row = await env.DB.prepare(`
+      SELECT * FROM number_science_reports
+      WHERE id = ? AND line_user_id = ? AND status = 'completed'
+      LIMIT 1
+    `).bind(id, lineUserId).first();
+    if (!row) throw httpError("找不到已購買的数字科学報告", 404);
+    return { cached: true, item: numberScienceReportView(row, true) };
+  }
+
+  if (action !== "generate") throw httpError("不支援的数字科学操作", 400);
+  if (body.consent !== true) throw httpError("請先同意傳送生日與報告資料", 400);
+
+  let input;
+  try { input = normalizeNumberScienceInput(body); }
+  catch (error) { throw httpError(error && error.message ? error.message : "報告資料不正確", 400); }
+
+  const entitlement = await buildEntitlement(lineUserId, input);
+  const businessKey = `number-science:${entitlement.id}`;
+  const now = Date.now();
+  let row = await env.DB.prepare(`
+    SELECT * FROM number_science_reports WHERE entitlement_key = ? LIMIT 1
+  `).bind(entitlement.entitlementKey).first();
+  const savedReportJson = stringValue(row && row.response_json);
+
+  if (row && row.status === "completed") {
+    return { cached: true, item: numberScienceReportView(row, true) };
+  }
+  if (row && row.status === "charge_uncertain") {
+    if (await numberScienceCompletedByBusinessKey(env, businessKey)) {
+      await env.DB.prepare("UPDATE number_science_reports SET status = 'completed', error_message = '', updated_at = ? WHERE id = ?")
+        .bind(Date.now(), row.id).run();
+      const completed = await env.DB.prepare("SELECT * FROM number_science_reports WHERE id = ?").bind(row.id).first();
+      return { cached: true, item: numberScienceReportView(completed, true) };
+    }
+    throw httpError("此報告的扣點狀態正在核對，為避免重複扣點，請稍後再試或聯絡客服", 409);
+  }
+  if (row && ["generating", "charging"].includes(stringValue(row.status)) && now - Number(row.updated_at || 0) < 120000) {
+    throw httpError("報告正在產生，請稍候再查看", 409);
+  }
+
+  if (!row) {
+    await env.DB.prepare(`
+      INSERT INTO number_science_reports (
+        id, entitlement_key, line_user_id, request_type, product_key, product_label, point_cost,
+        self_name, self_birth_date, self_gender, person_name, person_birth_date, person_gender,
+        status, response_json, error_message, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'generating', '', '', ?, ?)
+    `).bind(
+      entitlement.id, entitlement.entitlementKey, lineUserId, input.requestType,
+      input.product.key, input.product.label, input.product.cost, input.self.name,
+      input.self.birthDate, input.self.gender, input.person ? input.person.name : "",
+      input.person ? input.person.birthDate : "", input.person ? input.person.gender : null,
+      now, now,
+    ).run();
+  } else {
+    await env.DB.prepare(`
+      UPDATE number_science_reports
+      SET status = 'generating', error_message = '', updated_at = ?
+      WHERE id = ?
+    `).bind(now, row.id).run();
+  }
+
+  try {
+    const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, "gift_money");
+    if (!Number.isFinite(balance) || balance < input.product.cost) {
+      throw httpError(`康立智能 K點不足：${input.product.label}需要 ${input.product.cost} 點，目前 ${Number.isFinite(balance) ? balance : 0} 點`, 402);
+    }
+
+    row = await env.DB.prepare("SELECT * FROM number_science_reports WHERE id = ?").bind(entitlement.id).first();
+    let report = null;
+    if (savedReportJson || (row && row.response_json)) {
+      try { report = JSON.parse(savedReportJson || row.response_json); } catch (_err) { report = null; }
+    }
+    if (!report) {
+      report = await requestNumberScienceReport(input);
+      await env.DB.prepare(`
+        UPDATE number_science_reports
+        SET status = 'ready_to_charge', response_json = ?, updated_at = ?
+        WHERE id = ?
+      `).bind(JSON.stringify(report), Date.now(), entitlement.id).run();
+    }
+
+    const alreadyCharged = await numberScienceCompletedByBusinessKey(env, businessKey);
+    if (!alreadyCharged) {
+      await env.DB.prepare("UPDATE number_science_reports SET status = 'charging', updated_at = ? WHERE id = ?")
+        .bind(Date.now(), entitlement.id).run();
+      await applyWetwPointMutation(env, {
+        channelKey: POINT_OA1,
+        lineUserId,
+        pointType: "gift_money",
+        pointDelta: -input.product.cost,
+        action: "deduct",
+        source: "number_science",
+        sourceEventId: entitlement.id,
+        businessKey,
+        note: `数字科学${input.product.label}扣點 ${input.product.cost} 點`,
+        operatorId: "system:number-science",
+        operatorName: "数字科学",
+      }, {
+        event_name: "数字科学報告扣點",
+        event_content: `${input.product.label} ${input.product.cost} 點`,
+        shop_remark: `数字科学報告扣點；report=${entitlement.id};type=${input.requestType}`,
+      });
+    }
+
+    await env.DB.prepare(`
+      UPDATE number_science_reports
+      SET status = 'completed', error_message = '', updated_at = ?
+      WHERE id = ?
+    `).bind(Date.now(), entitlement.id).run();
+    const completed = await env.DB.prepare("SELECT * FROM number_science_reports WHERE id = ?").bind(entitlement.id).first();
+    const balanceAfter = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, "gift_money").catch(() => null);
+    return { cached: alreadyCharged, balance: Number.isFinite(balanceAfter) ? balanceAfter : null, item: numberScienceReportView(completed, true) };
+  } catch (error) {
+    const latest = await env.DB.prepare("SELECT status FROM number_science_reports WHERE id = ?").bind(entitlement.id).first().catch(() => null);
+    const failedStatus = latest && latest.status === "charging" ? "charge_uncertain" : "failed";
+    await env.DB.prepare(`
+      UPDATE number_science_reports
+      SET status = ?, error_message = ?, updated_at = ?
+      WHERE id = ? AND status != 'completed'
+    `).bind(failedStatus, stringValue(error && error.message).slice(0, 500), Date.now(), entitlement.id).run().catch(() => null);
+    throw error;
+  }
+}
 function httpError(message, status) {
   const err = new Error(message);
   err.status = status;
