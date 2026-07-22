@@ -40,6 +40,7 @@
         <a href="/admin/smart-monitor">康立智能聊天室監控 <span>已接入</span></a>
         <a href="/console/calendar">行事曆 <span>已接入</span></a>
         <a href="/admin/crm">CRM / 點數 <span>已接入</span></a>
+        <a href="#" id="klinkwebAdminButton" hidden>Klinkweb <span>最高權限</span></a>
         <a href="/admin/points/stats">點數統計 <span>日報表</span></a>
         <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a><a href="/console/ai-wear">AI穿戴設定 <span>image2</span></a><a href="/console/ai-wear-cost">AI生成費用 <span>報表</span></a><a href="/action-admin?view=flex_rules">機器人與專區卡片 <span>Action</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
@@ -308,6 +309,7 @@
     $("settingsToggle").onclick = unlockSettings;
     $("syncButton").onclick = sync;
     $("loginButton").onclick = startLineLogin;
+    $("klinkwebAdminButton").onclick = openKlinkwebAdmin;
     $("calendarImportButton").onclick = importCalendarImage;
     $("calendarSaveButton").onclick = saveCalendarEvent;
     $("calendarClearButton").onclick = clearCalendarEditor;
@@ -479,6 +481,7 @@
         throw new Error(loginJson.message || "此 LINE 帳號沒有客服系統權限");
       }
       auth.access = loginJson.access;
+      syncKlinkwebButton();
       auth.ready = true;
       setStatus(`已登入 ${auth.displayName || auth.userId}`, false);
       setAuthGate(false);
@@ -497,6 +500,7 @@
         auth.displayName = json.profile && json.profile.displayName || "";
         auth.pictureUrl = json.profile && json.profile.pictureUrl || "";
         auth.access = json.access || null;
+        syncKlinkwebButton();
         auth.ready = true;
         auth.session = true;
         setStatus(`已登入 ${auth.displayName || auth.userId}`, false);
@@ -577,6 +581,29 @@
       if (token) headers.Authorization = `Bearer ${token}`;
       if (auth.idToken) headers["X-Line-Id-Token"] = auth.idToken;
       return headers;
+    }
+
+    function syncKlinkwebButton() {
+      const button=$("klinkwebAdminButton");
+      if(!button)return;
+      button.hidden=!(auth.access?.admin && /^U[0-9a-f]{32}$/i.test(String(auth.userId || "")));
+    }
+
+    async function openKlinkwebAdmin(event) {
+      event?.preventDefault();
+      const button=$("klinkwebAdminButton");
+      if(!auth.access?.admin)return showError("只有綜合主控台最高權限可以開啟 Klinkweb。");
+      const original=button?.innerHTML;
+      if(button){button.style.pointerEvents="none";button.innerHTML="Klinkweb <span>開啟中…</span>";}
+      try{
+        const response=await fetch(`${cleanBase(apiBase.value)}/api/console/klinkweb-entry`,{method:"POST",headers:authHeaders()});
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok||result.status!=="success"||!result.entryUrl)throw new Error(result.message||result.error||"Klinkweb 管理入口建立失敗");
+        location.href=result.entryUrl;
+      }catch(error){
+        showError(error.message||String(error));
+        if(button){button.style.pointerEvents="";button.innerHTML=original;}
+      }
     }
 
     function storeDashboardAuth() {
