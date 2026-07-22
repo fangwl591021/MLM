@@ -8590,6 +8590,29 @@ async function verifyAiWearLineProfileFromToken(env, settings, idToken) {
   };
 }
 
+async function verifyAiWearLineProfileFromAccessToken(env, settings, accessToken) {
+  const token = stringValue(accessToken).trim();
+  if (!token) return null;
+  const clientId = aiWearLineClientId(env, settings);
+  if (!clientId) throw httpError("AI 穿戴尚未設定 LINE Login Channel ID。", 500);
+  const verifyResponse = await fetch(`https://api.line.me/oauth2/v2.1/verify?access_token=${encodeURIComponent(token)}`);
+  const verified = await verifyResponse.json().catch(() => ({}));
+  if (!verifyResponse.ok || stringValue(verified.client_id) !== clientId) {
+    throw httpError("LINE Access Token 驗證失敗。", 401);
+  }
+  const profileResponse = await fetch("https://api.line.me/v2/profile", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const profile = await profileResponse.json().catch(() => ({}));
+  if (!profileResponse.ok || !profile.userId) throw httpError("LINE 會員資料讀取失敗。", 401);
+  return {
+    userId: stringValue(profile.userId),
+    displayName: stringValue(profile.displayName),
+    pictureUrl: stringValue(profile.pictureUrl),
+    email: "",
+  };
+}
+
 async function verifyAiWearLineProfileFromForm(env, settings, form) {
   const idToken = stringValue(form.get("idToken") || form.get("id_token") || form.get("lineIdToken") || form.get("line_id_token")).trim();
   return verifyAiWearLineProfileFromToken(env, settings, idToken);
@@ -8603,7 +8626,8 @@ function aiWearSettingsForPointChannel(settings, requestedChannelKey) {
 async function fetchAiWearMemberPoints(env, body) {
   await ensureAiWearSchema(env);
   const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), body && body.aiWearPointChannelKey);
-  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token));
+  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token))
+    || await verifyAiWearLineProfileFromAccessToken(env, settings, body && (body.accessToken || body.access_token || body.lineAccessToken || body.line_access_token));
   const lineUserId = stringValue(profile && profile.userId);
   if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
   const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
