@@ -156,6 +156,15 @@ export default {
         return proxyInternalAiResponses(env, body);
       }
 
+      if (url.pathname === "/api/internal/klink/card-collection-reward" && request.method === "POST") {
+        if (url.hostname !== "mlm.internal") {
+          return jsonResponse({ status:"error", error:"Not Found" }, 404, corsHeaders);
+        }
+        const body = await safeJson(request);
+        const result = await handleInternalCardCollectionReward(env, body);
+        return jsonResponse({ status:"success", ...result }, 200, corsHeaders);
+      }
+
       if (url.pathname === "/api/internal/number-science/reports" && request.method === "POST") {
         if (url.hostname !== "mlm.internal") {
           return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
@@ -10528,6 +10537,94 @@ async function handleInternalNumberScience(env, body = {}) {
       SET status = ?, error_message = ?, updated_at = ?
       WHERE id = ? AND status != 'completed'
     `).bind(failedStatus, stringValue(error && error.message).slice(0, 500), Date.now(), entitlement.id).run().catch(() => null);
+    throw error;
+  }
+}
+async function ensureInternalRewardClaimsTable(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS internal_reward_claims (
+      business_key TEXT PRIMARY KEY,
+      reward_type TEXT NOT NULL,
+      line_user_id TEXT NOT NULL,
+      reference_id TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      error_message TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `).run();
+}
+
+async function handleInternalCardCollectionReward(env, body = {}) {
+  if (!env.DB) throw httpError('DB is not configured', 500);
+  const lineUserId = stringValue(body.lineUserId || body.line_user_id);
+  const userId = stringValue(body.userId || body.user_id);
+  const cardId = stringValue(body.cardId || body.card_id);
+  if (!/^U[0-9a-f]{32}$/i.test(lineUserId)) throw httpError('LINE 會員身份無效', 401);
+  if (!/^usr_[0-9a-f]{32}$/i.test(userId) || !/^contact_[0-9a-f]{32}$/i.test(cardId)) throw httpError('收藏名片識別無效', 400);
+  await ensureInternalRewardClaimsTable(env);
+  const points = 10;
+  const businessKey = `klink-card-collection:${userId}:${cardId}`;
+  const now = Date.now();
+  let claim = await env.DB.prepare('SELECT * FROM internal_reward_claims WHERE business_key = ? LIMIT 1').bind(businessKey).first();
+  if (!claim) {
+    await env.DB.prepare(`
+      INSERT INTO internal_reward_claims
+        (business_key, reward_type, line_user_id, reference_id, points, status, created_at, updated_at)
+      VALUES (?, 'card_collection', ?, ?, ?, 'pending', ?, ?)
+      ON CONFLICT(business_key) DO NOTHING
+    `).bind(businessKey, lineUserId, cardId, points, now, now).run();
+    claim = await env.DB.prepare('SELECT * FROM internal_reward_claims WHERE business_key = ? LIMIT 1').bind(businessKey).first();
+  }
+  if (claim && claim.status === 'completed') {
+    const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, 'gift_money').catch(() => null);
+    return { duplicate:true, rewarded:false, points, balance:Number.isFinite(balance) ? balance : null };
+  }
+  if (claim && claim.status === 'uncertain') {
+    if (await numberScienceCompletedByBusinessKey(env, businessKey)) {
+      await env.DB.prepare("UPDATE internal_reward_claims SET status='completed', error_message='', updated_at=? WHERE business_key=?").bind(Date.now(), businessKey).run();
+      const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, 'gift_money').catch(() => null);
+      return { duplicate:true, rewarded:false, points, balance:Number.isFinite(balance) ? balance : null };
+    }
+    throw httpError('名片贈點狀態正在核對，為避免重複贈點請稍後再試', 409);
+  }
+  if (claim && claim.status === 'processing' && now - Number(claim.updated_at || 0) < 120000) {
+    throw httpError('名片贈點處理中', 409);
+  }
+  if (await numberScienceCompletedByBusinessKey(env, businessKey)) {
+    await env.DB.prepare("UPDATE internal_reward_claims SET status='completed', error_message='', updated_at=? WHERE business_key=?").bind(now, businessKey).run();
+    const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, 'gift_money').catch(() => null);
+    return { duplicate:true, rewarded:false, points, balance:Number.isFinite(balance) ? balance : null };
+  }
+  await env.DB.prepare("UPDATE internal_reward_claims SET status='processing', error_message='', updated_at=? WHERE business_key=?").bind(now, businessKey).run();
+  try {
+    await applyWetwPointMutation(env, {
+      channelKey:POINT_OA1,
+      lineUserId,
+      pointType:'gift_money',
+      pointDelta:points,
+      action:'grant',
+      source:'klink_card_collection',
+      sourceEventId:cardId,
+      businessKey,
+      note:`收藏新名片贈送 ${points} K點`,
+      operatorId:'system:klink-card-collection',
+      operatorName:'名片收藏獎勵',
+    }, {
+      event_name:'收藏名片贈點',
+      event_content:`成功收藏新名片贈送 ${points} K點`,
+      shop_remark:`收藏新名片贈點；card=${cardId};user=${userId}`,
+    });
+    await env.DB.prepare("UPDATE internal_reward_claims SET status='completed', error_message='', updated_at=? WHERE business_key=?").bind(Date.now(), businessKey).run();
+    const balance = await getLiveFirstPointAccountBalance(env, POINT_OA1, lineUserId, 'gift_money').catch(() => null);
+    return { duplicate:false, rewarded:true, points, balance:Number.isFinite(balance) ? balance : null };
+  } catch (error) {
+    const ledgerExists = await numberScienceCompletedByBusinessKey(env, businessKey).catch(() => false);
+    const errorStatus = Number(error && error.status || 0);
+    const claimStatus = ledgerExists ? 'completed' : errorStatus > 0 && errorStatus < 500 ? 'failed' : 'uncertain';
+    await env.DB.prepare('UPDATE internal_reward_claims SET status=?, error_message=?, updated_at=? WHERE business_key=?')
+      .bind(claimStatus, stringValue(error?.message).slice(0, 500), Date.now(), businessKey).run().catch(() => null);
     throw error;
   }
 }
