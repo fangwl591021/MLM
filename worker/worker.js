@@ -8626,8 +8626,17 @@ function aiWearSettingsForPointChannel(settings, requestedChannelKey) {
 async function fetchAiWearMemberPoints(env, body) {
   await ensureAiWearSchema(env);
   const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), body && body.aiWearPointChannelKey);
-  const profile = await verifyAiWearLineProfileFromToken(env, settings, body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token))
-    || await verifyAiWearLineProfileFromAccessToken(env, settings, body && (body.accessToken || body.access_token || body.lineAccessToken || body.line_access_token));
+  const idToken = body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token);
+  const accessToken = body && (body.accessToken || body.access_token || body.lineAccessToken || body.line_access_token);
+  let profile = null;
+  let idTokenError = null;
+  try {
+    profile = await verifyAiWearLineProfileFromToken(env, settings, idToken);
+  } catch (error) {
+    idTokenError = error;
+  }
+  if (!profile) profile = await verifyAiWearLineProfileFromAccessToken(env, settings, accessToken);
+  if (!profile && idTokenError) throw idTokenError;
   const lineUserId = stringValue(profile && profile.userId);
   if (!lineUserId) throw httpError("請先用 LINE 登入後再讀取 K 點。", 401);
   const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
