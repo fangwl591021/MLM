@@ -146,6 +146,14 @@ export default {
         }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/public/klink-courses" && request.method === "GET") {
+        const courses = await listPublicKlinkCourses(env);
+        return jsonResponse({ status: "success", courses }, 200, {
+          ...corsHeaders,
+          "cache-control": "public, max-age=60",
+        });
+      }
+
       if ((url.pathname === "/login" || url.pathname === "/login.html") && request.method === "GET") {
         return passwordLoginHtml(corsHeaders);
       }
@@ -1306,6 +1314,19 @@ async function listCalendarEvents(env, url) {
     LIMIT ?
   `);
   const rows = to > from ? await statement.bind(from, to, limit).all() : await statement.bind(from, limit).all();
+  return (rows.results || []).map(calendarEventRowToConsoleEvent);
+}
+
+async function listPublicKlinkCourses(env) {
+  await ensureCalendarEventSchema(env);
+  const from = Date.now() - 30 * 86400000;
+  const rows = await env.DB.prepare(`
+    SELECT id, title, description, starts_at, ends_at, checkin_starts_at, checkin_ends_at, location, visibility, updated_at
+    FROM calendar_events
+    WHERE visibility = 'public' AND starts_at >= ?
+    ORDER BY starts_at ASC
+    LIMIT 500
+  `).bind(from).all();
   return (rows.results || []).map(calendarEventRowToConsoleEvent);
 }
 
