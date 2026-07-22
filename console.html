@@ -37,11 +37,11 @@
         <a class="active" href="https://mlm.fangwl591021.workers.dev/console">綜合主控台 <span>總覽</span></a>
         <a href="https://mlm.fangwl591021.workers.dev/dashboard?floor=main">產品客服 <span>客服</span></a>
         <a href="https://mlm.fangwl591021.workers.dev/dashboard?floor=admin">行政客服 <span>行政</span></a>
-        <a href="#ai-monitor">AI 監控報告 <span>規劃中</span></a>
+        <a href="/admin/smart-monitor">康立智能聊天室監控 <span>已接入</span></a>
         <a href="/console/calendar">行事曆 <span>已接入</span></a>
         <a href="/admin/crm">CRM / 點數 <span>已接入</span></a>
         <a href="/admin/points/stats">點數統計 <span>日報表</span></a>
-        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a><a href="/console/ai-wear">AI穿戴設定 <span>image2</span></a><a href="/console/ai-wear-cost">AI生成費用 <span>報表</span></a>
+        <a href="/console/events">活動報名簽到 <span>已接入</span></a><a href="/checkin-template">簽到模板 <span>Flex</span></a><a href="/console/ai-wear">AI穿戴設定 <span>image2</span></a><a href="/console/ai-wear-cost">AI生成費用 <span>報表</span></a><a href="/action-admin?view=flex_rules">機器人與專區卡片 <span>Action</span></a>
         <a href="docs/MASTER_CONSOLE_PERMISSIONS.md">權限表文件 <span>Docs</span></a>
       </nav>
       <section class="settings" id="settingsBox">
@@ -101,7 +101,7 @@
       <section class="section">
         <div class="sectionHead"><h3>延伸模組</h3><span class="muted">先預留資料位置，接上後可直接統計</span></div>
         <div class="modules">
-          <a class="card module" id="ai-monitor"><strong>AI 監控報告</strong><p class="muted">今日通報</p><div class="metric danger" id="aiAlerts">0</div></a>
+          <a class="card module" id="ai-monitor" href="/admin/smart-monitor"><strong>康立智能聊天室監控</strong><p class="muted">LINE 對話監控</p><div class="metric danger" id="aiAlerts">查看</div></a>
           <a class="card module" id="calendar" href="/console/calendar"><strong>行事曆</strong><p class="muted">今日行程</p><div class="metric" id="calendarToday">0</div></a>
           <a class="card module" id="crmPanel" href="/admin/crm"><strong>CRM 會員</strong><p class="muted">會員快取</p><div class="metric" id="crmMembers">0</div></a>
           <a class="card module" href="/admin/points/stats"><strong>LINE 點數</strong><p class="muted">點數帳戶 / 每日統計</p><div class="metric" id="pointAccounts">0</div></a>
