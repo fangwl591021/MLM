@@ -8,6 +8,7 @@
  */
 
 import complianceScanCore from "../src/modules/compliance/compliance-scan-core.js";
+import { matchRequest } from "./product-matching.mjs";
 
 const { buildComplianceScanResult, canPublishComplianceResult, hashComplianceContent } = complianceScanCore;
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -171,6 +172,11 @@ export default {
       }
       if (url.pathname === "/mylittlesys_free.html" && (request.method === "GET" || request.method === "HEAD")) {
         return serveFrontendHtml("mylittlesys_free.html", corsHeaders);
+      }
+      if (url.pathname === "/api/internal/klink/product-match" && request.method === "POST") {
+        const body = await safeJson(request);
+        const result = matchRequest(request, body);
+        return jsonResponse(result.body, result.httpStatus, corsHeaders);
       }
       if (url.pathname === "/api/action" && request.method === "POST") {
         const result = await handleActionAdminApi(request, env);
