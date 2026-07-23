@@ -12,6 +12,10 @@ const MEDICAL_TERMS = [
 
 const MEDICAL_INTENT = /(可以|能夠|是否|有沒有|會不會|適合|推薦|吃|喝|用|戴).{0,16}(改善|治療|預防|治癒|減輕|緩解|恢復|降低|增加|幫助).{0,20}(身體|健康|症狀|疾病|疼痛|睡眠|視力|血壓|血糖|血脂|免疫)/;
 
+export function isAllowedKlinkAdvisorHost(hostname) {
+  return String(hostname || "").toLowerCase() === "mlm.internal";
+}
+
 export function isMedicalProductQuery(value) {
   const query = clean(value, 600).toLocaleLowerCase("zh-TW");
   return MEDICAL_TERMS.some((term) => query.includes(term.toLocaleLowerCase("zh-TW"))) || MEDICAL_INTENT.test(query);
@@ -41,22 +45,33 @@ const PRODUCTS = [
   ["KL-L-010","康靚潼","領航計畫","食品","KC112","30包/盒，每包3g","粉包食品；可提供成分、容量與食用方式。","葡萄糖、蔓越莓果汁粉、金盞花萃取物、葡萄皮、松樹皮、枸杞、藍莓萃取物等。","每次1包加入50–100cc飲用水或直接食用，每日1–3次，飯後食用。","粉包 蔓越莓 藍莓 金盞花","https://www.k-link.com.tw/%E5%BA%B7%E9%9D%9A%E6%BD%BC"],
   ["KL-L-011","康酵順","領航計畫","食品","","","目前僅確認官方商品名稱，規格與使用方式待公司核准資料補齊。","","","食品 康酵順","https://www.k-link.com.tw/%E9%A0%98%E8%88%AA%E8%A8%88%E7%95%AB"],
   ["KL-L-012","倍加攜力","領航計畫","食品","KC113","100粒/盒，每粒0.45g","膠囊食品；可提供成分、容量與食用方式。","胺基酸螯合鈣、黃耆濃縮、紅棗萃取、薏仁多醣、珍珠粉、紅藻粉、納豆發酵物等。","官網建議每日1–3次，每次1–2粒，飯後一小時食用。","膠囊 鈣 黃耆 紅棗","https://www.k-link.com.tw/%E5%80%8D%E5%8A%A0%E6%94%9C%E5%8A%9B"],
-].map(([id,name,plan,kind,code,size,facts,ingredients,usage,keywords,sourceUrl]) => ({
-  id,name,plan,kind,code,size,facts,ingredients,usage,keywords,sourceUrl,
-}));
-
+].map(([id,name,plan,kind,code,size,facts,ingredients,usage,keywords,sourceUrl]) => {
+  const reviewStatus = (!size && !usage) ? "pending_review" : ((!code || !ingredients) ? "partial" : "approved");
+  return {
+    id, name, productName: name, plan, productSeries: plan, kind, code, size,
+    specifications: size ? [size] : [],
+    officialIntroduction: facts, facts,
+    approvedPublicFacts: facts ? [facts] : [],
+    ingredients, usage,
+    safetyTags: kind === "食品" ? ["食品", "依標示食用"] : ["依官方核准資料使用"],
+    prohibitedClaims: ["疾病", "症狀", "治療", "預防", "療效", "診斷", "人體機能改善"],
+    sourceUrl, reviewStatus,
+    matchingKeywords: keywords.split(" ").filter(Boolean), keywords,
+  };
+});
 const QUADRANTS = {
-  Q1: { label: "結論型", lead: "先說結論：", question: "你要我直接比較規格，還是提供下一步聯絡方式？" },
-  Q2: { label: "分析型", lead: "依目前核准資料：", question: "你最想核對成分、規格、使用方式，還是注意事項？" },
-  Q3: { label: "行動型", lead: "如果你想快速了解，可以先從這項開始看：", question: "要直接看商品資料，還是聯絡會員進一步詢問？" },
-  Q4: { label: "關係型", lead: "我先用容易確認、不造成壓力的方式整理：", question: "你可以先告訴我在意的規格，我再陪你一步步確認。" },
+  Q1: { key: "rational_fast", label: "Q1：理性快速／結論型", lead: "先說結論：", question: "你要我直接比較規格，還是提供下一步聯絡方式？" },
+  Q2: { key: "rational_careful", label: "Q2：理性謹慎／分析型", lead: "依目前核准資料：", question: "你最想核對成分、規格、使用方式，還是注意事項？" },
+  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "如果你想快速了解，可以先從這項開始看：", question: "要直接看商品資料，還是聯絡會員進一步詢問？" },
+  Q4: { key: "emotional_relationship", label: "Q4：感性謹慎／關係型", lead: "我先用容易確認、不造成壓力的方式整理：", question: "你可以先告訴我在意的規格，我再陪你一步步確認。" },
 };
 
-function normalizeQuadrant(value) {
-  const key = clean(value, 20).toUpperCase();
-  return QUADRANTS[key] ? key : "Q4";
-}
+const QUADRANT_ALIASES = Object.fromEntries(Object.entries(QUADRANTS).flatMap(([code, value]) => [[code.toLowerCase(), code], [value.key, code]]));
 
+function normalizeQuadrant(value) {
+  const key = clean(value, 40).toLocaleLowerCase("en-US");
+  return QUADRANT_ALIASES[key] || "Q4";
+}
 function productScore(product, query) {
   const haystack = `${product.name} ${product.plan} ${product.kind} ${product.code} ${product.keywords}`.toLocaleLowerCase("zh-TW");
   const q = query.toLocaleLowerCase("zh-TW");
@@ -68,20 +83,29 @@ function productScore(product, query) {
 }
 
 function safeProduct(product) {
+  const pending = product.reviewStatus === "pending_review";
   return {
     id: product.id,
     name: product.name,
+    productName: product.productName,
     plan: product.plan,
+    productSeries: product.productSeries,
     kind: product.kind,
     code: product.code,
-    size: product.size,
-    facts: product.facts,
-    ingredients: product.ingredients,
-    usage: product.usage,
+    officialIntroduction: product.officialIntroduction,
+    facts: product.approvedPublicFacts.join(" "),
+    approvedPublicFacts: [...product.approvedPublicFacts],
+    specifications: pending ? [] : [...product.specifications],
+    size: pending ? "" : product.size,
+    ingredients: pending ? "" : product.ingredients,
+    usage: pending ? "" : product.usage,
+    safetyTags: [...product.safetyTags],
+    prohibitedClaims: [...product.prohibitedClaims],
     sourceUrl: product.sourceUrl,
+    reviewStatus: product.reviewStatus,
+    matchingKeywords: [...product.matchingKeywords],
   };
 }
-
 function safeLineUrl(value) {
   const url = clean(value, 500);
   return /^https:\/\/(?:lin\.ee|line\.me|liff\.line\.me)\//i.test(url) ? url : "";
@@ -99,6 +123,7 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
       blocked: true,
       blockReason: "medical_query",
       quadrant,
+      quadrantKey: style.key,
       quadrantLabel: style.label,
       answer: KLINK_MEDICAL_REFUSAL,
       products: [],
@@ -114,13 +139,31 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
     .map((item) => safeProduct(item.product));
-  const products = ranked.length ? ranked : PRODUCTS.filter((product) => ["KL-I-001","KL-I-008","KL-L-001"].includes(product.id)).map(safeProduct);
+
+  if (!ranked.length) {
+    return {
+      blocked: false,
+      needsClarification: true,
+      clarificationQuestion: "目前無法從核准商品資料確認合適品項。請補充商品名稱、用途、系列或你想比較的規格。",
+      quadrant,
+      quadrantKey: style.key,
+      quadrantLabel: style.label,
+      answer: "目前沒有足夠的核准商品資料可以直接推薦。請補充需求後再查詢。",
+      products: [],
+      actions: [],
+      disclaimer: "不會在資料不足時任意推薦商品；請補充需求後再查詢。",
+    };
+  }
+
+  const products = ranked;
   const primary = products[0];
-  const details = [primary.facts, primary.code ? `產品編號 ${primary.code}` : "", primary.size ? `規格 ${primary.size}` : ""].filter(Boolean).join("；");
-  const answer = `${style.lead}${primary.name}目前可確認的資料為：${details}。${style.question}`;
+  const details = [primary.facts, primary.code ? "產品編號 " + primary.code : "", primary.size ? "規格 " + primary.size : ""].filter(Boolean).join("；");
+  const answer = style.lead + primary.name + "目前可確認的資料為：" + details + "。" + style.question;
   return {
     blocked: false,
+    needsClarification: false,
     quadrant,
+    quadrantKey: style.key,
     quadrantLabel: style.label,
     answer,
     products,

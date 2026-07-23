@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import {
   buildKlinkProductAdvisorResponse,
   isMedicalProductQuery,
+  isAllowedKlinkAdvisorHost,
   KLINK_MEDICAL_REFUSAL,
   listKlinkProducts,
 } from "./klink-product-advisor.js";
 
-test("catalog contains the 23 reviewed first-pass products and services", () => {
-  assert.equal(listKlinkProducts().length, 23);
+test("catalog contains 23 products and every product has a review status", () => {
+  const products = listKlinkProducts();
+  assert.equal(products.length, 23);
+  assert.ok(products.every((product) => ["approved", "partial", "pending_review"].includes(product.reviewStatus)));
+  assert.ok(products.every((product) => product.productName && product.productSeries && Array.isArray(product.approvedPublicFacts)));
 });
 
 test("medical intent is blocked before product retrieval", () => {
@@ -31,11 +35,43 @@ test("safe specification question returns facts and member CTA", () => {
     memberLineUrl: "https://lin.ee/example",
   });
   assert.equal(result.blocked, false);
+  assert.equal(result.needsClarification, false);
   assert.equal(result.products[0].name, "康綠寶");
   assert.match(result.answer, /500g/);
   assert.equal(result.actions[0].url, "https://lin.ee/example");
 });
 
+test("pending review products do not expose unapproved specifications", () => {
+  const product = listKlinkProducts().find((item) => item.reviewStatus === "pending_review");
+  assert.ok(product);
+  const result = buildKlinkProductAdvisorResponse({ query: product.name, quadrant: "Q1" });
+  assert.equal(result.products[0].reviewStatus, "pending_review");
+  assert.deepEqual(result.products[0].specifications, []);
+  assert.equal(result.products[0].size, "");
+  assert.equal(result.products[0].usage, "");
+});
+
+test("unrelated requests require clarification instead of default recommendations", () => {
+  const result = buildKlinkProductAdvisorResponse({ query: "我想找一個完全沒有資料的東西", quadrant: "Q2" });
+  assert.equal(result.needsClarification, true);
+  assert.deepEqual(result.products, []);
+  assert.match(result.clarificationQuestion, /補充/);
+});
+
+test("quadrants change only wording and keep product facts identical", () => {
+  const q1 = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "rational_fast" });
+  const q4 = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "emotional_relationship" });
+  assert.equal(q1.quadrantKey, "rational_fast");
+  assert.equal(q4.quadrantKey, "emotional_relationship");
+  assert.notEqual(q1.answer, q4.answer);
+  assert.deepEqual(q1.products, q4.products);
+});
+
+test("public domains cannot call the internal product advisor", () => {
+  assert.equal(isAllowedKlinkAdvisorHost("mlm.internal"), true);
+  assert.equal(isAllowedKlinkAdvisorHost("mlm.fangwl591021.workers.dev"), false);
+  assert.equal(isAllowedKlinkAdvisorHost("example.com"), false);
+});
 test("invalid member URL is never returned as CTA", () => {
   const result = buildKlinkProductAdvisorResponse({
     query: "想比較眼鏡款式",

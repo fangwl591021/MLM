@@ -1,5 +1,5 @@
 import { buildEntitlement, normalizeNumberScienceInput, requestNumberScienceReport } from "./number-science.js";
-import { buildKlinkProductAdvisorResponse } from "./klink-product-advisor.js";
+import { buildKlinkProductAdvisorResponse, isAllowedKlinkAdvisorHost } from "./klink-product-advisor.js";
 
 /**
  * Cloudflare Worker: LINE OA dashboard API backed by D1.
@@ -158,7 +158,7 @@ export default {
       }
 
       if (url.pathname === "/api/internal/klinkweb/product-advisor" && request.method === "POST") {
-        if (url.hostname !== "mlm.internal") {
+        if (!isAllowedKlinkAdvisorHost(url.hostname)) {
           return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
         }
         const body = await safeJson(request);
