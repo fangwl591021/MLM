@@ -9287,7 +9287,7 @@ async function getAiWearShareCard(env, searchParams) {
   await ensureAiWearSchema(env);
   const id = stringValue(searchParams && searchParams.get("id")).trim();
   if (!id || id.includes("..") || id.includes("/")) throw httpError("分享資料不存在。", 404);
-  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url, share_format FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, sharer_line_user_id, sharer_name, caption, image_url, purchase_line_url, share_format FROM ai_wear_shares WHERE id = ?").bind(id).first();
   if (!row) throw httpError("分享資料不存在。", 404);
   const rawImageUrl = stringValue(row.image_url);
   const imageUrl = /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(rawImageUrl) ? rawImageUrl : `${rawImageUrl}.jpg`;
@@ -9296,7 +9296,11 @@ async function getAiWearShareCard(env, searchParams) {
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
   const caption = stringValue(row.caption || "看看我的 AI 眼鏡試戴對照圖。");
   const shareFormat = normalizeAiWearShareFormat(row.share_format);
-  return { id, title, caption, shareUrl, previewUrl, imageUrl, shareFormat, flexAspectRatio: aiWearShareFlexAspectRatio(shareFormat), purchaseLineUrl: normalizeAiWearPurchaseLineUrl(row.purchase_line_url) };
+  const liveMemberSettings = row.sharer_line_user_id
+    ? await loadAiWearMemberSettings(env, stringValue(row.sharer_line_user_id)).catch(() => null)
+    : null;
+  const purchaseLineUrl = normalizeAiWearPurchaseLineUrl((liveMemberSettings && liveMemberSettings.purchaseLineUrl) || row.purchase_line_url);
+  return { id, title, caption, shareUrl, previewUrl, imageUrl, shareFormat, flexAspectRatio: aiWearShareFlexAspectRatio(shareFormat), purchaseLineUrl };
 }
 
 async function serveAiWearSharePreviewPage(env, pathname, corsHeaders) {
@@ -9322,7 +9326,7 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   await ensureAiWearSchema(env);
   const id = decodeURIComponent(String(pathname || "").replace(/^\/ai-wear\/share\//, ""));
   if (!id || id.includes("..") || id.includes("/")) return new Response("Not found", { status: 404, headers: corsHeaders });
-  const row = await env.DB.prepare("SELECT id, sharer_name, caption, image_url, purchase_line_url, share_format, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, sharer_line_user_id, sharer_name, caption, image_url, purchase_line_url, share_format, clicks, created_at FROM ai_wear_shares WHERE id = ?").bind(id).first();
   if (!row) return new Response("Not found", { status: 404, headers: corsHeaders });
   await env.DB.prepare("UPDATE ai_wear_shares SET clicks = clicks + 1, last_clicked_at = ? WHERE id = ?").bind(Date.now(), id).run();
   const title = row.sharer_name ? `${stringValue(row.sharer_name)} 的 AI 眼鏡試戴` : "AI 眼鏡試戴分享";
@@ -9333,7 +9337,10 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
   const previewUrl = `${shareUrl}/preview`;
   const settings = await getAiWearSettings(env);
   const liffId = normalizeAiWearLiffId(settings && settings.liffId);
-  const contactLineUrl = normalizeAiWearPurchaseLineUrl(row.purchase_line_url);
+  const liveMemberSettings = row.sharer_line_user_id
+    ? await loadAiWearMemberSettings(env, stringValue(row.sharer_line_user_id)).catch(() => null)
+    : null;
+  const contactLineUrl = normalizeAiWearPurchaseLineUrl((liveMemberSettings && liveMemberSettings.purchaseLineUrl) || row.purchase_line_url);
   const shareLineUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`;
   const shareActionUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?aiWearShareId=${encodeURIComponent(id)}`;
   const shareFormat = normalizeAiWearShareFormat(row.share_format);
