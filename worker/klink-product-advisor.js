@@ -60,10 +60,10 @@ const PRODUCTS = [
   };
 });
 const QUADRANTS = {
-  Q1: { key: "rational_fast", label: "Q1：理性快速／結論型", lead: "先幫你抓重點：", question: "你想直接看規格，還是先了解下一步？" },
-  Q2: { key: "rational_careful", label: "Q2：理性謹慎／分析型", lead: "我依目前資料整理：", question: "你想先核對成分、規格，還是使用方式？" },
-  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "可以！先幫你快速看：", question: "你想先看看成分，還是了解怎麼使用？" },
-  Q4: { key: "emotional_relationship", label: "Q4：感性謹慎／關係型", lead: "我先照你的需求慢慢整理：", question: "你可以先告訴我最在意的地方，我再陪你一起確認。" },
+  Q1: { key: "rational_fast", label: "Q1：理性快速／結論型", lead: "先幫你抓重點：" },
+  Q2: { key: "rational_careful", label: "Q2：理性謹慎／分析型", lead: "我依目前資料整理：" },
+  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "" },
+  Q4: { key: "emotional_relationship", label: "Q4：感性謹慎／關係型", lead: "如果你正在了解" },
 };
 
 const QUADRANT_ALIASES = Object.fromEntries(Object.entries(QUADRANTS).flatMap(([code, value]) => [[code.toLowerCase(), code], [value.key, code]]));
@@ -111,6 +111,35 @@ function safeLineUrl(value) {
   return /^https:\/\/(?:lin\.ee|line\.me|liff\.line\.me)\//i.test(url) ? url : "";
 }
 
+function stripTrailingPunctuation(value) {
+  return clean(value, 1200).replace(/[。；，、,;]+$/g, "").trim();
+}
+function normalizeProductFact(value) {
+  return stripTrailingPunctuation(value).replace(/；?可提供[^。；]*/g, "").replace(/[。；，、,;]+$/g, "").trim();
+}
+function normalizeProductSize(value) {
+  const size = stripTrailingPunctuation(value);
+  let match = size.match(/^(\d+)包[\s/]*盒(?:，每包[\s]*(\d+(?:\.\d+)?)\s*g)?$/i);
+  if (match) return match[2] ? `每包 ${match[2]}g，一盒 ${match[1]} 包` : `一盒 ${match[1]} 包`;
+  match = size.match(/^(\d+(?:\.\d+)?)g[\s/]*瓶$/i);
+  if (match) return `每瓶 ${match[1]}g`;
+  match = size.match(/^(\d+(?:\.\d+)?)(ml|毫升)[\s/]*瓶$/i);
+  if (match) return `每瓶 ${match[1]}${match[2] === "毫升" ? "ml" : "ml"}`;
+  return size;
+}
+function naturalUsageLabel(product) {
+  return /沖泡|沖調|飲用/.test(`${product.usage || ""}${product.facts || ""}`) ? "怎麼沖泡" : "怎麼使用";
+}
+export function formatNaturalProductAnswer(product, style) {
+  const productType = normalizeProductFact(product.facts) || product.kind || "商品";
+  const size = normalizeProductSize(product.size);
+  const summary = `${product.name}是${productType}${size ? `，${size}` : ""}`;
+  const usage = naturalUsageLabel(product);
+  if (style.key === "emotional_relationship") return `${style.lead}${product.name}，我可以陪你一步步看。它是${productType}${size ? `，${size}` : ""}，你想先從成分還是${usage}開始？`;
+  if (style.key === "rational_fast") return `${summary}。可查看成分或${usage}。`;
+  if (style.key === "rational_careful") return `${summary}。目前可以核對成分與${usage}，你想先看哪一項？`;
+  return `${style.lead}${summary}。想先看看裡面有哪些成分，還是直接了解${usage}？`;
+}
 export function buildKlinkProductAdvisorResponse(input = {}) {
   const query = clean(input.query, 600);
   if (query.length < 2) throw new Error("請輸入至少 2 個字的商品需求");
@@ -158,10 +187,7 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
   const products = ranked;
   const primary = products[0];
   const pending = primary.reviewStatus === "pending_review";
-  const details = [primary.facts, primary.size ? "規格 " + primary.size : ""].filter(Boolean).join("；");
-  const answer = pending
-    ? "這項商品的詳細資料還在整理中，你可以先問問推薦人。"
-    : style.lead + primary.name + "是" + details + "。" + style.question;
+  const answer = primary.reviewStatus === "pending_review" ? "這項商品的詳細資料還在整理中，你可以先問問推薦人。" : formatNaturalProductAnswer(primary, style);
   return {
     blocked: false,
     needsClarification: false,
