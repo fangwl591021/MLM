@@ -60,10 +60,10 @@ const PRODUCTS = [
   };
 });
 const QUADRANTS = {
-  Q1: { key: "rational_fast", label: "Q1：理性快速／結論型", lead: "先說結論：", question: "你要我直接比較規格，還是提供下一步聯絡方式？" },
-  Q2: { key: "rational_careful", label: "Q2：理性謹慎／分析型", lead: "依目前核准資料：", question: "你最想核對成分、規格、使用方式，還是注意事項？" },
-  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "如果你想快速了解，可以先從這項開始看：", question: "要直接看商品資料，還是聯絡會員進一步詢問？" },
-  Q4: { key: "emotional_relationship", label: "Q4：感性謹慎／關係型", lead: "我先用容易確認、不造成壓力的方式整理：", question: "你可以先告訴我在意的規格，我再陪你一步步確認。" },
+  Q1: { key: "rational_fast", label: "Q1：理性快速／結論型", lead: "先幫你抓重點：", question: "你想直接看規格，還是先了解下一步？" },
+  Q2: { key: "rational_careful", label: "Q2：理性謹慎／分析型", lead: "我依目前資料整理：", question: "你想先核對成分、規格，還是使用方式？" },
+  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "可以！先幫你快速看：", question: "你想先看看成分，還是了解怎麼使用？" },
+  Q4: { key: "emotional_relationship", label: "Q4：感性謹慎／關係型", lead: "我先照你的需求慢慢整理：", question: "你可以先告訴我最在意的地方，我再陪你一起確認。" },
 };
 
 const QUADRANT_ALIASES = Object.fromEntries(Object.entries(QUADRANTS).flatMap(([code, value]) => [[code.toLowerCase(), code], [value.key, code]]));
@@ -157,8 +157,11 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
 
   const products = ranked;
   const primary = products[0];
-  const details = [primary.facts, primary.code ? "產品編號 " + primary.code : "", primary.size ? "規格 " + primary.size : ""].filter(Boolean).join("；");
-  const answer = style.lead + primary.name + "目前可確認的資料為：" + details + "。" + style.question;
+  const pending = primary.reviewStatus === "pending_review";
+  const details = [primary.facts, primary.size ? "規格 " + primary.size : ""].filter(Boolean).join("；");
+  const answer = pending
+    ? "這項商品的詳細資料還在整理中，你可以先問問推薦人。"
+    : style.lead + primary.name + "是" + details + "。" + style.question;
   return {
     blocked: false,
     needsClarification: false,
@@ -168,10 +171,10 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
     answer,
     products,
     actions: [
-      ...(memberLineUrl ? [{ label: "聯絡會員詢問", type: "line", url: memberLineUrl }] : []),
-      { label: "查看官方商品資料", type: "source", url: primary.sourceUrl },
+      ...(memberLineUrl ? [{ label: "問問推薦人", type: "line", url: memberLineUrl }] : []),
+      { label: "查看官方介紹", type: "source", url: primary.sourceUrl },
     ],
-    disclaimer: "AI 只調整說明方式；商品事實、注意事項與法規邊界不會因個人資料而改變。價格與活動請以公司最新核准資訊為準。",
+    disclaimer: "商品資訊以官方最新公告為準。",
   };
 }
 

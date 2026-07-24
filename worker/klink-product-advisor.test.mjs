@@ -79,3 +79,17 @@ test("invalid member URL is never returned as CTA", () => {
   });
   assert.equal(result.actions.some((item) => item.type === "line"), false);
 });
+test("consumer wording is natural and does not expose internal metadata", () => {
+  const result = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "emotional_experience", memberLineUrl: "https://lin.ee/example" });
+  assert.match(result.answer, /可以！先幫你快速看/);
+  assert.doesNotMatch(result.answer, /Q[1-4]|理性快速|感性快速|產品編號|國際計畫/);
+  assert.equal(result.disclaimer, "商品資訊以官方最新公告為準。");
+  assert.deepEqual(result.actions.map((item) => item.label), ["問問推薦人", "查看官方介紹"]);
+});
+
+test("pending product uses a natural incomplete-data message", () => {
+  const product = listKlinkProducts().find((item) => item.reviewStatus === "pending_review");
+  const result = buildKlinkProductAdvisorResponse({ query: product.name, quadrant: "Q4" });
+  assert.equal(result.answer, "這項商品的詳細資料還在整理中，你可以先問問推薦人。");
+  assert.doesNotMatch(result.answer, /pending_review|審核狀態|Q4/);
+});
