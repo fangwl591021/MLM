@@ -62,7 +62,7 @@ const PRODUCTS = [
 const QUADRANTS = {
   Q1: { key: "rational_fast", label: "Q1：理性快速／結論型", lead: "先幫你抓重點：" },
   Q2: { key: "rational_careful", label: "Q2：理性謹慎／分析型", lead: "我依目前資料整理：" },
-  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "可以！先幫你抓重點：" },
+  Q3: { key: "emotional_experience", label: "Q3：感性快速／體驗行動型", lead: "" },
   Q4: { key: "emotional_relationship", label: "Q4：感性謹慎／關係型", lead: "如果你正在了解" },
 };
 

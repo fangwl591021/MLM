@@ -81,7 +81,7 @@ test("invalid member URL is never returned as CTA", () => {
 });
 test("consumer wording is natural and does not expose internal metadata", () => {
   const result = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "emotional_experience", memberLineUrl: "https://lin.ee/example" });
-  assert.match(result.answer, /可以！先幫你抓重點/);
+  assert.doesNotMatch(result.answer, /可以！先幫你抓重點/);
   assert.doesNotMatch(result.answer, /Q[1-4]|理性快速|感性快速|產品編號|國際計畫/);
   assert.equal(result.disclaimer, "商品資訊以官方最新公告為準。");
   assert.deepEqual(result.actions.map((item) => item.label), ["問問推薦人", "查看官方介紹"]);
@@ -95,11 +95,11 @@ test("pending product uses a natural incomplete-data message", () => {
 });
 test("natural copy formats specs and usage without mechanical punctuation", () => {
   const q3 = buildKlinkProductAdvisorResponse({ query: "齊夯諾", quadrant: "Q3" });
-  assert.equal(q3.answer, "可以！先幫你抓重點：齊夯諾是粉包食品，每包 10g，一盒 20 包。想先看看裡面有哪些成分，還是直接了解怎麼沖泡？");
+  assert.equal(q3.answer, "齊夯諾是粉包食品，每包 10g，一盒 20 包。想先看看裡面有哪些成分，還是直接了解怎麼沖泡？");
   assert.doesNotMatch(q3.answer, /。；|；；|可提供成分、容量與食用方式/);
 
   const green = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "Q3" });
-  assert.match(green.answer, /每瓶 500g/);
+  assert.equal(green.answer, "康綠寶是粉狀沖泡食品，每瓶 500g。想先看看裡面有哪些成分，還是直接了解怎麼沖泡？");
   assert.match(green.answer, /怎麼沖泡/);
   assert.doesNotMatch(green.answer, /。；|；；|可提供成分、容量與食用方式/);
 });
