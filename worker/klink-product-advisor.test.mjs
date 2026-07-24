@@ -58,6 +58,28 @@ test("unrelated requests require clarification instead of default recommendation
   assert.match(result.clarificationQuestion, /補充/);
 });
 
+test("eyewear aliases are recognized inside a natural sentence", () => {
+  const result = buildKlinkProductAdvisorResponse({
+    query: "負離子眼鏡的幫助在哪？",
+    quadrant: "Q4",
+    memberLineUrl: "https://lin.ee/example",
+  });
+  assert.equal(result.blocked, false);
+  assert.equal(result.needsClarification, false);
+  assert.equal(result.products[0].id, "KL-L-001");
+  assert.equal(result.products.length, 1);
+  assert.match(result.answer, /款式、材質、尺寸、鏡片規格/);
+  assert.match(result.answer, /試戴/);
+  assert.match(result.answer, /不提供.*健康改善|健康改善.*不提供/);
+  assert.doesNotMatch(result.answer, /治療|改善視力|療效[^，。]*有/);
+});
+
+test("generic eyewear wording still finds relevant eyewear products", () => {
+  const result = buildKlinkProductAdvisorResponse({ query: "我想比較眼鏡款式" });
+  assert.equal(result.needsClarification, false);
+  assert.ok(result.products.some((product) => product.id === "KL-L-001"));
+});
+
 test("quadrants change only wording and keep product facts identical", () => {
   const q1 = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "rational_fast" });
   const q4 = buildKlinkProductAdvisorResponse({ query: "康綠寶", quadrant: "emotional_relationship" });

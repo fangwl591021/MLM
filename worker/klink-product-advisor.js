@@ -72,10 +72,23 @@ function normalizeQuadrant(value) {
   const key = clean(value, 40).toLocaleLowerCase("en-US");
   return QUADRANT_ALIASES[key] || "Q4";
 }
+
+const PRODUCT_ALIASES = {
+  "KL-I-009": ["防藍光掛鏡", "掛鏡", "prolens"],
+  "KL-L-001": ["負離子眼鏡", "康立眼鏡", "k-ion眼鏡", "k ion眼鏡", "負離子鏡框"],
+};
+
 function productScore(product, query) {
   const haystack = `${product.name} ${product.plan} ${product.kind} ${product.code} ${product.keywords}`.toLocaleLowerCase("zh-TW");
   const q = query.toLocaleLowerCase("zh-TW");
   let score = q.includes(product.name.toLocaleLowerCase("zh-TW")) ? 100 : 0;
+  for (const alias of PRODUCT_ALIASES[product.id] || []) {
+    if (q.includes(alias.toLocaleLowerCase("zh-TW"))) score += 60 + Math.min(alias.length, 12);
+  }
+  for (const keyword of product.matchingKeywords) {
+    const normalized = keyword.toLocaleLowerCase("zh-TW");
+    if (normalized.length >= 2 && q.includes(normalized)) score += normalized.length >= 4 ? 12 : 6;
+  }
   for (const term of q.split(/[\s，。！？、,.!?／/]+/).filter((item) => item.length >= 2)) {
     if (haystack.includes(term)) score += term.length >= 4 ? 8 : 4;
   }
@@ -130,6 +143,18 @@ function normalizeProductSize(value) {
 function naturalUsageLabel(product) {
   return /沖泡|沖調|飲用/.test(`${product.usage || ""}${product.facts || ""}`) ? "怎麼沖泡" : "怎麼使用";
 }
+
+function isBenefitQuestion(query) {
+  return /(幫助|好處|功效|效果|作用|用途|特色|優點|差別)/.test(query);
+}
+
+function formatSafeBenefitAnswer(product) {
+  if (product.id === "KL-L-001") {
+    return "負離子眼鏡在選購上，可以協助你比較款式、材質、尺寸、鏡片規格，並先透過試戴確認搭配感。若你想問的是健康改善或醫療療效，這裡不提供這類回答。你想先看款式，還是了解試戴方式？";
+  }
+  return `${product.name}目前可以從規格、成分或材質、使用方式與注意事項協助你判斷是否符合需求；健康改善或醫療療效不在回答範圍。`;
+}
+
 export function formatNaturalProductAnswer(product, style) {
   const productType = normalizeProductFact(product.facts) || product.kind || "商品";
   const size = normalizeProductSize(product.size);
@@ -163,9 +188,12 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
     };
   }
 
-  const ranked = PRODUCTS.map((product) => ({ product, score: productScore(product, query) }))
+  const scored = PRODUCTS.map((product) => ({ product, score: productScore(product, query) }))
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score);
+  const strongestScore = scored[0]?.score || 0;
+  const ranked = scored
+    .filter((item) => strongestScore < 40 || item.score >= strongestScore * 0.45)
     .slice(0, 3)
     .map((item) => safeProduct(item.product));
 
@@ -187,7 +215,9 @@ export function buildKlinkProductAdvisorResponse(input = {}) {
   const products = ranked;
   const primary = products[0];
   const pending = primary.reviewStatus === "pending_review";
-  const answer = primary.reviewStatus === "pending_review" ? "這項商品的詳細資料還在整理中，你可以先問問推薦人。" : formatNaturalProductAnswer(primary, style);
+  const answer = primary.reviewStatus === "pending_review"
+    ? "這項商品的詳細資料還在整理中，你可以先問問推薦人。"
+    : (isBenefitQuestion(query) ? formatSafeBenefitAnswer(primary) : formatNaturalProductAnswer(primary, style));
   return {
     blocked: false,
     needsClarification: false,
