@@ -355,6 +355,21 @@ export default {
         return response;
       }
 
+      if (url.pathname === "/api/auth/extension-login" && request.method === "POST") {
+        const body = await safeJson(request);
+        const result = verifyPasswordLogin(body);
+        if (!result.ok) {
+          return jsonResponse({ status: "error", message: result.message || "帳號或密碼錯誤" }, 401, corsHeaders);
+        }
+        const session = await buildExtensionSessionToken(env, result.profile, result.access);
+        return jsonResponse({
+          status: "success",
+          token: session.token,
+          expiresAt: session.expiresAt,
+          profile: result.profile,
+          access: result.access,
+        }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/auth/logout" && request.method === "POST") {
         const response = jsonResponse({ status: "success" }, 200, corsHeaders);
         response.headers.append("Set-Cookie", "kl_console_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
@@ -500,6 +515,50 @@ export default {
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/copilot/customer" && request.method === "GET") {
+        await assertFloorAccess(request, env, floor);
+        const userId = stringValue(url.searchParams.get("uid") || url.searchParams.get("userId") || url.searchParams.get("line_user_id"));
+        const userName = stringValue(url.searchParams.get("name") || url.searchParams.get("user_name"));
+        const rawPictureUrl = stringValue(url.searchParams.get("picture_url") || url.searchParams.get("pictureUrl"));
+        const userPictureUrl = /^https:\/\//i.test(rawPictureUrl) && rawPictureUrl.length <= 2048 ? rawPictureUrl : "";
+        if (!/^U[a-zA-Z0-9_-]{20,}$/.test(userId)) {
+          return jsonResponse({ success: false, status: "error", message: "有效的 LINE UID 必填" }, 400, corsHeaders);
+        }
+        const dashboard = await fetchDashboardData(env, floor, { searchQuery: userId });
+        const threads = dashboard && dashboard.data && Array.isArray(dashboard.data.threads) ? dashboard.data.threads : [];
+        const thread = threads.find((item) => stringValue(item.userId) === userId) || null;
+        const pointUrl = new URL(request.url);
+        pointUrl.searchParams.set("line_user_id", userId);
+        pointUrl.searchParams.set("user_name", userName || stringValue(thread && (thread.displayName || thread.name)));
+        pointUrl.searchParams.set("picture_url", userPictureUrl || stringValue(thread && thread.pictureUrl));
+        pointUrl.searchParams.set("point_type", "gift_money");
+        pointUrl.searchParams.set("limit", "200");
+        const pointResult = await listPointBalances(env, pointUrl).catch(() => ({ balances: [], resolved: null, alternatives: [] }));
+        const balances = Array.isArray(pointResult) ? pointResult : (pointResult.balances || []);
+        const resolved = Array.isArray(pointResult) ? null : (pointResult.resolved || null);
+        const alternatives = Array.isArray(pointResult) ? [] : (pointResult.alternatives || []);
+        return jsonResponse({
+          success: true,
+          status: "success",
+          data: {
+            customer: {
+              userId,
+              displayName: stringValue(thread && (thread.displayName || thread.name)) || userName,
+              pictureUrl: stringValue(thread && thread.pictureUrl),
+              status: stringValue(thread && thread.status),
+            },
+            balances,
+            resolved,
+            requiresBinding: alternatives.length > 0 || !balances.length,
+            permissions: {
+              canReadPoints: true,
+              canGrantOa1: true,
+              canGrantOa2: false,
+              canDeduct: true,
+            },
+          },
+        }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/data" && request.method === "GET") {
         const smartMonitorMode = url.searchParams.get("smart") === "1";
         await (smartMonitorMode ? assertDashboardAuth(request, env) : assertFloorAccess(request, env, floor));
@@ -961,7 +1020,7 @@ export default {
       return jsonResponse({
         status: "active",
         service: "line-oa-ai-suggestion-worker",
-        routes: ["/console", "/console/calendar", "/console/events", "/console/ai-wear", "/console/ai-wear-cost", "/ai-wear", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
+        routes: ["/console", "/console/calendar", "/console/events", "/console/ai-wear", "/console/ai-wear-cost", "/ai-wear", "/checkin-template", "/calendar", "/dashboard?floor=main", "/dashboard?floor=admin", "/health", "/api/console/summary", "/api/auth/extension-login", "/api/copilot/customer", "/api/calendar/import-image", "/api/calendar/events", "/api/data?floor=main", "/api/data?floor=admin", "/admin/crm", "/admin/crm/members", "/admin/crm/sync-members", "/admin/crm/sync-points", "/admin/points/balance", "/admin/points/ledger", "/admin/points/stats", "/admin/points/stats-data", "/admin/smart-monitor", "/admin/smart-monitor-data", "/admin/points/backfill-auto-rewards", "/admin/points/repair-daily-keyword-balances", "/admin/points/grant", "/admin/points/deduct", "/admin/points/redeem", "/internal/line-webhook/oa1", "/internal/line-webhook/oa2", "/line-webhook/oa1", "/line-webhook/oa2", "/api/migrate-gas-to-d1", "/api/line-oa/threads", "/api/line-oa/thread", "/api/profile-debug", "/api/backfill-profiles", "/api/knowledge", "/api/knowledge/manifest", "/api/knowledge/file", "/api/floor-whitelist", "/api/reply-learning", "/api/reply-learning/rebuild", "/api/checkin-template", "/api/conversation-meta", "/api/send", "/api/log-reply", "/webhook/line/main", "/webhook/line/admin"],
       }, 200, corsHeaders);
     } catch (err) {
       const payload = { status: "error", message: err && err.message ? err.message : String(err) };
@@ -4484,6 +4543,8 @@ async function listPointBalances(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
+  const rawPictureUrl = stringValue(url.searchParams.get("picture_url") || url.searchParams.get("pictureUrl"));
+  const userPictureUrl = /^https:\/\//i.test(rawPictureUrl) && rawPictureUrl.length <= 2048 ? rawPictureUrl : "";
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
   const pointTypes = pointBalanceQueryTypes(url.searchParams.get("point_type") || url.searchParams.get("pointType"));
@@ -4501,7 +4562,7 @@ async function listPointBalances(env, url) {
       return { balances: exactBalances, resolved: { chat_line_user_id: lineUserId, point_line_user_id: lineUserId, source: "exact_chat_uid" }, alternatives: [] };
     }
     if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
-    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName, chatPictureUrl: userPictureUrl });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const resolvedRows = channelKey
         ? await livePointBalancesForSourceUsers(env, { [channelKey]: resolved.channelLineUserIds[channelKey] }, pointTypes)
@@ -4784,6 +4845,7 @@ async function resolvePointIdentity(env, input) {
   const chatLineUserId = stringValue(input.chatLineUserId);
   const masterMemberRef = stringValue(input.masterMemberRef || input.master_member_ref);
   const userName = stringValue(input.userName).trim();
+  const chatPictureUrl = stringValue(input.chatPictureUrl || input.pictureUrl).trim();
   if (!env.DB) return null;
 
   if (masterMemberRef) {
@@ -4861,7 +4923,7 @@ async function resolvePointIdentity(env, input) {
     }
 
     if (userName) {
-      const profileResolved = await pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName);
+      const profileResolved = await pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName, chatPictureUrl);
       if (hasPointSourceLineUsers(profileResolved.channelLineUserIds)) {
         return {
           channelLineUserIds: profileResolved.channelLineUserIds,
@@ -5083,20 +5145,23 @@ async function pointSourceLineUsersFromUniquePointAccountName(env, userName) {
   if (!POINT_CHANNELS.has(channelKey) || !lineUserId) return { channelLineUserIds: {} };
   return { channelLineUserIds: { [channelKey]: lineUserId }, memberRef: "", name, source: "unique_point_account_name" };
 }
-async function pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName) {
+async function pointSourceLineUsersFromChatProfile(env, chatLineUserId, userName, providedPictureUrl = "") {
   const chatUserId = stringValue(chatLineUserId);
   const name = stringValue(userName).trim();
   if (!chatUserId || !name || !env.DB) return { channelLineUserIds: {} };
-  const chatProfile = await env.DB.prepare(`
-    SELECT picture_url, display_name
-    FROM profiles
-    WHERE user_id = ?
-      AND picture_url IS NOT NULL
-      AND picture_url <> ''
-    ORDER BY updated_at DESC, last_profile_sync DESC
-    LIMIT 1
-  `).bind(chatUserId).first();
-  const chatPictureKey = linePictureKey(chatProfile && chatProfile.picture_url);
+  let chatPictureKey = linePictureKey(providedPictureUrl);
+  if (!chatPictureKey) {
+    const chatProfile = await env.DB.prepare(`
+      SELECT picture_url, display_name
+      FROM profiles
+      WHERE user_id = ?
+        AND picture_url IS NOT NULL
+        AND picture_url <> ''
+      ORDER BY updated_at DESC, last_profile_sync DESC
+      LIMIT 1
+    `).bind(chatUserId).first();
+    chatPictureKey = linePictureKey(chatProfile && chatProfile.picture_url);
+  }
   if (!chatPictureKey) return { channelLineUserIds: {} };
   const rows = await env.DB.prepare(`
     SELECT p.user_id, p.display_name, p.picture_url, p.updated_at
@@ -5486,6 +5551,8 @@ async function listPointDailyStats(env, url) {
   const channelKey = stringValue(url.searchParams.get("channel_key"));
   const lineUserId = stringValue(url.searchParams.get("line_user_id") || url.searchParams.get("userId"));
   let userName = stringValue(url.searchParams.get("user_name") || url.searchParams.get("userName") || url.searchParams.get("name"));
+  const rawPictureUrl = stringValue(url.searchParams.get("picture_url") || url.searchParams.get("pictureUrl"));
+  const userPictureUrl = /^https:\/\//i.test(rawPictureUrl) && rawPictureUrl.length <= 2048 ? rawPictureUrl : "";
   const masterMemberRef = stringValue(url.searchParams.get("master_member_ref"));
   const limit = clampNumber(url.searchParams.get("limit") || 100, 1, 500);
   const pointTypes = pointBalanceQueryTypes(url.searchParams.get("point_type") || url.searchParams.get("pointType"));
@@ -5506,7 +5573,7 @@ async function listPointDailyStats(env, url) {
     const exactLedgers = ledgers.sort((a, b) => wetwPointRowRankFromLedger(b) - wetwPointRowRankFromLedger(a)).slice(0, limit);
     if (exactLedgers.length) return exactLedgers;
     if (!userName) userName = await pointUserNameFromChatUserId(env, lineUserId);
-    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName });
+    const resolved = await resolvePointIdentity(env, { chatLineUserId: lineUserId, userName, chatPictureUrl: userPictureUrl });
     if (resolved && hasPointSourceLineUsers(resolved.channelLineUserIds)) {
       const mappedLedgers = [];
       for (const sourceKey of sourceKeys) {
@@ -10213,6 +10280,56 @@ function passwordLoginHtml(corsHeaders) {
 </body>
 </html>`, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
 }
+async function buildExtensionSessionToken(env, profile, access = null) {
+  const maxAgeSeconds = 8 * 60 * 60;
+  const expiresAt = Math.floor(Date.now() / 1000) + maxAgeSeconds;
+  const payload = {
+    type: "line-copilot-extension",
+    uid: stringValue(profile && profile.userId).trim(),
+    name: stringValue(profile && profile.displayName).trim(),
+    picture: stringValue(profile && profile.pictureUrl).trim(),
+    admin: Boolean(access && access.admin),
+    floors: Array.isArray(access && access.floors) ? access.floors.filter((floor) => ACCESS_LIST_IDS.has(floor)) : [],
+    exp: expiresAt,
+    nonce: crypto.randomUUID(),
+  };
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = await signExtensionSession(env, encodedPayload);
+  return { token: `lcx1.${encodedPayload}.${signature}`, expiresAt: expiresAt * 1000 };
+}
+
+async function verifyExtensionSessionToken(env, token) {
+  const value = stringValue(token).trim();
+  if (!value.startsWith("lcx1.")) return { ok: false, message: "Extension session is required" };
+  const parts = value.split(".");
+  if (parts.length !== 3) return { ok: false, message: "Extension session format is invalid" };
+  let expected = "";
+  try { expected = await signExtensionSession(env, parts[1]); } catch (error) { return { ok: false, message: error.message || "Extension session unavailable" }; }
+  if (!constantTimeEqual(expected, parts[2])) return { ok: false, message: "Extension session signature is invalid" };
+  let payload = null;
+  try { payload = JSON.parse(base64UrlDecode(parts[1])); } catch (_error) { payload = null; }
+  if (!payload || payload.type !== "line-copilot-extension" || !payload.uid) return { ok: false, message: "Extension session payload is invalid" };
+  if (Number(payload.exp || 0) <= Math.floor(Date.now() / 1000)) return { ok: false, message: "Extension session expired" };
+  return {
+    ok: true,
+    profile: {
+      userId: stringValue(payload.uid),
+      displayName: stringValue(payload.name),
+      pictureUrl: stringValue(payload.picture),
+      admin: Boolean(payload.admin),
+      floors: Array.isArray(payload.floors) ? payload.floors.filter((floor) => ACCESS_LIST_IDS.has(floor)) : [],
+    },
+  };
+}
+
+async function signExtensionSession(env, encodedPayload) {
+  const secret = stringValue(env.EXTENSION_AUTH_SECRET || env.ADMIN_TOKEN || env.DASHBOARD_API_TOKEN).trim();
+  if (!secret) throw httpError("EXTENSION_AUTH_SECRET, ADMIN_TOKEN or DASHBOARD_API_TOKEN is not configured", 500);
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(encodedPayload));
+  return base64UrlEncodeBytes(new Uint8Array(digest));
+}
 async function assertDashboardAuth(request, env) {
   const tokens = [env.DASHBOARD_API_TOKEN, env.ADMIN_TOKEN].map((value) => String(value || "").trim()).filter(Boolean);
   const auth = String(request.headers.get("Authorization") || "").trim();
@@ -10221,6 +10338,8 @@ async function assertDashboardAuth(request, env) {
   if (tokens.includes(bearerToken) || tokens.includes(directToken)) {
     return { ok: true, token: bearerToken || directToken, adminToken: isAdminRequest(request, env), method: "token" };
   }
+  const extensionSession = await verifyExtensionSessionToken(env, bearerToken);
+  if (extensionSession.ok) return { ok: true, method: "extension-token", extensionToken: true, ...extensionSession.profile };
   const session = await verifyConsoleSession(request, env);
   if (session.ok) return { ok: true, method: "session", ...session.profile };
   const line = await verifyLineLoginRequest(request, env);
