@@ -66,6 +66,36 @@ Then set LINE Developers webhook URL:
 ```text
 https://mlm.fangwl591021.workers.dev/webhook/line
 ```
+## LINE Console Login
+
+The production `/console` route serves `console.html` from the repository's
+`main` branch through `fetchFrontendHtmlSource()` in `worker/worker.js`. A
+Worker deployment alone does not publish a changed `console.html`; login UI
+changes must be merged to `main` before they are visible in production.
+
+The login flow is:
+
+1. Load `/api/login-config` and initialize the configured LIFF ID.
+2. Read a fresh LIFF ID token and call `POST /api/auth/line-login`.
+3. If LINE returns `IdToken expired` (or an equivalent expiry message), clear
+   the LIFF session and start LINE login again.
+
+When login shows a 401:
+
+1. Inspect the response JSON message. `IdToken expired` means the LIFF token
+   is stale, not that the operator password or D1 data is wrong.
+2. Close and reopen the LIFF/console page so the refresh flow can obtain a
+   new token.
+3. Verify the live HTML contains `loginMessage` and `forceLineRelogin`:
+
+```powershell
+$p = Join-Path $env:TEMP "mlm-console.html"
+curl.exe -sS -o $p "https://mlm.fangwl591021.workers.dev/console?cb=$(Get-Random)"
+Select-String -Path $p -Pattern "loginMessage|forceLineRelogin"
+```
+
+4. If those markers are missing, merge the `console.html` fix to `main`.
+Do not change D1, Secrets, or LINE bindings to resolve an expired ID token.
 
 ## Behavior
 
