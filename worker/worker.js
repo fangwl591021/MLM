@@ -298,7 +298,7 @@ export default {
       }
 
       if (url.pathname === "/api/ai-wear-public" && request.method === "GET") {
-        const data = await getAiWearPublicData(env);
+        const data = await getAiWearPublicData(env, url.searchParams.get("generationType"));
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -8293,16 +8293,20 @@ async function loadAiWearSettingsRaw(env) {
   return normalizeAiWearSettings(stored);
 }
 
-async function getAiWearPublicData(env) {
+async function getAiWearPublicData(env, requestedGenerationType = "") {
   await ensureAiWearSchema(env);
   const settings = await loadAiWearSettingsRaw(env);
-  const gallery = await listAiWearReferences(env);
+  const requested = stringValue(requestedGenerationType).trim().toLowerCase();
+  const includeGlasses = !requested || requested === "glasses";
+  const includeLookalike = !requested || requested === "lookalike";
+  const gallery = includeGlasses ? await listAiWearReferences(env) : { items: [] };
+  const lookalikeTemplates = includeLookalike ? await listAiWearLookalikeTemplates(env) : { items: [] };
   return {
     settings: sanitizeAiWearSettingsForPublic(settings),
     gallery: gallery.items || [],
+    lookalikeTemplates: lookalikeTemplates.items || [],
   };
 }
-
 async function validateAiWearSelfieForTryOn(env, settings, selfie) {
   const buffer = selfie && selfie.buffer;
   const mimeType = stringValue(selfie && selfie.mimeType || "image/jpeg").toLowerCase();
@@ -8321,8 +8325,8 @@ function normalizeAiWearGenerationType(value) {
 
 async function listAiWearLookalikeTemplates(env) {
   await ensureAiWearSchema(env);
-  const rows = await env.DB.prepare("SELECT id, title, file_name, mime_type, size, active, created_at, updated_at FROM ai_wear_lookalike_templates WHERE active = 1 ORDER BY updated_at DESC LIMIT 100").all();
-  return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), title: stringValue(row.title), fileName: stringValue(row.file_name), mimeType: stringValue(row.mime_type), size: numberOrZero(row.size), url: `${publicBaseUrl(env)}${AI_WEAR_LOOKALIKE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}?v=${numberOrZero(row.updated_at) || numberOrZero(row.created_at)}`, createdAt: numberOrZero(row.created_at), updatedAt: numberOrZero(row.updated_at) })) };
+  const rows = await env.DB.prepare("SELECT id, title, category, description, gender, shot_type, aspect_ratio, active, created_at, updated_at FROM ai_wear_lookalike_templates WHERE active = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 100").all();
+  return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), title: stringValue(row.title), category: stringValue(row.category), description: stringValue(row.description), gender: stringValue(row.gender), shotType: stringValue(row.shot_type), aspectRatio: stringValue(row.aspect_ratio), url: `${publicBaseUrl(env)}${AI_WEAR_LOOKALIKE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}?v=${numberOrZero(row.updated_at) || numberOrZero(row.created_at)}`, createdAt: numberOrZero(row.created_at), updatedAt: numberOrZero(row.updated_at) })) };
 }
 
 async function uploadAiWearLookalikeTemplate(request, env) {
@@ -8337,7 +8341,17 @@ async function uploadAiWearLookalikeTemplate(request, env) {
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = Date.now();
   const title = stringValue(form.get("title") || file.name || "同款範本").slice(0, 120);
-  await env.DB.prepare("INSERT INTO ai_wear_lookalike_templates (id, title, file_name, mime_type, size, base64, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)").bind(id, title, stringValue(file.name || id).slice(0, 160), mimeType, buffer.byteLength, arrayBufferToBase64(buffer), now, now).run();
+  const category = stringValue(form.get("category")).slice(0, 80);
+  const description = stringValue(form.get("description")).slice(0, 500);
+  const prompt = stringValue(form.get("prompt")).slice(0, 2000);
+  const negativePrompt = stringValue(form.get("negativePrompt") || form.get("negative_prompt")).slice(0, 2000);
+  const gender = stringValue(form.get("gender")).slice(0, 40);
+  const shotType = stringValue(form.get("shotType") || form.get("shot_type")).slice(0, 40);
+  const aspectRatio = stringValue(form.get("aspectRatio") || form.get("aspect_ratio")).slice(0, 20);
+  const identityStrength = Math.max(0, Math.min(1, Number(form.get("identityStrength") || form.get("identity_strength") || 0) || 0));
+  const poseStrength = Math.max(0, Math.min(1, Number(form.get("poseStrength") || form.get("pose_strength") || 0) || 0));
+  const sortOrder = Math.max(0, Math.floor(Number(form.get("sortOrder") || form.get("sort_order") || 0) || 0));
+  await env.DB.prepare("INSERT INTO ai_wear_lookalike_templates (id, title, category, description, file_name, mime_type, size, base64, prompt, negative_prompt, gender, shot_type, aspect_ratio, identity_strength, pose_strength, active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)").bind(id, title, category, description, stringValue(file.name || id).slice(0, 160), mimeType, buffer.byteLength, arrayBufferToBase64(buffer), prompt, negativePrompt, gender, shotType, aspectRatio, identityStrength, poseStrength, sortOrder, now, now).run();
   return { id, title, fileName: stringValue(file.name || id), mimeType, size: buffer.byteLength, url: `${publicBaseUrl(env)}${AI_WEAR_LOOKALIKE_ASSET_PREFIX}${encodeURIComponent(id)}?v=${now}`, createdAt: now, updatedAt: now };
 }
 
@@ -8360,7 +8374,7 @@ async function serveAiWearLookalikeImage(env, pathname, corsHeaders) {
 async function resolveAiWearLookalikeTemplate(env, templateId) {
   const id = stringValue(templateId);
   if (!id || id.includes("..") || id.includes("/")) throw httpError("請先選擇同款範本。", 400);
-  const row = await env.DB.prepare("SELECT id, title, mime_type, base64, size FROM ai_wear_lookalike_templates WHERE id = ? AND active = 1").bind(id).first();
+  const row = await env.DB.prepare("SELECT id, title, mime_type, base64, size, prompt, negative_prompt, gender, shot_type, aspect_ratio, identity_strength, pose_strength FROM ai_wear_lookalike_templates WHERE id = ? AND active = 1").bind(id).first();
   if (!row || !row.base64) throw httpError("找不到同款範本，請重新整理後選擇。", 404);
   return row;
 }
@@ -8374,7 +8388,12 @@ function buildAiWearLookalikePrompt(settings, template, personDimensions) {
     "不得加入未在範本或人物照片中提供的品牌、文字、商品功效或醫療宣稱；不得生成多餘人物或改變身份。",
     dimensions,
     stringValue(settings.lookalikePrompt || DEFAULT_AI_WEAR_SETTINGS.lookalikePrompt),
-    `同款範本名稱：${stringValue(template && template.title)}`,
+    template && template.prompt ? "範本補充要求：" + stringValue(template.prompt) : "",
+    template && template.negative_prompt ? "避免內容：" + stringValue(template.negative_prompt) : "",
+    template && template.gender ? "人物設定：" + stringValue(template.gender) : "",
+    template && template.shot_type ? "景別：" + stringValue(template.shot_type) : "",
+    template && template.aspect_ratio ? "畫面比例：" + stringValue(template.aspect_ratio) : "",
+    "同款範本名稱：" + stringValue(template && template.title)
   ].filter(Boolean).join("\n\n");
 }
 async function preflightAiWearGenerate(request, env) {
@@ -9158,14 +9177,35 @@ async function ensureAiWearSchema(env) {
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_lookalike_templates (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT "",
+    category TEXT NOT NULL DEFAULT "",
+    description TEXT NOT NULL DEFAULT "",
     file_name TEXT NOT NULL DEFAULT "",
     mime_type TEXT NOT NULL DEFAULT "image/jpeg",
     size INTEGER NOT NULL DEFAULT 0,
     base64 TEXT NOT NULL DEFAULT "",
+    prompt TEXT NOT NULL DEFAULT "",
+    negative_prompt TEXT NOT NULL DEFAULT "",
+    gender TEXT NOT NULL DEFAULT "",
+    shot_type TEXT NOT NULL DEFAULT "",
+    aspect_ratio TEXT NOT NULL DEFAULT "",
+    identity_strength REAL NOT NULL DEFAULT 0,
+    pose_strength REAL NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL DEFAULT 0
   )`).run();
+  await ensureColumn(env, "ai_wear_lookalike_templates", "category", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "description", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "prompt", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "negative_prompt", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "gender", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "shot_type", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "aspect_ratio", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "identity_strength", "REAL NOT NULL DEFAULT 0");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "pose_strength", "REAL NOT NULL DEFAULT 0");
+  await ensureColumn(env, "ai_wear_lookalike_templates", "sort_order", "INTEGER NOT NULL DEFAULT 0");
+
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_lookalike_templates_active ON ai_wear_lookalike_templates (active, updated_at)`).run();  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_cost_events (
     id TEXT PRIMARY KEY,
     result_id TEXT NOT NULL DEFAULT '',
@@ -9445,16 +9485,16 @@ async function saveAiWearResult(request, env) {
       lineUserId,
       pointType: generationSettings.pointType,
       pointDelta: -configuredPointCost,
-      action: "ai_wear_generate",
-      source: "ai-wear",
-      sourceEventId: `ai-wear:${lineUserId}:${id}`,
-      businessKey: `ai-wear-${generationType}:${lineUserId}:${id}`,
-      operatorId: `ai-wear:${lineUserId}`,
-      operatorName: "AI穿戴",
-      note: `AI穿戴生成扣點 ${configuredPointCost} 點`,
+      action: generationType === "lookalike" ? "ai_lookalike_generate" : "ai_wear_generate",
+      source: generationType === "lookalike" ? "ai-lookalike" : "ai-wear",
+      sourceEventId: (generationType === "lookalike" ? "ai-lookalike" : "ai-wear") + ":" + lineUserId + ":" + id,
+      businessKey: (generationType === "lookalike" ? "ai-lookalike" : "ai-wear") + ":" + lineUserId + ":" + id,
+      operatorId: (generationType === "lookalike" ? "ai-lookalike" : "ai-wear") + ":" + lineUserId,
+      operatorName: generationType === "lookalike" ? "AI做同款" : "AI穿戴",
+      note: (generationType === "lookalike" ? "AI做同款" : "AI穿戴") + "生成扣點 " + configuredPointCost + " 點",
     }, {
       event_name: "AI穿戴扣點",
-      event_content: `AI穿戴生成扣點 ${configuredPointCost} 點`,
+      event_content: (generationType === "lookalike" ? "AI做同款" : "AI穿戴") + "生成扣點 " + configuredPointCost + " 點",
       shop_remark: `AI穿戴生成扣點；model=${modelId}；result=${id}`,
     });
     deductedPointCost = configuredPointCost;
