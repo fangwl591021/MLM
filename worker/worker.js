@@ -3959,7 +3959,7 @@ async function proxyInternalAiTranscription(env, request) {
   const file = input.get("file");
   const durationMs = Number(input.get("durationMs"));
   if (!file || typeof file.arrayBuffer !== "function" || !file.size) throw httpError("Audio file is required", 400);
-  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 10_000) throw httpError("Audio duration must be 10 seconds or less", 400);
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 15_000) throw httpError("Audio duration must be 15 seconds or less", 400);
   if (file.size > 1_500_000) throw httpError("Audio file is too large", 413);
   const mimeType = stringValue(file.type).toLowerCase().split(";")[0];
   const supportedTypes = new Set(["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-m4a"]);
