@@ -63,6 +63,7 @@ const AI_WEAR_REFERENCE_ASSET_PREFIX = "/assets/ai-wear/reference/";
 const AI_WEAR_SELFIE_ASSET_PREFIX = "/assets/ai-wear/selfie/";
 const AI_WEAR_RESULT_ASSET_PREFIX = "/assets/ai-wear/result/";
 const AI_WEAR_SHARE_ASSET_PREFIX = "/assets/ai-wear/share/";
+const AI_WEAR_LOOKALIKE_ASSET_PREFIX = "/assets/ai-wear/lookalike/";
 const AI_WEAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const AI_WEAR_SELFIE_MAX_BYTES = 1200 * 1024;
 const AI_WEAR_RESULT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
@@ -99,6 +100,11 @@ const DEFAULT_AI_WEAR_SETTINGS = {
   dailyCostLimitTwd: 0,
   monthlyCostLimitTwd: 0,
   perUserDailyLimit: 0,
+  lookalikeEnabled: false,
+  lookalikePointDeductionEnabled: false,
+  lookalikePointCost: 0,
+  lookalikePrompt: "保留第一張人物的真實身份與臉部特徵，參考第二張範本的姿勢、構圖、服裝、背景與光線，生成自然真實的同款照片。不得換臉，不得複製第二張的人物身份。",
+  lookalikePerUserDailyLimit: 0,
 };
 
 const CHECKIN_LOCATION_META = {
@@ -248,10 +254,10 @@ export default {
         return serveFrontendHtml("index.html", corsHeaders);
       }
 
-      if ((url.pathname === "/ai-wear" || url.pathname === "/ai-wear.html") && (request.method === "GET" || request.method === "HEAD")) {
+      if ((url.pathname === "/ai-wear" || url.pathname === "/ai-wear/" || url.pathname === "/ai-wear.html") && (request.method === "GET" || request.method === "HEAD")) {
         return serveFrontendHtml("ai-wear.html", corsHeaders);
       }
-      if (url.pathname === "/ai-wear/klink" && (request.method === "GET" || request.method === "HEAD")) {
+      if ((url.pathname === "/ai-wear/klink" || url.pathname === "/ai-wear/klink/") && (request.method === "GET" || request.method === "HEAD")) {
         return serveFrontendHtml("ai-wear.html", corsHeaders, { aiWearLiffId: KLINK_AI_WEAR_LIFF_ID, aiWearPointChannelKey: POINT_OA1 });
       }
       if (url.pathname.startsWith("/ai-wear/share/") && url.pathname.endsWith("/preview") && (request.method === "GET" || request.method === "HEAD")) {
@@ -277,6 +283,9 @@ export default {
       }
       if (url.pathname.startsWith(AI_WEAR_REFERENCE_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearReferenceImage(env, url.pathname, corsHeaders);
+      }
+      if (url.pathname.startsWith(AI_WEAR_LOOKALIKE_ASSET_PREFIX) && request.method === "GET") {
+        return serveAiWearLookalikeImage(env, url.pathname, corsHeaders);
       }
       if (url.pathname.startsWith(AI_WEAR_SELFIE_ASSET_PREFIX) && request.method === "GET") {
         return serveAiWearSelfieImage(env, url.pathname, corsHeaders);
@@ -872,6 +881,21 @@ export default {
         return jsonResponse({ status: "success", ...result }, 200, corsHeaders);
       }
 
+
+      if (url.pathname === "/api/ai-wear-lookalike-templates" && request.method === "GET") {
+        const data = await listAiWearLookalikeTemplates(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+      if (url.pathname === "/api/ai-wear-lookalike-templates" && request.method === "POST") {
+        await assertDashboardAuth(request, env);
+        const data = await uploadAiWearLookalikeTemplate(request, env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+      if (url.pathname === "/api/ai-wear-lookalike-templates" && request.method === "DELETE") {
+        await assertDashboardAuth(request, env);
+        const data = await deleteAiWearLookalikeTemplate(env, url.searchParams.get("id"));
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
 
       if (url.pathname === "/api/ai-wear-settings" && request.method === "GET") {
         await assertDashboardAuth(request, env);
@@ -8291,11 +8315,98 @@ async function validateAiWearSelfieForTryOn(env, settings, selfie) {
 
   return { ok: true, skipped: "vision_gate_disabled", dimensions };
 }
+function normalizeAiWearGenerationType(value) {
+  return stringValue(value).trim().toLowerCase() === "lookalike" ? "lookalike" : "glasses";
+}
+
+async function listAiWearLookalikeTemplates(env) {
+  await ensureAiWearSchema(env);
+  const rows = await env.DB.prepare("SELECT id, title, file_name, mime_type, size, active, created_at, updated_at FROM ai_wear_lookalike_templates WHERE active = 1 ORDER BY updated_at DESC LIMIT 100").all();
+  return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), title: stringValue(row.title), fileName: stringValue(row.file_name), mimeType: stringValue(row.mime_type), size: numberOrZero(row.size), url: `${publicBaseUrl(env)}${AI_WEAR_LOOKALIKE_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}?v=${numberOrZero(row.updated_at) || numberOrZero(row.created_at)}`, createdAt: numberOrZero(row.created_at), updatedAt: numberOrZero(row.updated_at) })) };
+}
+
+async function uploadAiWearLookalikeTemplate(request, env) {
+  await ensureAiWearSchema(env);
+  const form = await request.formData();
+  const file = form.get("image") || form.get("template");
+  if (!file || typeof file.arrayBuffer !== "function") throw httpError("同款範本圖片是必要的。", 400);
+  const mimeType = stringValue(file.type || "").toLowerCase();
+  if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) throw httpError("同款範本只支援 JPG、PNG、WEBP。", 400);
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("同款範本圖片過大，請保持在 2MB 內。", 400);
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const now = Date.now();
+  const title = stringValue(form.get("title") || file.name || "同款範本").slice(0, 120);
+  await env.DB.prepare("INSERT INTO ai_wear_lookalike_templates (id, title, file_name, mime_type, size, base64, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)").bind(id, title, stringValue(file.name || id).slice(0, 160), mimeType, buffer.byteLength, arrayBufferToBase64(buffer), now, now).run();
+  return { id, title, fileName: stringValue(file.name || id), mimeType, size: buffer.byteLength, url: `${publicBaseUrl(env)}${AI_WEAR_LOOKALIKE_ASSET_PREFIX}${encodeURIComponent(id)}?v=${now}`, createdAt: now, updatedAt: now };
+}
+
+async function deleteAiWearLookalikeTemplate(env, id) {
+  const safeId = stringValue(id);
+  if (!safeId || safeId.includes("..") || safeId.includes("/")) throw httpError("同款範本 ID 不正確。", 400);
+  await env.DB.prepare("UPDATE ai_wear_lookalike_templates SET active = 0, updated_at = ? WHERE id = ?").bind(Date.now(), safeId).run();
+  return { id: safeId, active: false };
+}
+
+async function serveAiWearLookalikeImage(env, pathname, corsHeaders) {
+  await ensureAiWearSchema(env);
+  const id = aiWearStoredAssetIdFromPath(pathname, AI_WEAR_LOOKALIKE_ASSET_PREFIX);
+  if (!id) return new Response("Invalid image id", { status: 400, headers: corsHeaders });
+  const row = await env.DB.prepare("SELECT mime_type, base64, updated_at FROM ai_wear_lookalike_templates WHERE id = ? AND active = 1").bind(id).first();
+  if (!row || !row.base64) return new Response("Image not found", { status: 404, headers: corsHeaders });
+  return new Response(base64ToUint8Array(row.base64), { status: 200, headers: { ...corsHeaders, "Content-Type": row.mime_type || "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", "ETag": `"${id}-${row.updated_at || 0}"` } });
+}
+
+async function resolveAiWearLookalikeTemplate(env, templateId) {
+  const id = stringValue(templateId);
+  if (!id || id.includes("..") || id.includes("/")) throw httpError("請先選擇同款範本。", 400);
+  const row = await env.DB.prepare("SELECT id, title, mime_type, base64, size FROM ai_wear_lookalike_templates WHERE id = ? AND active = 1").bind(id).first();
+  if (!row || !row.base64) throw httpError("找不到同款範本，請重新整理後選擇。", 404);
+  return row;
+}
+
+function buildAiWearLookalikePrompt(settings, template, personDimensions) {
+  const dimensions = personDimensions && personDimensions.width && personDimensions.height ? `第一張人物照片尺寸為 ${personDimensions.width}x${personDimensions.height}，盡量維持原人物比例與清晰度。` : "維持第一張人物照片的比例與清晰度。";
+  return [
+    "任務：AI 做同款。第一張輸入圖是使用者本人，第二張輸入圖是姿勢與畫面範本。",
+    "必須保留第一張人物的真實身份、臉型、五官、膚色、髮型與自然年齡；不得換臉、不得使用第二張圖的人物身份。",
+    "請參考第二張圖的姿勢、構圖、服裝、背景、光線與整體拍攝氛圍，讓第一張人物以自然真實的方式呈現相似畫面。",
+    "不得加入未在範本或人物照片中提供的品牌、文字、商品功效或醫療宣稱；不得生成多餘人物或改變身份。",
+    dimensions,
+    stringValue(settings.lookalikePrompt || DEFAULT_AI_WEAR_SETTINGS.lookalikePrompt),
+    `同款範本名稱：${stringValue(template && template.title)}`,
+  ].filter(Boolean).join("\n\n");
+}
 async function preflightAiWearGenerate(request, env) {
   await ensureAiWearSchema(env);
   const form = await request.formData();
-  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), form.get("aiWearPointChannelKey"));
-  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
+  const generationType = normalizeAiWearGenerationType(form.get("generationType") || form.get("generation_type"));
+  const rawSettings = await loadAiWearSettingsRaw(env);
+  const settings = aiWearSettingsForPointChannel(rawSettings, form.get("aiWearPointChannelKey"));
+  if (generationType === "lookalike") {
+    if (!rawSettings.lookalikeEnabled) throw httpError("AI 做同款目前尚未開放。", 403);
+    if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
+    const selfie = await resolveAiWearSelfieFromForm(form, env);
+    if (!selfie || !selfie.buffer || !selfie.buffer.byteLength) throw httpError("請先上傳人物照片。", 400);
+    if (selfie.buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請重新上傳較小的照片。", 400);
+    await validateAiWearSelfieForTryOn(env, settings, selfie);
+    const template = await resolveAiWearLookalikeTemplate(env, form.get("templateId") || form.get("template_id"));
+    const verifiedProfile = await verifyAiWearLineProfileFromForm(env, settings, form);
+    const lineUserId = stringValue(verifiedProfile && verifiedProfile.userId);
+    if (rawSettings.lookalikePerUserDailyLimit > 0 && lineUserId) {
+      const dailyStart = aiWearStartOfTaipeiDay(Date.now());
+      const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM ai_wear_results WHERE generation_type = ? AND line_user_id = ? AND created_at >= ? AND status IN (\"generated_raw\", \"completed\", \"pending_point_deduction\")").bind("lookalike", lineUserId, dailyStart).first();
+      if (Number(row && row.count || 0) >= Number(rawSettings.lookalikePerUserDailyLimit || 0)) throw httpError("今天的 AI 做同款次數已達上限，請明天再試。", 429);
+    }
+    const pointCost = Number(rawSettings.lookalikePointCost || 0);
+    if (rawSettings.lookalikePointDeductionEnabled && pointCost > 0 && !lineUserId) throw httpError("請先用 LINE 登入後再生成，系統需要確認會員 UID 才能扣點。", 401);
+    let balance = 0;
+    if (rawSettings.lookalikePointDeductionEnabled && pointCost > 0) {
+      balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+      if (balance < pointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${pointCost} 點。`, 402);
+    }
+    return { ok: true, generationType, templateId: stringValue(template.id), templateTitle: stringValue(template.title), pointCost, balance, lineUserId, selfieSize: Number(selfie.size || selfie.buffer.byteLength || 0) };
+  }  if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const selfie = await resolveAiWearSelfieFromForm(form, env);
   if (!selfie || !selfie.buffer || !selfie.buffer.byteLength) throw httpError("請先上傳人物照片。", 400);
   if (selfie.buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請重新上傳較小的照片。", 400);
@@ -8324,10 +8435,79 @@ async function preflightAiWearGenerate(request, env) {
     selfieSize: Number(selfie.size || selfie.buffer.byteLength || 0),
   };
 }
+async function generateAiWearLookalikeImage(request, env, form, rawSettings) {
+  const settings = aiWearSettingsForPointChannel(rawSettings, form.get("aiWearPointChannelKey"));
+  const selfie = await resolveAiWearSelfieFromForm(form, env);
+  if (!selfie || !selfie.buffer || !selfie.buffer.byteLength) throw httpError("請上傳人物照片。", 400);
+  if (selfie.buffer.byteLength > AI_WEAR_IMAGE_MAX_BYTES) throw httpError("人物照片過大，請壓到 2MB 以內。", 400);
+  await validateAiWearSelfieForTryOn(env, settings, selfie);
+  const template = await resolveAiWearLookalikeTemplate(env, form.get("templateId") || form.get("template_id"));
+  const personDimensions = readAiWearImageDimensions(selfie.buffer, selfie.mimeType);
+  const verifiedProfile = await verifyAiWearLineProfileFromForm(env, settings, form);
+  const lineUserId = stringValue(verifiedProfile && verifiedProfile.userId) || stringValue(selfie.lineUserId);
+  const displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || form.get("displayName") || selfie.displayName).slice(0, 120);
+  const prompt = buildAiWearLookalikePrompt(rawSettings, template, personDimensions);
+  const generated = await callAiWearImageApi(env, settings, {
+    prompt,
+    personBuffer: selfie.buffer,
+    personMimeType: selfie.mimeType,
+    personFileName: selfie.fileName || "selfie.jpg",
+    referenceBase64: stringValue(template.base64),
+    referenceMimeType: stringValue(template.mime_type || "image/jpeg"),
+    referenceFileName: stringValue(template.id || "lookalike.jpg"),
+    referenceTitle: stringValue(template.title),
+    referenceSeries: "lookalike",
+    personDimensions,
+    referenceModelId: stringValue(template.id),
+    referenceProductUrl: "",
+    generationType: "lookalike",
+  });
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const now = Date.now();
+  const stored = await storeAiWearGeneratedResult(env, id, generated);
+  const resultUrl = stored.url;
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, generation_type, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    id,
+    "lookalike",
+    lineUserId,
+    displayName,
+    stringValue(template.id),
+    stringValue(template.title).slice(0, 120),
+    stringValue(selfie.url).slice(0, 500),
+    stringValue(resultUrl).slice(0, 500),
+    stringValue(stored.mimeType || generated.mimeType || "image/png"),
+    "",
+    prompt.slice(0, 4000),
+    0,
+    settings.pointChannelKey,
+    settings.pointType,
+    "generated_raw",
+    now,
+    generated.usage ? JSON.stringify(generated.usage.raw || generated.usage) : "",
+    stringValue(generated.requestId).slice(0, 160),
+  ).run();
+  return {
+    id,
+    createdAt: now,
+    resultUrl,
+    inlineDataUrl: "",
+    requestId: stringValue(generated.requestId).slice(0, 160),
+    usage: generated.usage ? (generated.usage.raw || generated.usage) : null,
+    persistedImage: true,
+    modelId: stringValue(template.id),
+    modelTitle: stringValue(template.title),
+    selfie: aiWearSelfieToClient(selfie, env),
+    result: { media_id: id, url: resultUrl, created_at: new Date(now).toISOString() },
+  };
+}
 async function generateAiWearImage(request, env) {
   await ensureAiWearSchema(env);
   const form = await request.formData();
-  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), form.get("aiWearPointChannelKey"));
+  const rawSettings = await loadAiWearSettingsRaw(env);
+  const generationType = normalizeAiWearGenerationType(form.get("generationType") || form.get("generation_type"));
+  if (generationType === "lookalike") return generateAiWearLookalikeImage(request, env, form, rawSettings);
+  const settings = aiWearSettingsForPointChannel(rawSettings, form.get("aiWearPointChannelKey"));
   if (!settings.image2ApiKey) throw httpError("AI image2 API Key 尚未設定，請先到後台儲存設定。", 400);
   const selfie = await resolveAiWearSelfieFromForm(form, env);
   const personBuffer = selfie.buffer;
@@ -8572,7 +8752,7 @@ async function callDirectImage2WearApi(settings, input, apiUrl) {
   payload.append("preserve_identity", "true");
   payload.append("preserve_composition", "true");
   payload.append("person_image_role", "primary_identity_anchor");
-  payload.append("reference_image_role", "glasses_style_only");
+  payload.append("reference_image_role", input.generationType === "lookalike" ? "composition_style_reference" : "glasses_style_only");
   payload.append("person_width", String(Number(input.personDimensions && input.personDimensions.width) || ""));
   payload.append("person_height", String(Number(input.personDimensions && input.personDimensions.height) || ""));
   payload.append("person_image", new Blob([input.personBuffer], { type: input.personMimeType || "image/jpeg" }), input.personFileName || "person.jpg");
@@ -8725,6 +8905,7 @@ function normalizeAiWearSettings(input, existing = {}) {
   const dailyCostLimitTwd = normalizeAiWearLimit(source.dailyCostLimitTwd ?? source.daily_cost_limit_twd ?? current.dailyCostLimitTwd ?? DEFAULT_AI_WEAR_SETTINGS.dailyCostLimitTwd);
   const monthlyCostLimitTwd = normalizeAiWearLimit(source.monthlyCostLimitTwd ?? source.monthly_cost_limit_twd ?? current.monthlyCostLimitTwd ?? DEFAULT_AI_WEAR_SETTINGS.monthlyCostLimitTwd);
   const perUserDailyLimit = normalizeAiWearLimit(source.perUserDailyLimit ?? source.per_user_daily_limit ?? current.perUserDailyLimit ?? DEFAULT_AI_WEAR_SETTINGS.perUserDailyLimit);
+  const lookalikePerUserDailyLimit = normalizeAiWearLimit(source.lookalikePerUserDailyLimit ?? source.lookalike_per_user_daily_limit ?? current.lookalikePerUserDailyLimit ?? DEFAULT_AI_WEAR_SETTINGS.lookalikePerUserDailyLimit);
   return {
     title: stringValue(source.title || current.title || DEFAULT_AI_WEAR_SETTINGS.title).slice(0, 80),
     publicPath: normalizeAiWearPublicPath(source.publicPath || source.public_path || current.publicPath || DEFAULT_AI_WEAR_SETTINGS.publicPath),
@@ -8747,6 +8928,11 @@ function normalizeAiWearSettings(input, existing = {}) {
     dailyCostLimitTwd,
     monthlyCostLimitTwd,
     perUserDailyLimit,
+    lookalikeEnabled: source.lookalikeEnabled === true || source.lookalike_enabled === true,
+    lookalikePointDeductionEnabled: source.lookalikePointDeductionEnabled === true || source.lookalike_point_deduction_enabled === true,
+    lookalikePointCost: Math.max(0, Math.floor(Number(source.lookalikePointCost ?? source.lookalike_point_cost ?? current.lookalikePointCost ?? DEFAULT_AI_WEAR_SETTINGS.lookalikePointCost) || 0)),
+    lookalikePrompt: stringValue(source.lookalikePrompt || source.lookalike_prompt || current.lookalikePrompt || DEFAULT_AI_WEAR_SETTINGS.lookalikePrompt).slice(0, 4000),
+    lookalikePerUserDailyLimit,
   };
 }
 
@@ -8897,6 +9083,7 @@ function sanitizeAiWearSettingsForPublic(settings) {
   delete data.dailyCostLimitTwd;
   delete data.monthlyCostLimitTwd;
   delete data.perUserDailyLimit;
+  delete data.lookalikePrompt;
   return data;
 }
 function sanitizeAiWearSettingsForClient(settings) {
@@ -8968,7 +9155,18 @@ async function ensureAiWearSchema(env) {
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_referrals_sharer ON ai_wear_referrals (sharer_line_user_id, last_seen_at)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_referrals_share ON ai_wear_referrals (share_id, last_seen_at)`).run();
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_cost_events (
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_lookalike_templates (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT "",
+    file_name TEXT NOT NULL DEFAULT "",
+    mime_type TEXT NOT NULL DEFAULT "image/jpeg",
+    size INTEGER NOT NULL DEFAULT 0,
+    base64 TEXT NOT NULL DEFAULT "",
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_wear_lookalike_templates_active ON ai_wear_lookalike_templates (active, updated_at)`).run();  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_wear_cost_events (
     id TEXT PRIMARY KEY,
     result_id TEXT NOT NULL DEFAULT '',
     line_user_id TEXT NOT NULL DEFAULT '',
@@ -9008,8 +9206,10 @@ async function ensureAiWearSchema(env) {
     status TEXT NOT NULL DEFAULT 'completed',
     created_at INTEGER NOT NULL DEFAULT 0
   )`).run();
+  await ensureColumn(env, "ai_wear_results", "generation_type", "TEXT NOT NULL DEFAULT 'glasses'");
   await ensureColumn(env, "ai_wear_results", "openai_usage_json", "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(env, "ai_wear_results", "openai_request_id", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(env, "ai_wear_cost_events", "generation_type", "TEXT NOT NULL DEFAULT 'glasses'");
   await ensureColumn(env, "ai_wear_cost_events", "usage_json", "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(env, "ai_wear_cost_events", "actual_cost_usd", "REAL NOT NULL DEFAULT 0");
   await ensureColumn(env, "ai_wear_cost_events", "cost_source", "TEXT NOT NULL DEFAULT 'estimate'");
@@ -9154,10 +9354,15 @@ async function saveAiWearResult(request, env) {
   } else {
     body = await safeJson(request);
   }
-  const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), body.aiWearPointChannelKey);
+  const rawSettings = await loadAiWearSettingsRaw(env);
+  const generationType = normalizeAiWearGenerationType(body.generationType || body.generation_type);
+  const settings = aiWearSettingsForPointChannel(rawSettings, body.aiWearPointChannelKey);
+  const generationSettings = generationType === "lookalike"
+    ? { ...settings, pointCost: rawSettings.lookalikePointCost, pointDeductionEnabled: rawSettings.lookalikePointDeductionEnabled }
+    : settings;
 
-  const configuredPointCost = Math.max(0, Math.floor(Number(settings.pointCost || 0) || 0));
-  const shouldDeductPoints = Boolean(settings.pointDeductionEnabled && configuredPointCost > 0);
+  const configuredPointCost = Math.max(0, Math.floor(Number(generationSettings.pointCost || 0) || 0));
+  const shouldDeductPoints = Boolean(generationSettings.pointDeductionEnabled && configuredPointCost > 0);
   let verifiedProfile = null;
   let lineUserId = stringValue(body.lineUserId || body.line_user_id);
   let displayName = stringValue(body.displayName || body.display_name).slice(0, 120);
@@ -9172,7 +9377,7 @@ async function saveAiWearResult(request, env) {
     displayName = stringValue((verifiedProfile && verifiedProfile.displayName) || displayName).slice(0, 120);
     if (!lineUserId) throw httpError("請先用 LINE 登入後再保存 AI 穿戴結果，系統需要確認會員 UID 才能扣點。", 401);
     if (!existingDeducted) {
-      const balance = await getLiveFirstPointAccountBalance(env, settings.pointChannelKey, lineUserId, settings.pointType);
+      const balance = await getLiveFirstPointAccountBalance(env, generationSettings.pointChannelKey, lineUserId, generationSettings.pointType);
       if (balance < configuredPointCost) throw httpError(`K點不足，目前 ${balance} 點，需要 ${configuredPointCost} 點。`, 402);
     }
   }
@@ -9191,12 +9396,13 @@ async function saveAiWearResult(request, env) {
 
   const initialPointCost = existingDeducted ? Math.max(0, Math.floor(Number(existingResult.point_cost || 0) || 0)) : (shouldDeductPoints ? 0 : Math.max(0, Math.floor(Number(body.pointCost || body.point_cost || 0) || 0)));
   const initialStatus = existingDeducted ? "completed" : (shouldDeductPoints ? "pending_point_deduction" : stringValue(body.status || "completed").slice(0, 40));
-  const pointChannelKey = shouldDeductPoints ? settings.pointChannelKey : stringValue(body.pointChannelKey || body.point_channel_key);
-  const pointType = shouldDeductPoints ? settings.pointType : normalizePointType(body.pointType || body.point_type || "gift_money");
+  const pointChannelKey = shouldDeductPoints ? generationSettings.pointChannelKey : stringValue(body.pointChannelKey || body.point_channel_key);
+  const pointType = shouldDeductPoints ? generationSettings.pointType : normalizePointType(body.pointType || body.point_type || "gift_money");
 
-  await env.DB.prepare(`INSERT INTO ai_wear_results (id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  await env.DB.prepare(`INSERT INTO ai_wear_results (id, generation_type, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, result_base64, prompt, point_cost, point_channel_key, point_type, status, created_at, openai_usage_json, openai_request_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
+      generation_type = excluded.generation_type,
       line_user_id = excluded.line_user_id,
       display_name = excluded.display_name,
       model_id = excluded.model_id,
@@ -9213,6 +9419,7 @@ async function saveAiWearResult(request, env) {
       openai_usage_json = CASE WHEN excluded.openai_usage_json != '' THEN excluded.openai_usage_json ELSE ai_wear_results.openai_usage_json END,
       openai_request_id = CASE WHEN excluded.openai_request_id != '' THEN excluded.openai_request_id ELSE ai_wear_results.openai_request_id END`).bind(
     id,
+    generationType,
     lineUserId,
     displayName,
     modelId,
@@ -9234,14 +9441,14 @@ async function saveAiWearResult(request, env) {
   let deductedPointCost = 0;
   if (shouldDeductPoints && !existingDeducted) {
     await applyWetwPointMutation(env, {
-      channelKey: settings.pointChannelKey,
+      channelKey: generationSettings.pointChannelKey,
       lineUserId,
-      pointType: settings.pointType,
+      pointType: generationSettings.pointType,
       pointDelta: -configuredPointCost,
       action: "ai_wear_generate",
       source: "ai-wear",
       sourceEventId: `ai-wear:${lineUserId}:${id}`,
-      businessKey: `ai-wear:${lineUserId}:${id}`,
+      businessKey: `ai-wear-${generationType}:${lineUserId}:${id}`,
       operatorId: `ai-wear:${lineUserId}`,
       operatorName: "AI穿戴",
       note: `AI穿戴生成扣點 ${configuredPointCost} 點`,
@@ -9260,8 +9467,9 @@ async function saveAiWearResult(request, env) {
     ).run();
   }
 
-  await recordAiWearCostEvent(env, settings, {
+  await recordAiWearCostEvent(env, generationSettings, {
     resultId: id,
+    generationType,
     lineUserId,
     displayName,
     modelId,
@@ -9483,8 +9691,8 @@ async function serveAiWearSharePage(env, pathname, corsHeaders) {
 async function listAiWearResults(env, searchParams) {
   await ensureAiWearSchema(env);
   const limit = clampNumber(searchParams && searchParams.get("limit") || 50, 1, 200);
-  const rows = await env.DB.prepare("SELECT id, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, CASE WHEN result_base64 != '' THEN 1 ELSE 0 END AS has_result_blob, point_cost, point_channel_key, point_type, status, created_at FROM ai_wear_results ORDER BY created_at DESC LIMIT ?").bind(limit).all();
-  return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
+  const rows = await env.DB.prepare("SELECT id, generation_type, line_user_id, display_name, model_id, model_title, person_image_url, result_image_url, result_mime_type, CASE WHEN result_base64 != '' THEN 1 ELSE 0 END AS has_result_blob, point_cost, point_channel_key, point_type, status, created_at FROM ai_wear_results ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+  return { items: (rows.results || []).map((row) => ({ id: stringValue(row.id), generationType: normalizeAiWearGenerationType(row.generation_type), lineUserId: stringValue(row.line_user_id), displayName: stringValue(row.display_name), modelId: stringValue(row.model_id), modelTitle: stringValue(row.model_title), personImageUrl: stringValue(row.person_image_url), resultImageUrl: row.has_result_blob ? `${publicBaseUrl(env)}${AI_WEAR_RESULT_ASSET_PREFIX}${encodeURIComponent(stringValue(row.id))}` : stringValue(row.result_image_url), pointCost: numberOrZero(row.point_cost), pointChannelKey: stringValue(row.point_channel_key), pointType: stringValue(row.point_type), status: stringValue(row.status), createdAt: numberOrZero(row.created_at) })) };
 }
 
 async function findRecentAiWearRawUsage(env, input = {}) {
@@ -9592,11 +9800,12 @@ async function recordAiWearCostEvent(env, settings, input) {
     rates: estimate.rates || null,
   });
   await env.DB.prepare(`INSERT INTO ai_wear_cost_events (
-    id, result_id, line_user_id, display_name, model_id, model_title, ai_model, provider, status,
+    id, result_id, generation_type, line_user_id, display_name, model_id, model_title, ai_model, provider, status,
     point_cost, cost_currency, unit_cost, usd_to_twd_rate, estimated_cost_twd, request_id, settings_snapshot, created_at,
     usage_json, actual_cost_usd, cost_source
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(result_id) DO UPDATE SET
+    generation_type = excluded.generation_type,
     line_user_id = excluded.line_user_id,
     display_name = excluded.display_name,
     model_id = excluded.model_id,
@@ -9617,6 +9826,7 @@ async function recordAiWearCostEvent(env, settings, input) {
     cost_source = excluded.cost_source`).bind(
     `cost-${resultId}`,
     resultId,
+    normalizeAiWearGenerationType(input && input.generationType),
     stringValue(input && input.lineUserId),
     stringValue(input && input.displayName).slice(0, 120),
     stringValue(input && input.modelId),
