@@ -157,6 +157,12 @@ export default {
         return proxyInternalAiResponses(env, body);
       }
 
+      if (url.pathname === "/api/internal/ai/transcriptions" && request.method === "POST") {
+        if (url.hostname !== "mlm.internal") {
+          return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
+        }
+        return proxyInternalAiTranscription(env, request);
+      }
       if (url.pathname === "/api/internal/klinkweb/product-advisor" && request.method === "POST") {
         if (!isAllowedKlinkAdvisorHost(url.hostname)) {
           return jsonResponse({ status: "error", error: "Not Found" }, 404, corsHeaders);
@@ -3945,6 +3951,35 @@ function calendarEventRowToRewardEvent(row) {
   };
 }
 
+async function proxyInternalAiTranscription(env, request) {
+  if (!env.OPENAI_API_KEY) throw httpError("MLM OPENAI_API_KEY is not configured", 500);
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 1_600_000) throw httpError("Audio file is too large", 413);
+  const input = await request.formData();
+  const file = input.get("file");
+  const durationMs = Number(input.get("durationMs"));
+  if (!file || typeof file.arrayBuffer !== "function" || !file.size) throw httpError("Audio file is required", 400);
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 10_000) throw httpError("Audio duration must be 10 seconds or less", 400);
+  if (file.size > 1_500_000) throw httpError("Audio file is too large", 413);
+  const mimeType = stringValue(file.type).toLowerCase().split(";")[0];
+  const supportedTypes = new Set(["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-m4a"]);
+  if (!supportedTypes.has(mimeType)) throw httpError("Unsupported audio type", 400);
+  const form = new FormData();
+  form.append("file", file, stringValue(file.name) || "calendar-voice.webm");
+  form.append("model", env.OPENAI_TRANSCRIPTION_MODEL || "gpt-4o-mini-transcribe");
+  form.append("language", "zh");
+  form.append("response_format", "json");
+  const upstream = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: form,
+  });
+  const responseText = await upstream.text();
+  return new Response(responseText, {
+    status: upstream.status,
+    headers: { "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
 async function proxyInternalAiResponses(env, body) {
   if (!env.OPENAI_API_KEY) throw httpError("MLM OPENAI_API_KEY is not configured", 500);
   const payload = body && body.request && typeof body.request === "object" ? { ...body.request } : null;
