@@ -478,7 +478,13 @@
       });
       const loginJson = await loginRes.json().catch(() => ({}));
       if (!loginRes.ok || loginJson.status !== "success" || !loginJson.access || !loginJson.access.allowed) {
-        throw new Error(loginJson.message || "此 LINE 帳號沒有客服系統權限");
+        const loginMessage = loginJson.message || "此 LINE 帳號沒有客服系統權限";
+        if (isLineTokenExpired(loginMessage)) {
+          forceLineRelogin();
+          setStatus("登入逾時，正在重新登入", true);
+          return false;
+        }
+        throw new Error(loginMessage);
       }
       auth.access = loginJson.access;
       syncKlinkwebButton();
