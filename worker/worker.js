@@ -8382,10 +8382,11 @@ async function resolveAiWearLookalikeTemplate(env, templateId) {
 function buildAiWearLookalikePrompt(settings, template, personDimensions) {
   const dimensions = personDimensions && personDimensions.width && personDimensions.height ? `第一張人物照片尺寸為 ${personDimensions.width}x${personDimensions.height}，盡量維持原人物比例與清晰度。` : "維持第一張人物照片的比例與清晰度。";
   return [
-    "任務：AI 做同款。第一張輸入圖是使用者本人，第二張輸入圖是姿勢與畫面範本。",
-    "必須保留第一張人物的真實身份、臉型、五官、膚色、髮型與自然年齡；不得換臉、不得使用第二張圖的人物身份。",
-    "請參考第二張圖的姿勢、構圖、服裝、背景、光線與整體拍攝氛圍，讓第一張人物以自然真實的方式呈現相似畫面。",
-    "不得加入未在範本或人物照片中提供的品牌、文字、商品功效或醫療宣稱；不得生成多餘人物或改變身份。",
+    "任務：AI 做同款。第一張輸入圖只提供使用者本人的身份；第二張輸入圖是完整畫面範本，整張圖都是同款目標，不只是人物姿勢參考。",
+    "身份硬性規則：必須保留第一張人物的真實身份、臉型、五官、膚色、髮型與自然年齡；不得換臉、不得使用第二張圖主角的身份。",
+    "場景硬性規則：必須連同第二張範本的室內或戶外環境、建築、家具、道具、地面、天空、前景、背景、色調、光線與拍攝氛圍一起重現；不可改成純色、模糊背景、攝影棚或其他通用場景。",
+    "構圖硬性規則：維持範本相同景別、鏡頭距離、人物在畫面中的大小與位置、視角、姿勢、服裝、場景覆蓋比例與四周留白；不得把完整場景裁成只有人物的近照或大頭照。",
+    "不得加入範本與人物照片都沒有的品牌、文字、商品功效或醫療宣稱；不得複製或增加前景主角，範本中原本屬於場景的背景人物可依原構圖保留。",
     dimensions,
     stringValue(settings.lookalikePrompt || DEFAULT_AI_WEAR_SETTINGS.lookalikePrompt),
     template && template.prompt ? "範本補充要求：" + stringValue(template.prompt) : "",

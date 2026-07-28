@@ -27,6 +27,9 @@ test("lookalike generation uses the full person reference without a glasses mask
   assert.match(aiWear, /form\.append\("generationType",state\.mode==="lookalike"\?"lookalike":"glasses"\)/);
   assert.match(worker, /input\.generationType === "lookalike" \? "composition_style_reference" : "glasses_style_only"/);
   assert.match(worker, /function buildAiWearLookalikePrompt\(/);
+  assert.match(worker, /整張圖都是同款目標，不只是人物姿勢參考/);
+  assert.match(worker, /不得把完整場景裁成只有人物的近照或大頭照/);
+  assert.match(aiWear, /完整人物＋場景參考/);
 });
 
 test("public lookalike template output excludes private prompts", () => {
