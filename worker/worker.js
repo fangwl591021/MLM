@@ -250,6 +250,10 @@ export default {
         return serveFrontendHtml("console.html", corsHeaders);
       }
 
+      if (url.pathname === "/action-admin" && (request.method === "GET" || request.method === "HEAD")) {
+        await assertPointStatsAdminAuth(request, env);
+        return serveFrontendHtml("action-admin.html", corsHeaders);
+      }
       if ((url.pathname === "/dashboard" || url.pathname === "/index.html") && request.method === "GET") {
         return serveFrontendHtml("index.html", corsHeaders);
       }
@@ -968,6 +972,23 @@ export default {
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
+      if (url.pathname === "/api/action/flex-rules" && request.method === "GET") {
+        await assertPointStatsAdminAuth(request, env);
+        const data = await getActionFlexRules(env);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+      if (url.pathname === "/api/action/flex-rules" && request.method === "POST") {
+        await assertPointStatsAdminAuth(request, env);
+        const body = await safeJson(request);
+        const data = await saveActionFlexRule(env, body);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
+      if (url.pathname === "/api/action/flex-rules" && request.method === "DELETE") {
+        await assertPointStatsAdminAuth(request, env);
+        const id = stringValue(url.searchParams.get("id")).trim();
+        const data = await deleteActionFlexRule(env, id);
+        return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
+      }
       if (url.pathname === "/api/conversation-meta" && request.method === "POST") {
         await assertDashboardAuth(request, env);
         const body = await safeJson(request);
@@ -1061,6 +1082,53 @@ export default {
   },
 };
 
+const ACTION_FLEX_RULES_META_KEY = "action_flex_rules";
+
+async function getActionFlexRules(env) {
+  await ensureAppMetaSchema(env);
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = ?").bind(ACTION_FLEX_RULES_META_KEY).first();
+  if (!row || !row.value) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+async function writeActionFlexRules(env, rules) {
+  await ensureAppMetaSchema(env);
+  const now = Date.now();
+  await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(ACTION_FLEX_RULES_META_KEY, JSON.stringify(rules), now).run();
+}
+
+async function saveActionFlexRule(env, input) {
+  const body = input && typeof input === "object" ? input : {};
+  const id = stringValue(body.id).trim().slice(0, 80) || `FR_${Date.now()}`;
+  const keyword = stringValue(body.keyword).trim().slice(0, 500);
+  const replyType = stringValue(body.replyType).trim().toUpperCase();
+  const payload = typeof body.payload === "string" ? body.payload.slice(0, 200000) : JSON.stringify(body.payload || "");
+  if (!keyword) throw httpError("觸發關鍵字不可為空", 400);
+  if (!payload.trim()) throw httpError("回覆內容不可為空", 400);
+  if (!["FLEX", "TEXT"].includes(replyType)) throw httpError("不支援的回覆類型", 400);
+  const rules = await getActionFlexRules(env);
+  const rule = { id, keyword, replyType, payload, active: body.active !== false, updatedAt: Date.now() };
+  const next = rules.filter((item) => stringValue(item && item.id).trim() !== id);
+  next.push(rule);
+  await writeActionFlexRules(env, next);
+  return rule;
+}
+
+async function deleteActionFlexRule(env, id) {
+  const normalizedId = stringValue(id).trim();
+  if (!normalizedId) throw httpError("規則 ID 不可為空", 400);
+  const rules = await getActionFlexRules(env);
+  const next = rules.filter((item) => stringValue(item && item.id).trim() !== normalizedId);
+  if (next.length === rules.length) throw httpError("找不到指定規則", 404);
+  await writeActionFlexRules(env, next);
+  return { id: normalizedId };
+}
 async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
   const htmlText = await fetchFrontendHtmlSource(fileName);
   if (htmlText === null) {
