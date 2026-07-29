@@ -1129,6 +1129,24 @@ async function deleteActionFlexRule(env, id) {
   await writeActionFlexRules(env, next);
   return { id: normalizedId };
 }
+async function findActionFlexRule(env, text) {
+  const normalizedText = normalizeTextKeyword(text);
+  if (!normalizedText) return null;
+  const rules = await getActionFlexRules(env);
+  return rules.find((rule) => rule && rule.active !== false && stringValue(rule.keyword).split(/[\n,，]/).some((keyword) => normalizeTextKeyword(keyword) === normalizedText)) || null;
+}
+
+function actionRuleMessages(rule) {
+  if (!rule) return [];
+  if (rule.replyType === "TEXT") return [{ type: "text", text: stringValue(rule.payload).slice(0, 5000) }].filter((message) => message.text);
+  try {
+    const parsed = JSON.parse(stringValue(rule.payload));
+    const messages = Array.isArray(parsed) ? parsed : [parsed];
+    return messages.filter((message) => message && typeof message === "object" && ["flex", "text", "image", "template"].includes(message.type)).slice(0, 5);
+  } catch (_err) {
+    return [];
+  }
+}
 async function serveFrontendHtml(fileName, corsHeaders, options = {}) {
   const htmlText = await fetchFrontendHtmlSource(fileName);
   if (htmlText === null) {
@@ -10130,6 +10148,17 @@ async function replyCheckinTemplateForPayload(env, floor, provider, payload) {
 }
 async function maybeReplyCheckinTemplate(env, floor, provider, event, userId, text) {
   if (floor !== FLOOR_MAIN && floor !== FLOOR_SMART) return false;
+  const actionRule = await findActionFlexRule(env, text);
+  if (actionRule) {
+    const messages = actionRuleMessages(actionRule);
+    if (messages.length) {
+      const delivery = await replyOrPushLineMessages(provider, event.replyToken, userId, messages);
+      if (delivery && delivery.ok) {
+        await saveAdminMessage(env, { floor, userId, text: lineMessagesDisplayText(messages), messageType: actionRule.replyType === "FLEX" ? "flex" : "text", lineMessages: messages, rawJson: { direction: "outgoing", source: "action-flex-rule", ruleId: actionRule.id, lineMessages: messages, delivery: { status: delivery.status } }, createdAt: Date.now(), status: STATUS_DONE, category: "Action" });
+      }
+      return true;
+    }
+  }
   const template = await getCheckinTemplate(env);
   if (!isCheckinTemplateTrigger(template, text)) return false;
   const flex = await buildCheckinTemplateFlex(env, template);
