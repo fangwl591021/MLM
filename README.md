@@ -6,9 +6,22 @@
 2. AI 讀取聊天室內容與 `data/knowledge-base.json` 知識庫後，只提供管理員回應建議。
 3. 系統全程不自動回覆客戶；只有客訴、負評、建議、退貨爭議、獎金爭議等重要訊息會發 Telegram 通知並記錄在 Google Sheets。
 
+## 康立 AI 智慧營運桌面
+
+目前開發分支已加入高層 AI 桌面 Phase 1／2：
+
+- `docs/executive.html`：第一版只讀高層桌面。
+- `docs/executive-v2.html`：改接獨立 `/api/executive/*` 的第二版桌面。
+- `worker/executive-api.js`：高層摘要、洞察、任務、決策與問答模組。
+- `migrations/20260711_ai_desktop_phase1.sql`：統一事件、洞察、任務、決策與稽核資料表。
+- `docs/AI_DESKTOP_PHASE2_INTEGRATION.md`：接入現有巨型 Worker 的完整步驟。
+
+高層桌面目前採增量方式開發，不修改既有 LINE 客服、活動、點數與 AI 眼鏡試戴流程。
+
 ## 檔案
 
 - `worker/worker.js`：Cloudflare Worker，負責 LINE webhook 驗簽、Dashboard API、管理員手動發 LINE。
+- `worker/executive-api.js`：康立 AI 高層桌面獨立 API 模組。
 - `apps-script/Code.gs`：Google Apps Script，負責 Gemini 分析、Google Sheets 紀錄、Telegram 通知。
 - `frontend/index.html`：管理員對話框，可查看聊天室、AI 建議與重要訊息。
 - `data/knowledge-base.json`：康立知識庫，共 48 筆。

@@ -1,0 +1,65 @@
+name: MLM Worker Inventory
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "worker/worker.js"
+      - "tools/inventory-scan.mjs"
+      - "tools/inventory-scan-v2.mjs"
+      - ".github/workflows/mlm-worker-inventory.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install AST parser for inventory only
+        run: npm install --no-save --ignore-scripts acorn@8 acorn-walk@8
+
+      - name: Run legacy read-only inventory scan
+        run: node tools/inventory-scan.mjs worker/worker.js artifacts/inventory-v1
+
+      - name: Run AST read-only inventory scan V2
+        run: node tools/inventory-scan-v2.mjs worker/worker.js artifacts/inventory-v2
+
+      - name: Compare V1 and V2 summaries
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const v1 = JSON.parse(fs.readFileSync('artifacts/inventory-v1/summary.json','utf8'));
+          const v2 = JSON.parse(fs.readFileSync('artifacts/inventory-v2/summary.json','utf8'));
+          const keys = ['lines','routes','functions','env_bindings','sql_calls','storage_calls','dependency_edges','high_risk_routes'];
+          const rows = keys.map(k => ({metric:k,v1:v1[k] ?? '',v2:v2[k] ?? '',delta:(Number(v2[k]||0)-Number(v1[k]||0))}));
+          fs.writeFileSync('artifacts/inventory-comparison.json', JSON.stringify({v1,v2,rows}, null, 2));
+          const md = ['# Inventory V1 / V2 比較','','| Metric | V1 | V2 | Delta |','|---|---:|---:|---:|',...rows.map(r=>`| ${r.metric} | ${r.v1} | ${r.v2} | ${r.delta} |`),''].join('\n');
+          fs.writeFileSync('artifacts/inventory-comparison.md', md);
+          NODE
+
+      - name: Add V2 summary to workflow
+        shell: bash
+        run: |
+          echo "## MLM Worker Inventory V2" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat artifacts/inventory-v2/inventory-report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat artifacts/inventory-comparison.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload inventory reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlm-worker-inventory-v2
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30
