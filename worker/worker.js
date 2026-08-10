@@ -2634,7 +2634,7 @@ async function bindPointLineUser(env, body) {
   let snapshot = null;
   if (!masterMemberRef) {
     try {
-      snapshot = await fetchWetwPointSnapshot(env, channelKey, pointLineUserId, "gift_money", 5);
+      snapshot = await fetchWetwPointSnapshot(env, channelKey, pointLineUserId, pointTypeForSource(channelKey), 5);
       const first = Array.isArray(snapshot.rows) ? snapshot.rows.find((row) => row && (row.user_id || row.member_ref || row.master_member_ref)) : null;
       masterMemberRef = stringValue(first && (first.user_id || first.member_ref || first.master_member_ref));
     } catch (_err) {
@@ -2686,11 +2686,11 @@ async function bindPointLineUser(env, body) {
   };
 }
 
-async function hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId) {
+async function hasLocalPointAccount(env, channelKey, lineUserId, pointType) {
   if (!env.DB || !channelKey || !lineUserId) return false;
   const row = await env.DB.prepare(
-    "SELECT 1 AS ok FROM point_accounts WHERE channel_key = ? AND line_user_id = ? AND point_type = 'gift_money' LIMIT 1"
-  ).bind(channelKey, lineUserId).first();
+    "SELECT 1 AS ok FROM point_accounts WHERE channel_key = ? AND line_user_id = ? AND point_type = ? LIMIT 1"
+  ).bind(channelKey, lineUserId, pointType).first();
   return Boolean(row && row.ok);
 }
 
@@ -2745,6 +2745,7 @@ async function pointMutation(env, body, action) {
   const points = Math.abs(Number(body.points || body.point_delta || body.pointDelta));
   if (!channelKey || !lineUserId || !points) throw httpError("channel_key, line_user_id, and points are required", 400);
   if (!POINT_CHANNELS.has(channelKey)) throw httpError("Unsupported point source", 400);
+  const pointType = pointTypeForSource(channelKey);
   let resolvedIdentity = null;
   if (chatLineUserId && chatLineUserId === lineUserId) {
     const resolvedName = userName || await pointUserNameFromChatUserId(env, chatLineUserId);
@@ -2753,17 +2754,17 @@ async function pointMutation(env, body, action) {
     if (sourceLineUserId) lineUserId = sourceLineUserId;
   }
   if (chatLineUserId && chatLineUserId === lineUserId) {
-    let exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => null);
+    let exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 1, body).catch(() => null);
     let hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
     const hasResolvedMember = Boolean(resolvedIdentity && (resolvedIdentity.memberRef || resolvedIdentity.pointLineUserId));
     const allowInitialFallback = body.initial_gift_money_account_fallback === true || body.initialGiftMoneyAccountFallback === true;
     let memberEnsured = null;
     if (!hasWetwRows && !hasResolvedMember && allowInitialFallback) {
       memberEnsured = await ensureWetwLineMember(env, channelKey, lineUserId, body);
-      exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, "gift_money", 1, body).catch(() => exactSnapshot);
+      exactSnapshot = await fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType, 1, body).catch(() => exactSnapshot);
       hasWetwRows = exactSnapshot && Array.isArray(exactSnapshot.rows) && exactSnapshot.rows.length;
     }
-    const hasLocalAccount = hasWetwRows ? true : await hasLocalGiftMoneyPointAccount(env, channelKey, lineUserId);
+    const hasLocalAccount = hasWetwRows ? true : await hasLocalPointAccount(env, channelKey, lineUserId, pointType);
     const initialFallback = (!hasLocalAccount && !hasResolvedMember && !memberEnsured && allowInitialFallback)
       ? await initialGiftMoneyDailyRewardFallbackAccount(env, channelKey, lineUserId, body)
       : null;
@@ -2784,7 +2785,7 @@ async function pointMutation(env, body, action) {
   const input = {
     channelKey,
     lineUserId,
-    pointType: "gift_money",
+    pointType,
     pointDelta: delta,
     action,
     source: "admin",
@@ -4622,7 +4623,10 @@ async function fetchWetwPointSnapshot(env, channelKey, lineUserId, pointType = "
   const fallbackRows = rows
     .filter((row) => !wetwPointRowIsSystemPoint(row))
     .sort((a, b) => wetwPointRowRank(b) - wetwPointRowRank(a));
-  const effectiveRows = matchedRows.length ? matchedRows : fallbackRows;
+  const requestedType = normalizeWetwPointType(pointType);
+  const effectiveRows = matchedRows.length
+    ? matchedRows
+    : (requestedType === "gift_money" ? fallbackRows : []);
   for (const row of effectiveRows) {
     const balance = Number(row.point_balance ?? row.balance ?? row.points);
     if (Number.isFinite(balance)) return { balance, rows: effectiveRows, shop_id: shopId };
@@ -4759,9 +4763,18 @@ function pointBalanceQueryTypes(_value) {
   return ["gift_money"];
 }
 
+function pointTypeForSource(channelKey) {
+  return channelKey === POINT_OA2 ? "system_point" : "gift_money";
+}
+
+function pointBalanceTypesForSource(channelKey, pointTypes) {
+  if (channelKey === POINT_OA2) return [pointTypeForSource(channelKey)];
+  return Array.isArray(pointTypes) && pointTypes.length ? pointTypes : [pointTypeForSource(channelKey)];
+}
+
 async function livePointBalanceRows(env, channelKey, lineUserId, pointTypes) {
   const balances = [];
-  const types = Array.isArray(pointTypes) && pointTypes.length ? pointTypes : pointBalanceQueryTypes("all");
+  const types = pointBalanceTypesForSource(channelKey, pointTypes);
   for (const pointType of types) {
     try {
       balances.push(await livePointBalanceRow(env, channelKey, lineUserId, pointType));
@@ -5416,9 +5429,10 @@ function decoratePointBalances(rows) {
 }
 
 function pointApiShopId(env, channelKey, override) {
+  if (channelKey === POINT_OA2) return Number(POINT_SOURCE_META[POINT_OA2].shopId);
   const explicit = Number(override || 0);
   if (Number.isFinite(explicit) && explicit > 0) return explicit;
-  const sourceEnv = channelKey === POINT_OA2 ? env.WETW_POINT_SHOP_ID_OA2 : env.WETW_POINT_SHOP_ID_OA1;
+  const sourceEnv = env.WETW_POINT_SHOP_ID_OA1;
   const configured = Number(sourceEnv || 0);
   if (Number.isFinite(configured) && configured > 0) return configured;
   if (channelKey === POINT_OA1) {
@@ -5709,8 +5723,9 @@ async function listPointDailyStats(env, url) {
       const sourceLineUserId = stringValue(sourceMap[sourceKey]);
       if (!sourceLineUserId) continue;
       try {
-        const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, "gift_money", limit);
-        ledgers.push(...snapshot.rows.map((row) => wetwPointLedgerRow(sourceKey, sourceLineUserId, row)));
+        const pointType = pointTypeForSource(sourceKey);
+        const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, pointType, limit);
+        ledgers.push(...snapshot.rows.map((row) => wetwPointLedgerRow(sourceKey, sourceLineUserId, row, pointType)));
       } catch (_err) {
         // Some members only exist in one source.
       }
@@ -5725,8 +5740,9 @@ async function listPointDailyStats(env, url) {
         const sourceLineUserId = stringValue(resolved.channelLineUserIds[sourceKey]);
         if (!sourceLineUserId) continue;
         try {
-          const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, "gift_money", limit);
-          mappedLedgers.push(...snapshot.rows.map((row) => ({ ...wetwPointLedgerRow(sourceKey, sourceLineUserId, row), chat_line_user_id: lineUserId, resolved_member_ref: resolved.memberRef })));
+          const pointType = pointTypeForSource(sourceKey);
+          const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, pointType, limit);
+          mappedLedgers.push(...snapshot.rows.map((row) => ({ ...wetwPointLedgerRow(sourceKey, sourceLineUserId, row, pointType), chat_line_user_id: lineUserId, resolved_member_ref: resolved.memberRef })));
         } catch (_err) {
           // Some members only exist in one source.
         }
@@ -5744,8 +5760,9 @@ async function listPointDailyStats(env, url) {
         const sourceLineUserId = stringValue(resolved.channelLineUserIds[sourceKey]);
         if (!sourceLineUserId) continue;
         try {
-          const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, "gift_money", limit);
-          ledgers.push(...snapshot.rows.map((row) => ({ ...wetwPointLedgerRow(sourceKey, sourceLineUserId, row), resolved_member_ref: resolved.memberRef })));
+          const pointType = pointTypeForSource(sourceKey);
+          const snapshot = await fetchWetwPointSnapshot(env, sourceKey, sourceLineUserId, pointType, limit);
+          ledgers.push(...snapshot.rows.map((row) => ({ ...wetwPointLedgerRow(sourceKey, sourceLineUserId, row, pointType), resolved_member_ref: resolved.memberRef })));
         } catch (_err) {
           // Some members only exist in one source.
         }
@@ -5757,7 +5774,7 @@ async function listPointDailyStats(env, url) {
   return [];
 }
 
-function wetwPointLedgerRow(channelKey, lineUserId, row) {
+function wetwPointLedgerRow(channelKey, lineUserId, row, pointType = pointTypeForSource(channelKey)) {
   const delta = Number(row.get_point ?? row.point_delta ?? 0);
   const wetwId = stringValue(row.id || row.point_id || row.ledger_id);
   return {
@@ -5766,7 +5783,7 @@ function wetwPointLedgerRow(channelKey, lineUserId, row) {
     channel_key: channelKey,
     line_user_id: lineUserId,
     action: delta >= 0 ? "grant" : "deduct",
-    point_type: "gift_money",
+    point_type: pointType,
     point_delta: delta,
     balance_after: Number(row.point_balance ?? row.balance ?? 0),
     source: "wetw-live",
