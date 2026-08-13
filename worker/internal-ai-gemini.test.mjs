@@ -3,7 +3,8 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 const workerSource = await readFile(new URL("./worker.js", import.meta.url), "utf8");
-const worker = await import(`data:text/javascript;base64,${Buffer.from(workerSource).toString("base64")}`);
+const testModuleSource = workerSource.replace("function geminiRequestFromResponsesPayload(payload) {", "export function geminiRequestFromResponsesPayload(payload) {");
+const worker = await import(`data:text/javascript;base64,${Buffer.from(testModuleSource).toString("base64")}`);
 
 test("converts Responses OCR input into Gemini multimodal structured output", () => {
   const request = worker.geminiRequestFromResponsesPayload({

@@ -3853,7 +3853,7 @@ async function proxyInternalAiResponses(env, body) {
   }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }
 
-export function geminiRequestFromResponsesPayload(payload) {
+function geminiRequestFromResponsesPayload(payload) {
   const contents = payload.input.map((item) => ({
     role: item?.role === "assistant" ? "model" : "user",
     parts: geminiPartsFromResponsesContent(item?.content),
