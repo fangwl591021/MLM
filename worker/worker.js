@@ -3826,29 +3826,68 @@ function calendarEventRowToRewardEvent(row) {
 }
 
 async function proxyInternalAiResponses(env, body) {
-  if (!env.OPENAI_API_KEY) throw httpError("MLM OPENAI_API_KEY is not configured", 500);
+  if (!env.GEMINI_API_KEY) throw httpError("MLM GEMINI_API_KEY is not configured", 500);
   const payload = body && body.request && typeof body.request === "object" ? { ...body.request } : null;
   if (!payload || !Array.isArray(payload.input)) throw httpError("Invalid internal AI request", 400);
   const serializedInput = JSON.stringify(payload.input);
   if (serializedInput.length > 8 * 1024 * 1024) throw httpError("Internal AI request is too large", 413);
-  const hasImage = serializedInput.includes('"input_image"');
-  payload.model = hasImage
-    ? (env.OPENAI_VISION_MODEL || env.OPENAI_MODEL || "gpt-5-mini")
-    : (env.OPENAI_MODEL || "gpt-5-mini");
-  payload.max_output_tokens = Math.max(100, Math.min(8000, Number(payload.max_output_tokens) || 1200));
-  const apiUrl = env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
-  const upstream = await fetch(apiUrl, {
+  const upstream = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+    body: JSON.stringify(geminiRequestFromResponsesPayload(payload)),
   });
   const responseText = await upstream.text();
-  return new Response(responseText, {
+  if (!upstream.ok) return new Response(responseText, {
     status: upstream.status,
     headers: { "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8", "cache-control": "no-store" },
   });
+  let gemini;
+  try { gemini = JSON.parse(responseText); } catch { throw httpError("Gemini returned invalid JSON", 502); }
+  const outputText = gemini?.candidates?.flatMap((candidate) => candidate?.content?.parts || []).map((part) => String(part?.text || "")).join("").trim();
+  if (!outputText) throw httpError("Gemini returned no text output", 502);
+  return new Response(JSON.stringify({
+    id: `gemini_${crypto.randomUUID()}`,
+    object: "response",
+    model: "gemini-3.5-flash-lite",
+    output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: outputText }] }],
+  }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }
 
+export function geminiRequestFromResponsesPayload(payload) {
+  const contents = payload.input.map((item) => ({
+    role: item?.role === "assistant" ? "model" : "user",
+    parts: geminiPartsFromResponsesContent(item?.content),
+  })).filter((item) => item.parts.length);
+  if (!contents.length) throw httpError("Internal AI request has no supported content", 400);
+  const schema = payload?.text?.format?.schema;
+  const generationConfig = { maxOutputTokens: Math.max(100, Math.min(8000, Number(payload.max_output_tokens) || 1200)) };
+  if (schema && typeof schema === "object") {
+    generationConfig.responseMimeType = "application/json";
+    generationConfig.responseJsonSchema = geminiSchema(schema);
+  }
+  const request = { contents, generationConfig };
+  if (Array.isArray(payload.tools) && payload.tools.some((tool) => tool?.type === "web_search")) request.tools = [{ googleSearch: {} }];
+  return request;
+}
+
+function geminiPartsFromResponsesContent(content) {
+  const values = Array.isArray(content) ? content : [{ type: "input_text", text: content }];
+  return values.map((item) => {
+    if (item?.type === "input_text") return String(item.text || "").trim() ? { text: String(item.text) } : null;
+    if (item?.type !== "input_image") return null;
+    const value = String(item.image_url || "");
+    const match = value.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/);
+    return match ? { inlineData: { mimeType: match[1], data: match[2] } } : null;
+  }).filter(Boolean);
+}
+
+function geminiSchema(value) {
+  if (Array.isArray(value)) return value.map(geminiSchema);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !["additionalProperties", "strict", "$schema"].includes(key))
+    .map(([key, item]) => [key, geminiSchema(item)]));
+}
 async function importCalendarImageToD1(env, request) {
   const missing = [];
   if (!env.OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
