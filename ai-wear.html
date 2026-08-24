@@ -56,7 +56,7 @@
     let state = { mode:(new URLSearchParams(location.search).get("mode")||"landing").toLowerCase(), settings:{}, memberSettings:{ purchaseLineUrl:"", shareCaption:"我正在試戴康立負離子眼鏡，你覺得這副適合我嗎？" }, shareStats:{items:[],totalVisitors:0,totalPlays:0}, models:[], lookalikeTemplates:[], selected:"", selectedLookalikeTemplate:"", selfie:null, selfieFile:null, series:"全部", materialView:"all", results:[], progressTimer:null, wearMode:"has_glasses", friendReady:false, auth:{ idToken:"", displayName:"", userId:"", pictureUrl:"", points:null, pointError:"" } };
     const sharePayloads = {};
     const AI_WEAR_LOGIN_PENDING_KEY = "aiWearLoginPendingAt";
-    const AI_WEAR_REAUTH_ATTEMPT_KEY = "aiWearReauthAttemptAt";
+    const AI_WEAR_REAUTH_ATTEMPT_KEY = "aiWearReauthAttemptAtV2";
     let aiWearLoginRedirecting = false;
     function esc(text){return String(text||"").replace(/[&<>"']/g,(m)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
     function setStatus(text, ok){const el=$("status"); el.textContent=text||""; el.className="status"+(ok===true?" ok":ok===false?" bad":"");}
@@ -119,6 +119,15 @@
       }
       try{sessionStorage.setItem(AI_WEAR_REAUTH_ATTEMPT_KEY,String(Date.now()));}catch(_err){}
       setStatus("LINE 登入已逾時，正在更新登入狀態...", true);
+      try{
+        if(window.liff&&!isAiWearLineClient()){
+          if(liff.isLoggedIn())liff.logout();
+          clearAiWearLoginPending();
+          if(beginAiWearLineLogin())return;
+        }
+      }catch(error){
+        console.warn("AI Wear LINE token refresh failed",error);
+      }
       location.replace(target);
     }
     function aiWearReferralId(){const params=new URLSearchParams(location.search); return (params.get("aiWearReferral")||sessionStorage.getItem("aiWearReferral")||"").trim();} function aiWearTryUrl(shareId){const liffId=String(state.settings.liffId||"2007221311-ISFxRBY3").trim(); const ref=String(shareId||aiWearReferralId()||"").trim(); const query=`aiWearTry=1${ref?`&aiWearReferral=${encodeURIComponent(ref)}`:""}`; return liffId?`https://liff.line.me/${encodeURIComponent(liffId)}?${query}`:(location.origin+"/ai-wear"+(ref?`?aiWearReferral=${encodeURIComponent(ref)}`:""));}
