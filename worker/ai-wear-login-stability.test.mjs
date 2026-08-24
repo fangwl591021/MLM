@@ -12,12 +12,15 @@ test("AI Wear prevents repeated LINE login redirects", () => {
   assert.doesNotMatch(html, /liff\.login\(\{ redirectUri: location\.href \}\)/);
 });
 
-test("expired AI Wear tokens never force logout or automatic relogin", () => {
+test("expired AI Wear tokens use one bounded LIFF reauth redirect", () => {
   const start = html.indexOf("function forceAiWearLineRelogin");
   const end = html.indexOf("function aiWearReferralId", start);
   const handler = html.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.doesNotMatch(handler, /liff\.logout/);
   assert.doesNotMatch(handler, /liff\.login/);
-  assert.match(handler, /請關閉此頁後從 KlinkWeb 再開啟 AI 穿戴/);
+  assert.match(handler, /AI_WEAR_REAUTH_ATTEMPT_KEY/);
+  assert.match(handler, /aiWearReauthRecentlyAttempted\(\)/);
+  assert.match(handler, /location\.replace\(target\)/);
+  assert.match(handler, /正在更新登入狀態/);
 });

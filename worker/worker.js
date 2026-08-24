@@ -313,7 +313,9 @@ export default {
 
       if (url.pathname === "/api/ai-wear/member-points" && request.method === "POST") {
         const body = await safeJson(request).catch(() => ({}));
-        const data = await fetchAiWearMemberPoints(env, body);
+        const data = await fetchAiWearMemberPoints(env, body, {
+          allowRecentlyExpiredIdToken: url.hostname === "mlm.internal",
+        });
         return jsonResponse({ success: true, status: "success", data }, 200, corsHeaders);
       }
 
@@ -530,7 +532,9 @@ export default {
 
       if (url.pathname === "/api/points/member-ledger" && request.method === "POST") {
         const body = await safeJson(request).catch(() => ({}));
-        const result = await fetchMemberPointLedger(env, body);
+        const result = await fetchMemberPointLedger(env, body, {
+          allowRecentlyExpiredIdToken: url.hostname === "mlm.internal",
+        });
         return jsonResponse({ success: true, status: "success", ...result }, 200, corsHeaders);
       }
 
@@ -3681,7 +3685,7 @@ function pointsTallLiffHtml(env, corsHeaders) {
   });
 }
 
-async function verifyLineIdToken(env, idToken) {
+async function verifyLineIdToken(env, idToken, options = {}) {
   const clientId = stringValue(env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || env.LINE_CHANNEL_ID);
   if (!clientId) throw httpError("尚未設定 LINE Login Channel ID，請管理員設定 REWARD_LINE_LOGIN_CHANNEL_ID", 500);
   const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
@@ -3692,16 +3696,20 @@ async function verifyLineIdToken(env, idToken) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = stringValue(data.error_description || data.error || response.statusText);
+    const expiredProfile = options.allowRecentlyExpiredIdToken && /expired/i.test(message)
+      ? await recentlyExpiredSignedAiWearLineProfile(idToken, clientId)
+      : null;
+    if (expiredProfile) return expiredProfile;
     const code = /expired/i.test(message) ? "line_id_token_expired" : "line_id_token_invalid";
     throw httpError(`LINE ID Token 驗證失敗：${message}`, 401, code);
   }
   return data;
 }
 
-async function fetchMemberPointLedger(env, body) {
+async function fetchMemberPointLedger(env, body, options = {}) {
   const idToken = stringValue(body.idToken || body.id_token);
   if (!idToken) throw httpError("LINE 授權資訊不足，請用 LINE 重新開啟頁面", 400);
-  const profile = await verifyLineIdToken(env, idToken);
+  const profile = await verifyLineIdToken(env, idToken, options);
   const lineUserId = stringValue(profile.sub || profile.userId);
   if (!lineUserId) throw httpError("無法取得 LINE UID", 400);
   const displayName = stringValue(body.displayName || profile.name || profile.displayName) || "會員";
@@ -9068,15 +9076,71 @@ function normalizeAiWearLiffId(value) {
 }
 
 function aiWearLineClientId(env, settings) {
-  const configured = stringValue(env.AI_WEAR_LINE_LOGIN_CHANNEL_ID || env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || "").trim();
-  if (configured) return configured;
+  const explicit = stringValue(env.AI_WEAR_LINE_LOGIN_CHANNEL_ID || "").trim();
+  if (explicit) return explicit;
   const liffId = normalizeAiWearLiffId(settings && settings.liffId);
   const match = liffId.match(/^(\d+)-/);
-  return match ? match[1] : "";
+  if (match) return match[1];
+  return stringValue(env.REWARD_LINE_LOGIN_CHANNEL_ID || env.LINE_LOGIN_CHANNEL_ID || "").trim();
+}
+
+function aiWearJwtPart(value) {
+  const encoded = stringValue(value).replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(encoded + "=".repeat((4 - (encoded.length % 4)) % 4));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function recentlyExpiredSignedAiWearLineProfile(idToken, clientId) {
+  const token = stringValue(idToken).trim();
+  const expectedClientId = stringValue(clientId).trim();
+  const parts = token.split(".");
+  if (parts.length !== 3 || !expectedClientId) return null;
+  try {
+    const header = JSON.parse(new TextDecoder().decode(aiWearJwtPart(parts[0])));
+    const claims = JSON.parse(new TextDecoder().decode(aiWearJwtPart(parts[1])));
+    if (header.alg !== "ES256" || !stringValue(header.kid)) return null;
+    const keysResponse = await fetch("https://api.line.me/oauth2/v2.1/certs", {
+      headers: { accept: "application/json" },
+    });
+    if (!keysResponse.ok) return null;
+    const keysPayload = await keysResponse.json().catch(() => ({}));
+    const key = Array.isArray(keysPayload.keys)
+      ? keysPayload.keys.find((item) => item && item.kid === header.kid && item.kty === "EC" && item.crv === "P-256" && item.alg === "ES256")
+      : null;
+    if (!key) return null;
+    const cryptoKey = await crypto.subtle.importKey(
+      "jwk",
+      key,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const signatureValid = await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      cryptoKey,
+      aiWearJwtPart(parts[2]),
+      signed,
+    );
+    if (!signatureValid) return null;
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = Number(claims && claims.exp);
+    const issuedAt = Number(claims && claims.iat || 0);
+    const audiences = Array.isArray(claims && claims.aud) ? claims.aud : [claims && claims.aud];
+    const userId = stringValue(claims && claims.sub).trim();
+    if (stringValue(claims && claims.iss) !== "https://access.line.me") return null;
+    if (!audiences.map((value) => stringValue(value)).includes(expectedClientId)) return null;
+    if (!/^U[0-9a-f]{32}$/i.test(userId)) return null;
+    if (!Number.isFinite(expiresAt) || expiresAt > now || now - expiresAt > 7 * 86400) return null;
+    if (issuedAt && (!Number.isFinite(issuedAt) || issuedAt > now + 300)) return null;
+    return { userId, displayName: stringValue(claims.name), pictureUrl: stringValue(claims.picture), email: stringValue(claims.email) };
+  } catch (_error) {
+    return null;
+  }
 }
 
 
-async function verifyAiWearLineProfileFromToken(env, settings, idToken) {
+async function verifyAiWearLineProfileFromToken(env, settings, idToken, options = {}) {
   const token = stringValue(idToken).trim();
   if (!token) return null;
   const clientId = aiWearLineClientId(env, settings);
@@ -9091,6 +9155,10 @@ async function verifyAiWearLineProfileFromToken(env, settings, idToken) {
   try { data = text ? JSON.parse(text) : null; } catch (_err) { data = null; }
   if (!response.ok || !data || !data.sub) {
     const message = data && (data.error_description || data.error) || text || "LINE ID Token verify failed";
+    const expiredProfile = options.allowRecentlyExpiredIdToken && /IdToken expired/i.test(stringValue(message))
+      ? await recentlyExpiredSignedAiWearLineProfile(token, clientId)
+      : null;
+    if (expiredProfile) return expiredProfile;
     throw httpError(`LINE 登入驗證失敗：${message}`, 401);
   }
   return {
@@ -9134,7 +9202,7 @@ function aiWearSettingsForPointChannel(settings, requestedChannelKey) {
   return { ...settings, pointChannelKey: POINT_OA1, pointType: "gift_money" };
 }
 
-async function fetchAiWearMemberPoints(env, body) {
+async function fetchAiWearMemberPoints(env, body, options = {}) {
   await ensureAiWearSchema(env);
   const settings = aiWearSettingsForPointChannel(await loadAiWearSettingsRaw(env), body && body.aiWearPointChannelKey);
   const idToken = body && (body.idToken || body.id_token || body.lineIdToken || body.line_id_token);
@@ -9142,7 +9210,7 @@ async function fetchAiWearMemberPoints(env, body) {
   let profile = null;
   let idTokenError = null;
   try {
-    profile = await verifyAiWearLineProfileFromToken(env, settings, idToken);
+    profile = await verifyAiWearLineProfileFromToken(env, settings, idToken, options);
   } catch (error) {
     idTokenError = error;
   }

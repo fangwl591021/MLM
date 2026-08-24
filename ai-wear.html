@@ -56,6 +56,7 @@
     let state = { mode:(new URLSearchParams(location.search).get("mode")||"landing").toLowerCase(), settings:{}, memberSettings:{ purchaseLineUrl:"", shareCaption:"我正在試戴康立負離子眼鏡，你覺得這副適合我嗎？" }, shareStats:{items:[],totalVisitors:0,totalPlays:0}, models:[], lookalikeTemplates:[], selected:"", selectedLookalikeTemplate:"", selfie:null, selfieFile:null, series:"全部", materialView:"all", results:[], progressTimer:null, wearMode:"has_glasses", friendReady:false, auth:{ idToken:"", displayName:"", userId:"", pictureUrl:"", points:null, pointError:"" } };
     const sharePayloads = {};
     const AI_WEAR_LOGIN_PENDING_KEY = "aiWearLoginPendingAt";
+    const AI_WEAR_REAUTH_ATTEMPT_KEY = "aiWearReauthAttemptAt";
     let aiWearLoginRedirecting = false;
     function esc(text){return String(text||"").replace(/[&<>"']/g,(m)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
     function setStatus(text, ok){const el=$("status"); el.textContent=text||""; el.className="status"+(ok===true?" ok":ok===false?" bad":"");}
@@ -91,7 +92,35 @@
       }
     }
     function isLineTokenExpiredMessage(message){return /IdToken expired|line_id_token_expired|token expired|登入逾時|登入驗證失敗/i.test(String(message||""));}
-    function forceAiWearLineRelogin(message){state.auth.idToken="";state.auth.points=null;state.auth.pointError="LINE 登入已逾時";renderMember();setStatus("LINE 登入已逾時。為避免重複跳轉，請關閉此頁後從 KlinkWeb 再開啟 AI 穿戴。", false);}
+    function aiWearReauthRecentlyAttempted(){
+      try{
+        const attemptedAt=Number(sessionStorage.getItem(AI_WEAR_REAUTH_ATTEMPT_KEY)||0);
+        return attemptedAt>0&&Date.now()-attemptedAt<120000;
+      }catch(_err){return false;}
+    }
+    function aiWearReauthUrl(){
+      const liffId=String(AI_WEAR_LIFF_OVERRIDE||state.settings.liffId||"2007221311-ISFxRBY3").trim();
+      if(!liffId)return "";
+      const current=new URL(location.href);
+      const target=new URL(`https://liff.line.me/${encodeURIComponent(liffId)}`);
+      ["mode","aiWearReferral","aiWearTry"].forEach((key)=>{
+        const value=current.searchParams.get(key);
+        if(value)target.searchParams.set(key,value);
+      });
+      target.searchParams.set("aiWearReauth","1");
+      return target.toString();
+    }
+    function forceAiWearLineRelogin(message){
+      state.auth.idToken="";state.auth.points=null;state.auth.pointError="LINE 登入已逾時";renderMember();
+      const target=aiWearReauthUrl();
+      if(!target||aiWearReauthRecentlyAttempted()){
+        setStatus("LINE 登入仍未更新，請關閉此頁後從 KlinkWeb 再開啟 AI 穿戴。", false);
+        return;
+      }
+      try{sessionStorage.setItem(AI_WEAR_REAUTH_ATTEMPT_KEY,String(Date.now()));}catch(_err){}
+      setStatus("LINE 登入已逾時，正在更新登入狀態...", true);
+      location.replace(target);
+    }
     function aiWearReferralId(){const params=new URLSearchParams(location.search); return (params.get("aiWearReferral")||sessionStorage.getItem("aiWearReferral")||"").trim();} function aiWearTryUrl(shareId){const liffId=String(state.settings.liffId||"2007221311-ISFxRBY3").trim(); const ref=String(shareId||aiWearReferralId()||"").trim(); const query=`aiWearTry=1${ref?`&aiWearReferral=${encodeURIComponent(ref)}`:""}`; return liffId?`https://liff.line.me/${encodeURIComponent(liffId)}?${query}`:(location.origin+"/ai-wear"+(ref?`?aiWearReferral=${encodeURIComponent(ref)}`:""));}
     function clearAiWearTryFlag(){try{sessionStorage.removeItem("aiWearPendingTry");sessionStorage.removeItem("aiWearReferral");}catch(_err){} const url=new URL(location.href); const had=url.searchParams.has("aiWearTry"); url.searchParams.delete("aiWearTry"); url.searchParams.delete("aiWearReferral"); if(had){history.replaceState(null,"",url.pathname+(url.searchParams.toString()?"?"+url.searchParams.toString():"")+url.hash);}}
     async function recordReferralIfNeeded(){const shareId=aiWearReferralId(); if(!shareId||!state.auth.idToken)return; try{const res=await fetch("/api/ai-wear/referral",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({idToken:state.auth.idToken,shareId})}); const json=await res.json().catch(()=>({})); if(!res.ok||json.status!=="success")throw new Error(json.message||"分享來源記錄失敗");}catch(err){console.warn("AI wear referral record failed",err);}} function showFriendGate(message){state.friendReady=false;$("friendGateMessage").textContent=message||"完成 LINE 內的加入好友提示後，即可繼續使用 AI 穿戴與同步 K 點。";$("friendGate").classList.remove("hidden");} function hideFriendGate(){state.friendReady=true;$("friendGate").classList.add("hidden");} async function ensureAiWearFriendBeforeTry(){if(!window.liff||!liff.getFriendship){showFriendGate("目前無法確認好友狀態，請從 LINE 重新開啟此頁。");return false;} const ref=aiWearReferralId(); if(ref){try{sessionStorage.setItem("aiWearReferral",ref);}catch(_err){}} try{const friendship=await liff.getFriendship(); if(friendship&&friendship.friendFlag){hideFriendGate();await recordReferralIfNeeded();clearAiWearTryFlag();setStatus("已確認為康立智能好友，K 點已同步，可以開始 AI 試戴。",true);return true;} showFriendGate("請在 LINE 的加入好友提示中加入康立智能，完成後按下重新檢查。");setStatus("尚未加入康立智能好友，AI 穿戴暫時鎖定。",false);return false;}catch(err){console.warn("LINE friendship check failed",err);showFriendGate("好友狀態確認失敗，請確認網路後再試一次。");setStatus("無法確認康立智能好友狀態。",false);return false;}}
